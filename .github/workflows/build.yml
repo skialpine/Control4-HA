@@ -1,0 +1,111 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  # Run on a tag again from the Actions tab once its artifacts have expired.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Main and tags group by run_id: a shared group would cancel their pending runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Pin source timestamp
+        run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
+      # The archive, release tag and committed VERSION share one numeric revision.
+      - name: Driver version from tag
+        if: github.ref_type == 'tag'
+        run: python3 tools/release_version.py tag-version "$GITHUB_REF_NAME" --check-history >> "$GITHUB_ENV"
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: 'luajit-2.1'
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Setup Node
+        if: hashFiles('.node-version') != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      # Pinned: a new StyLua release can reformat committed Lua with no change in the repo.
+      - name: Setup stylua
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors -o "$RUNNER_TEMP/stylua.zip" \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-linux-$(uname -m).zip"
+          unzip -q "$RUNNER_TEMP/stylua.zip" -d "$RUNNER_TEMP/stylua"
+          echo "$RUNNER_TEMP/stylua" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/stylua/stylua" --version
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxml2-dev \
+            libxslt-dev \
+            libssl-dev \
+            swig \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libcairo2 \
+            libgdk-pixbuf-2.0-0 \
+            fonts-dejavu-core \
+            fonts-liberation \
+            fonts-noto-core \
+            fonts-symbola
+
+      - name: Initialize project
+        run: make init
+
+      - name: Pin template driverpackager
+        run: git -C dist/driverpackager checkout 465ecc1cf73a85a4fdaf62fb688e9aed83e6d530
+
+      - name: Check formatting
+        run: make check
+
+      - name: Test
+        run: make test
+
+      # Each build secret by name, so make build sees no other secret (CONTRIBUTING.md, Build Secrets).
+      - name: Build
+        run: make suite-build
+
+      - name: Verify the build
+        run: make suite-verify
+
+      - name: Public distribution provenance gate
+        run: make check-provenance
+
+      # A public repo's Actions storage is free, so a PR build keeps 3 days and the rest 14, the most the organization allows.
+      # A repo with no driver yet builds nothing to upload.
+      - name: Upload oss artifacts
+        if: success() && hashFiles('drivers/*/driver.xml') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: oss
+          path: dist/oss/*
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 14 }}
