@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Device Setup</title>
+<style>
+<!-- #embed ../../../../src/lib/ui/style.css -->
+<!-- #embed ../../../../src/ha/setup.css -->
+</style>
+</head>
+<body>
+<!-- #embed ../../../../src/ha/setup.html -->
+<template id="migration-template">
+<!-- #embed ../../../../src/ha/migration.html -->
+</template>
+<script>
+<!-- #embed ../../../../src/lib/ui/page.js -->
+<!-- #embed ../../../../src/ha/migration.js -->
+document.getElementById("migration-slot").appendChild(document.getElementById("migration-template").content.cloneNode(true));
+<!-- #embed ../../../../src/ha/setup.js -->
+</script>
+</body>
+</html>

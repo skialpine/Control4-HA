@@ -1,0 +1,1317 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "bphillips09/Control4-HA-Alarm-Panel",
+      "repository": "https://github.com/bphillips09/Control4-HA-Alarm-Panel",
+      "revision": "94725797b754459f55df027b396f7e8ac121f2be",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Base",
+      "repository": "https://github.com/bphillips09/Control4-HA-Base",
+      "revision": "7fc2ac9f758dd137e8f6ef8fec4a9fd6a066a392",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Binary-Sensor",
+      "repository": "https://github.com/bphillips09/Control4-HA-Binary-Sensor",
+      "revision": "fdf5c3ad8295276e7354944f18476d5a160d61de",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Blinds",
+      "repository": "https://github.com/bphillips09/Control4-HA-Blinds",
+      "revision": "79714b32335fa7c049f34d559f1a9b68acb06734",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Coordinator",
+      "repository": "https://github.com/bphillips09/Control4-HA-Coordinator",
+      "revision": "dccd545618e7f2f0ea6fefe6c877118ba7df9c6a",
+      "credit": "BP / bphillips09",
+      "terms": "Apache-2.0",
+      "permission": "established",
+      "upstream_notices": [
+        "LICENSE"
+      ],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Fan",
+      "repository": "https://github.com/bphillips09/Control4-HA-Fan",
+      "revision": "ac62d821c1b0967ac52c2e670c9932ac7a9d097c",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Garage-Door",
+      "repository": "https://github.com/bphillips09/Control4-HA-Garage-Door",
+      "revision": "5f74005eca5d8920b99a097df38dcfef750ad11c",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Generic-Sensor",
+      "repository": "https://github.com/bphillips09/Control4-HA-Generic-Sensor",
+      "revision": "982e68fad8914e8f79bcdd3c9ea09c0cc9acd5f4",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Light",
+      "repository": "https://github.com/bphillips09/Control4-HA-Light",
+      "revision": "888f0b76cafaba3101ccd962829c5c6da5937c97",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Lock",
+      "repository": "https://github.com/bphillips09/Control4-HA-Lock",
+      "revision": "2b05f1eb28058a75c486c321266dc20ce68d1b51",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Media-Player",
+      "repository": "https://github.com/bphillips09/Control4-HA-Media-Player",
+      "revision": "fe9f04f7b315f077495b5223fa42069369a9af47",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Switch",
+      "repository": "https://github.com/bphillips09/Control4-HA-Switch",
+      "revision": "f55526bbefc0de883b7328758d268e7c981bc1c4",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "bphillips09/Control4-HA-Thermostat",
+      "repository": "https://github.com/bphillips09/Control4-HA-Thermostat",
+      "revision": "7aad2f855dd7f6b070ed456a2d5776f02640b7ec",
+      "credit": "BP / bphillips09",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "upstream_notices": [],
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "skialpine/Control4-HA-Switch",
+      "repository": "https://github.com/skialpine/Control4-HA-Switch",
+      "revision": "86441f1cfdf4ba60f054890444241e4a36d06b8c",
+      "credit": "skialpine; BP / bphillips09 where inherited",
+      "terms": "unresolved",
+      "permission": "unresolved",
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "skialpine/Control4-HA-Coordinator",
+      "repository": "https://github.com/skialpine/Control4-HA-Coordinator",
+      "revision": "9102878246e6fe670367d6efc3ed82db2bcc7b5c",
+      "credit": "skialpine; BP / bphillips09 where inherited",
+      "terms": "Apache-2.0; inherited notices require review",
+      "permission": "unresolved",
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "skialpine/HA-Gesture-Bridge",
+      "repository": "https://github.com/skialpine/HA-Gesture-Bridge",
+      "revision": "c4f16485776afe2cca3eef914b1c88bc03060163",
+      "credit": "skialpine; BP / bphillips09 where inherited",
+      "terms": "separate runtime; not distributed here",
+      "permission": "unresolved",
+      "required_notices": [],
+      "copies": []
+    },
+    {
+      "id": "finitelabs/template",
+      "repository": "https://github.com/finitelabs/control4-driver-template",
+      "revision": "61cfcb7671ee4ec76976170f64ea4c1810aa2b30",
+      "credit": "Finite Labs / Derek Miller and template contributors",
+      "terms": "AGPL-3.0",
+      "permission": "established",
+      "required_notices": [
+        "LICENSE",
+        "documentation/provenance.md"
+      ],
+      "copies": [
+        {
+          "path": ".env.default",
+          "source_path": "template/.env.default.jinja",
+          "sha256": "8a6450c2f8eab22dbbc1e97ebe409bad65e4a016f975e29e1beb2f47945a92ed",
+          "changes": "OSS-only project needs no build secrets; preserve Copier skip-if-exists policy"
+        },
+        {
+          "path": ".copier-answers.yml",
+          "source_path": "template/{{ _copier_conf.answers_file }}.jinja",
+          "sha256": "7cf6a9183571e8696fc0f958f9c34aa0a2737c35e2f6b44ee7efd9d25e92f605",
+          "changes": "Copier 9.19.1 render at v0.9.112 using the suite answers"
+        },
+        {
+          "path": "LICENSE",
+          "source_path": "template/LICENSE",
+          "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "requirements.txt",
+          "source_path": "template/requirements.txt",
+          "sha256": "093bf754c136ce79c4465f5efcafbd5e9ee3cb3aba0d4d65faf486790a33a98c",
+          "changes": "Constrain template build dependencies with requirements-build.lock"
+        },
+        {
+          "path": "CONTRIBUTING.md",
+          "source_path": "template/CONTRIBUTING.md.jinja",
+          "sha256": "04ab886a5f13666588a9ddb2b0ef2b4a3327bda049e7ec59dd2a518ad89cd4b2",
+          "changes": "Copier-rendered configuration, suite release guidance and the mandatory example-driver update process"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "source_path": "template/CHANGELOG.md.jinja",
+          "sha256": "af12f435d307f4d8d75202c82e690f91505eff8e7931d075d0177ff668069791",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": ".gitignore",
+          "source_path": "template/.gitignore",
+          "sha256": "4c1fa8a2dbcf5c34a59ed04fe1ea4f93e692f7102b6de6ec07844927cd6ed6cc",
+          "changes": "Keep local caches, household lab evidence and logs outside publication while preserving CI fixtures"
+        },
+        {
+          "path": "Makefile",
+          "source_path": "template/Makefile.jinja",
+          "sha256": "6a620b0ad85a89516fac4b93700f0f991fd1ad6a77168b8cba9428431e2589ae",
+          "changes": "Use the project release revision for version stamping and verification"
+        },
+        {
+          "path": "tools/package.py",
+          "source_path": "template/tools/package.py",
+          "sha256": "b2b1d018afdf03650b1938d71db3a32ce3bceecad763ebb82c071bc2226e1257",
+          "changes": "Validate stamped versions and delegate tag-version to the project release helper"
+        },
+        {
+          "path": "tools/light-caps.lua",
+          "source_path": "template/tools/light-caps.lua",
+          "sha256": "00bb7900839d023c65e0214970ba26808f09a3aaa837facd30a067b8d7008cd4",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/deps.py",
+          "source_path": "template/tools/deps.py",
+          "sha256": "023c9731def67c18ba6bec7bb3bd3edb26d67670375f766972af253616a93845",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/test_package.py",
+          "source_path": "template/tools/test_package.py",
+          "sha256": "575106fb748b7404878b0c70f6c768909a162118af21a45e4e0fea53221f5adc",
+          "changes": "Test the template tag-version entry point against the shared release validator"
+        },
+        {
+          "path": "tools/test_support_code.py",
+          "source_path": "template/tools/test_support_code.py",
+          "sha256": "4ce477a828c5fb85cba7c20f8b68783d149349b4d3d856de7b1e6f6e3bfc25f1",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/preprocess.py",
+          "source_path": "template/tools/preprocess.py",
+          "sha256": "09ca2cf216eeaa790c4bf0d583aabc9ca57d1f98a0489cbcd5f6c98f7d35ef4e",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/icons.py",
+          "source_path": "template/tools/icons.py",
+          "sha256": "b2c6360f8c8e839eef5c481dc2ca01bbee723ea1a3d36fd99e8f42620dadaab7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/globals.py",
+          "source_path": "template/tools/globals.py",
+          "sha256": "34ed5c1a18fcbbdd18612a6b23727b150246fb0bb9e4ccb4924c387b1703666b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/docs.py",
+          "source_path": "template/tools/docs.py",
+          "sha256": "536701e8e00aba19bd0f89ac204da0b6ac65be59980a43a9fbb225e901dad87d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/test_globals.py",
+          "source_path": "template/tools/test_globals.py",
+          "sha256": "10f09f364510632ecade47a4d03a544185722d81c7025183fdbce1b961d9a7e1",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/gen-squishy.lua",
+          "source_path": "template/tools/gen-squishy.lua",
+          "sha256": "a9d21e2902191cd49d34701b5bcfcfa903df81af357512e4d738897f65a68853",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/globals.lua",
+          "source_path": "template/tools/globals.lua",
+          "sha256": "5a34327e8ab898dde7a3d0f504ae50e845142bc03abbcf86f005812550ff21be",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/github-markdown.css",
+          "source_path": "template/tools/github-markdown.css",
+          "sha256": "807024779e16070fb91e0e6b53a04ed6802ee7cc971cae4aa5c6f21af466486a",
+          "changes": "Trim a final blank line"
+        },
+        {
+          "path": "tools/test_preprocess.py",
+          "source_path": "template/tools/test_preprocess.py",
+          "sha256": "9e3966eb5266287f08baeb5d4b2ab9ef9ecef2c4f8d322577459d6dae951870b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/support_code.py",
+          "source_path": "template/tools/support_code.py",
+          "sha256": "a8fbb38e66a2558310246299298e668e2de7b4fe5780e31da90365aca8ccd4c7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "tools/github-setup",
+          "source_path": "template/tools/github-setup.jinja",
+          "sha256": "212ef06f635eb7b617521cb7ba2f077db02fef5a288feb07fb6d8747d9b13583",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": "test/test_secret_sends_trace.lua",
+          "source_path": "template/test/test_secret_sends_trace.lua",
+          "sha256": "647fbd30cfef5af4602ee9c030868a8caa001e478e247069833145003dac83d0",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_values_property.lua",
+          "source_path": "template/test/test_values_property.lua",
+          "sha256": "a5b65386c1b084390f476c25ddbc3e835bcfa6e4459e5f4342261fd8316f17c5",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_saved_entries_without_ids.lua",
+          "source_path": "template/test/test_saved_entries_without_ids.lua",
+          "sha256": "4af6a247d34a0051da1bb1de16792a90be6c8c51493c8da1932b7cfcba2a8255",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_persist_undecodable.lua",
+          "source_path": "template/test/test_persist_undecodable.lua",
+          "sha256": "033873080691a35d2e8e003da2fc5eecaae0d2ba90b6af6cef206078f0ed338f",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/values_harness.lua",
+          "source_path": "template/test/values_harness.lua",
+          "sha256": "6f7b39b332c4c7d49f41b6ba6cd6c68c1067df1fb0541f3fa9627c35c46bff1b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/run_test.sh",
+          "source_path": "template/test/run_test.sh",
+          "sha256": "127aa40ede7f80ab917c4b4a15d0ee2574e69a7a9f9e1c23b6d94bcd7a15ee01",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_drivercentral.lua",
+          "source_path": "template/test/test_drivercentral.lua",
+          "sha256": "07cdccfe4b732454dde8fe6e6cc8ff1bd6e294d75822b1689e7c6044942c49b5",
+          "changes": "Skip the commercial-client integration test in an OSS checkout without the vendored client"
+        },
+        {
+          "path": "test/test_values_labels.lua",
+          "source_path": "template/test/test_values_labels.lua",
+          "sha256": "03d78b966497d54c6ba24c1353b87473f60a9bfc2318baf9499261b44b856363",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/testlib.lua",
+          "source_path": "template/test/testlib.lua",
+          "sha256": "a64dfe835e78f9f3e3953e67f49fbbbb3e08cd0c86d88fcfbe0d262074eda0c4",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_persist_missing_key.lua",
+          "source_path": "template/test/test_persist_missing_key.lua",
+          "sha256": "01d076fe72497a0677823f6cb76773ad72203e2128d810a936a0f8fec8db8187",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_c4_shim.lua",
+          "source_path": "template/test/test_c4_shim.lua",
+          "sha256": "7d62dadc26cf487f434e7c0865e0e9e1e5867f9909927f5522dfb6b4a0282b6b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_bindings_static_connections.lua",
+          "source_path": "template/test/test_bindings_static_connections.lua",
+          "sha256": "829307c9126a5eae3f3c5137738d7362b6a8ab0ecc33c6d7901e345b8fa96d94",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_github_updater_write.lua",
+          "source_path": "template/test/test_github_updater_write.lua",
+          "sha256": "5005a7a0d235dda4314fd32d32e9997c184f63d77cf603dcf59c058269db6ba5",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_github_updater_alias.lua",
+          "source_path": "template/test/test_github_updater_alias.lua",
+          "sha256": "d5d48ccf9a3079f6ea4e3e9ca0abc56d4d639c8e32af7d739c5a8dc768930927",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_github_updater_self_last.lua",
+          "source_path": "template/test/test_github_updater_self_last.lua",
+          "sha256": "696eb0e052545abaf219f7699d19bfd547006b2b1c0b2b65178f4e6afde08d62",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_device_id_list.lua",
+          "source_path": "template/test/test_device_id_list.lua",
+          "sha256": "061551321db5c0bf88adfec8a01aa4c55692d4377ff55790c8b1cb3dda28d017",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_sensor_params.lua",
+          "source_path": "template/test/test_sensor_params.lua",
+          "sha256": "937c76017bf3940c552f92d9ee3080d1ee55efe91100922025558e23929532f9",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_github_updater_one_at_a_time.lua",
+          "source_path": "template/test/test_github_updater_one_at_a_time.lua",
+          "sha256": "7489b8b7f0c1cab5d074c67acbd8346268e1c494770eca2876628313496095db",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_persist_write_behind.lua",
+          "source_path": "template/test/test_persist_write_behind.lua",
+          "sha256": "e86e67fc19aae99e6b0ecfc2f2e5f90b88d04720b2b0c13bf5379f98f863d361",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_bindings_rename.lua",
+          "source_path": "template/test/test_bindings_rename.lua",
+          "sha256": "3cb46affa68b1544a0cd676e0d83307f68cafdf78518b160e2280807e4af5fb2",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_ui_devices.lua",
+          "source_path": "template/test/test_ui_devices.lua",
+          "sha256": "fad80b6f6c6b35bdaa29cb0422c762d0d0267e94ec1c8fa1ae6804c5e24178ab",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_light_conformance.lua",
+          "source_path": "template/test/test_light_conformance.lua",
+          "sha256": "301df4c794da5521683a51dce46b8234d32a3bfc3d9bae7624b07de92f280d14",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/dc_cloud.lua",
+          "source_path": "template/test/dc_cloud.lua",
+          "sha256": "f0758f6655f678401bdfee8a0046a85cbe8a93d76d842a2baf69b26c48c3ad65",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_support_code.lua",
+          "source_path": "template/test/test_support_code.lua",
+          "sha256": "4acbf3de503f671b2da29597dd00231cb22b7f2d2c97d3ac3a63514b81adeb6a",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/c4_shim.lua",
+          "source_path": "template/test/c4_shim.lua",
+          "sha256": "f5c075644dd1b730594ea684f231892ad6733b084df37646a56876c2d4b47eac",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_update_property.lua",
+          "source_path": "template/test/test_update_property.lua",
+          "sha256": "bde48073e81ccd6d438ae0dc74dc86259b72304b05e482ec5233f81b1da520b3",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_contract_cases.lua",
+          "source_path": "template/test/light_contract_cases.lua",
+          "sha256": "ff766c9a592254e37bcc8d5459bdcf6e84347b91382f4e62f1535acdcade74fa",
+          "changes": "Add intent expectations to seven existing golden commands; preserve numeric and timing expectations"
+        },
+        {
+          "path": "test/test_deferred.lua",
+          "source_path": "template/test/test_deferred.lua",
+          "sha256": "2514700926e3fa3b1de6a89c592e6b364b9174042ce62f36e4d843429a42cb98",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_rig.lua",
+          "source_path": "template/test/light_rig.lua",
+          "sha256": "c1dfaea5df7a6e0c370051cef86d487e7adfb7242bbe9442209095c50c14bb9d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_events_text.lua",
+          "source_path": "template/test/test_events_text.lua",
+          "sha256": "618ce76675b1b33990063040e5b3471dadcd7c57f0e14a38484fd830c0025874",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_group_rig.lua",
+          "source_path": "template/test/light_group_rig.lua",
+          "sha256": "c69a5547b4db07f0e3af72e454fe673bff9cff640921128014b33614e70f1792",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_jit_off.lua",
+          "source_path": "template/test/test_jit_off.lua",
+          "sha256": "0218ff51ed8c9de096d52d32bfc462b4d8c9ff6907dc4dbec7df4a623e7eda2e",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/c4_fixtures.lua",
+          "source_path": "template/test/c4_fixtures.lua",
+          "sha256": "c921509c9a75b0c5ec1897cb7e48c53e54dad852edf54a87a317e20205222d5a",
+          "changes": "Simulate Director returning a persisted JSON object as a Lua table after a cold reload."
+        },
+        {
+          "path": "test/test_bindings_unnamed.lua",
+          "source_path": "template/test/test_bindings_unnamed.lua",
+          "sha256": "5cff72f18aaf6708ab472da563610dc28fa848c15f7c48bc5de327952cb54777",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_companions.lua",
+          "source_path": "template/test/test_companions.lua",
+          "sha256": "4f5b599562c2daed987f90ae3b193645bdec323557771bcc340751e2f09e2ed7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_nonfinite_numbers.lua",
+          "source_path": "template/test/test_nonfinite_numbers.lua",
+          "sha256": "3d948c2161dcb7dd0da8c3b11d75bc28c48fe88d2ff56c471af4cb464a811865",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_conformance.lua",
+          "source_path": "template/test/light_conformance.lua",
+          "sha256": "03362d1c8e3e63863291a65b73a9ae3bc170f905ff562dec6edb6b8d4dbac056",
+          "changes": "Suite adapter rig coverage and the upstream v0.9.112 keypad color expectations"
+        },
+        {
+          "path": "test/test_conditionals_sort_order.lua",
+          "source_path": "template/test/test_conditionals_sort_order.lua",
+          "sha256": "fb2d7e39ef99ebc95208565416f38ff9a97fbaeeedb5b02c4e18cfc92f619772",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_watched_variable.lua",
+          "source_path": "template/test/test_watched_variable.lua",
+          "sha256": "fdbf3dac9e1195950bdb28997e4451d845855d385acb798a7275fcadaf20f646",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_ui_pages.lua",
+          "source_path": "template/test/test_ui_pages.lua",
+          "sha256": "dca83fc51a73c400cdeb2d1b7f0d25c34a937bac58e6baebe861976f215b1c5d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_ui_tab_properties.lua",
+          "source_path": "template/test/test_ui_tab_properties.lua",
+          "sha256": "3e2f2c448c59ae098a237423096d427b834d7c02a30fd679caf1140f06455f36",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_shim_bindings.lua",
+          "source_path": "template/test/test_shim_bindings.lua",
+          "sha256": "35393905c704f09394ab274718e189ec59e42c1538e60610e4e961df1ee79b49",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_values_ids.lua",
+          "source_path": "template/test/test_values_ids.lua",
+          "sha256": "95683309411ec2cc6c464719f1e7f4498090e00b924c20e1012efb40274b5bbb",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_dispatch.lua",
+          "source_path": "template/test/test_dispatch.lua",
+          "sha256": "e1ad50d6e9a4612c8232748556b0215a5ba76604d4f6406c9eba382264c1e4be",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_lib_dependencies.lua",
+          "source_path": "template/test/test_lib_dependencies.lua",
+          "sha256": "c3f6cbb44ca66531928a1488554285378830b23b1374f10a11a91e5f05b7d9ff",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_url_json.lua",
+          "source_path": "template/test/test_url_json.lua",
+          "sha256": "7f0721ceadc739dabee3d3507317c721f28e0f2d993ee2740457ad091aebdd23",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_update_settings.lua",
+          "source_path": "template/test/test_update_settings.lua",
+          "sha256": "f52eec30a788ca618db30436498cf360581992eff2f243535c8dedb81fdb93a1",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_websocket.lua",
+          "source_path": "template/test/test_websocket.lua",
+          "sha256": "538896483351e2ec5e255b4afc5af068a25f6558efbe5f4e5ea1fb4e1ea67c9b",
+          "changes": "Add upgrade/coalesced-first-frame, redirect and missing-header regressions; existing framing and lifecycle assertions unchanged. Lifecycle qualification: contain failed close sends/cancellation/timer allocation, retire connected state, and guard registry/callback cleanup against obsolete socket owners; add fault-injection coverage."
+        },
+        {
+          "path": "test/test_persist_reload.lua",
+          "source_path": "template/test/test_persist_reload.lua",
+          "sha256": "10fb519fccfdf77530e1dd6d40cf00819085119dbf4d9ebe25679f1a70b2135e",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_ui_page_params.lua",
+          "source_path": "template/test/test_ui_page_params.lua",
+          "sha256": "5fb52242d016cc04d5b9383b75df1c6f87f2456bd3ceeab46f7ea49ce5619144",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_logging_levels.lua",
+          "source_path": "template/test/test_logging_levels.lua",
+          "sha256": "3ab37fb96cdc23bdd75288facb7118f71b476f514072d558dcce8920b84e24c2",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_drivers.lua",
+          "source_path": "template/test/light_drivers.lua",
+          "sha256": "eb5d773cdb1741e466f95698dbe4dccf13fd12db2959a4b90bfb79b38bd66e1e",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_persist_encrypted_trace.lua",
+          "source_path": "template/test/test_persist_encrypted_trace.lua",
+          "sha256": "eeb54026be81bf1da2ded1269e89e729cb6f38fc2bf9b2cca668fe1b301e6a30",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_proxy_fake.lua",
+          "source_path": "template/test/light_proxy_fake.lua",
+          "sha256": "0c995d0e95889fc598da39a4aca1da80955b700dccc08aabfe96650acd7b17c7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_http_limits.lua",
+          "source_path": "template/test/test_http_limits.lua",
+          "sha256": "67c30f08b459a21f14cfe1e6ac892627f570fff4fb7e8a9b4cb7e836ece9b409",
+          "changes": "Verify private raw selected reads, approved origins, dispatch rechecks and redirect hop limits."
+        },
+        {
+          "path": "test/test_http_redact.lua",
+          "source_path": "template/test/test_http_redact.lua",
+          "sha256": "d40ff2c2d6aece74df2a539666cfb7e756cc6695a98f7e7f1e3c3af1a6d39003",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/Driver Icons.sketch",
+          "source_path": "template/resources/Driver Icons.sketch",
+          "sha256": "b499b96a208a587b209340f08240d49e9e176d3c05a1ededba41faddd8afbb52",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": ".github/release.yml",
+          "source_path": "template/.github/release.yml",
+          "sha256": "d4baed6b4e9c23cdfd23b94f06252759d7346f2a22ec951c2480d2ed74df7a90",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/deferred.lua",
+          "source_path": "template/vendor/deferred.lua",
+          "sha256": "a005dc221265910b998674692550e5758bd729fde6508ca7f2f6bcad26161b62",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/constants.lua",
+          "source_path": "template/src/constants.lua",
+          "sha256": "51e961ce6e166c24fc3e3c7307e8bfd811780773e6f0ef8d886e30a3ceb9dfbe",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/conditionals.lua",
+          "source_path": "template/src/lib/conditionals.lua",
+          "sha256": "7349abd221cf8b85d7f50cde2d4dc49597401625c33c1845b9ca5e777e3a4d32",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/values.lua",
+          "source_path": "template/src/lib/values.lua",
+          "sha256": "f40e174e0a8eedcce4d70b123f31d9560ffb50cc0b8e9894da86c59deb8e6c6c",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/github-updater.lua",
+          "source_path": "template/src/lib/github-updater.lua",
+          "sha256": "4283887bee2721073ba55566e5e554b5bc720a0b768d9f1e87ad77e67115bbce",
+          "changes": "Preserve newer installed driver versions; expose the template release-list request with bounded transfers and pagination."
+        },
+        {
+          "path": "src/lib/drivercentral.lua",
+          "source_path": "template/src/lib/drivercentral.lua.jinja",
+          "sha256": "6f20b2a28b6345109736ed1920b5ac4d90a8be7618160a95d4b6d0baf2c1c7cc",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": "src/lib/bindings.lua",
+          "source_path": "template/src/lib/bindings.lua",
+          "sha256": "8b62f4677c8fd1b874acd7078451a20cd42630fe5dcbbf66a1efdd48ae7d23f8",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/http.lua",
+          "source_path": "template/src/lib/http.lua",
+          "sha256": "635a5b97d8f3e196b4dabdbc51249a768dff700378730a11c0060111679c3c08",
+          "changes": "Add opt-in raw-body, private requests and redirect controls, including a shared hop budget across native and manual redirects."
+        },
+        {
+          "path": "src/lib/events.lua",
+          "source_path": "template/src/lib/events.lua",
+          "sha256": "5f16eb1c971097cc3cee161ac51840a2ebe04b2e6c3b15f6e262136ebd395442",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/driver-filenames.lua",
+          "source_path": "template/src/lib/driver-filenames.lua",
+          "sha256": "0f6d81ec9e96fa2bb3fea1f126d55dc3e229754d26cf96f25de3b4ba3538a3e9",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/lru.lua",
+          "source_path": "template/src/lib/lru.lua",
+          "sha256": "177599fa6adcfd2e306d1dcdb8655f4c8e8d0347b631036310ce0818fe778c87",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light.lua",
+          "source_path": "template/src/lib/light.lua",
+          "sha256": "4991914567b49477209ea555f50a6ba65ff3006c6e2bacae4b3825f22c7a4d40",
+          "changes": "Guard permanent destruction and delegate resolved scene and group intent through the connected target adapter"
+        },
+        {
+          "path": "src/lib/redact.lua",
+          "source_path": "template/src/lib/redact.lua",
+          "sha256": "3480675774dd4bf5bf1adcde5fb9cbd024f4b5ffe5f10f37cd30d4abd9fc91ba",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/update-settings.lua",
+          "source_path": "template/src/lib/update-settings.lua",
+          "sha256": "743cbe4ac62609196dfd58bb61461b3926fbe760f0d5c2b9dc3c3359475d34c7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/utils.lua",
+          "source_path": "template/src/lib/utils.lua",
+          "sha256": "623846c96c6775315201021c097c77ce5929a3c9c68868c382298ba04e154876",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/support-code.lua",
+          "source_path": "template/src/lib/support-code.lua",
+          "sha256": "772a87f60bc92a49ce998509c64601112c6ec365143f060e0e627701a114e764",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/companions.lua",
+          "source_path": "template/src/lib/companions.lua",
+          "sha256": "cb6401c990707c81df6def90425761fd37e0a6ee5714cb08080b97af6fafbb28",
+          "changes": "Add opt-in exact selected-device add and bind helpers for a shared provider binding. Reuse existing room placement, Navigator refresh and Director add spacing. Return late add receipts without binding or changing visibility. Existing one-per-binding setup retains its behavior."
+        },
+        {
+          "path": "src/lib/logging.lua",
+          "source_path": "template/src/lib/logging.lua",
+          "sha256": "7e3d188ece9eed583d0f182f29e3c6f483740348224c17e50da0150b14c0daf0",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/persist.lua",
+          "source_path": "template/src/lib/persist.lua",
+          "sha256": "e8c7ff4f0af3fc90dd5e1757a0640d1a7c3d0e0d483991db212866a2bcb4833b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/tab-properties.lua",
+          "source_path": "template/src/lib/ui/tab-properties.lua",
+          "sha256": "daca4b285131921fd648f6004984f27ff2dd429ab370aeb42c78f4bdcb19b5d7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/variables.js",
+          "source_path": "template/src/lib/ui/variables.js",
+          "sha256": "8a66a2bf17967983376df9a1a3167edf4694061183804e7efa0a992aed2fb76e",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/combobox.css",
+          "source_path": "template/src/lib/ui/combobox.css",
+          "sha256": "8e5a4dd6d3ecadf2d180b583b7edb13be120f3daa119bf0244f95a8130d89ef7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/pickgrid.js",
+          "source_path": "template/src/lib/ui/pickgrid.js",
+          "sha256": "7cd44329b8c49a26fdd862b094d5b158ee1bf9b1e878057ff0142365b4aef6c1",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/variables.css",
+          "source_path": "template/src/lib/ui/variables.css",
+          "sha256": "b7b93e542a2d378fbd91c837e705cc470b99909603ca92ae79f61a1df29cf1f1",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/page.js",
+          "source_path": "template/src/lib/ui/page.js",
+          "sha256": "7f47f2f1b250f9a15a6ebdecf8f02bc37de146eb0cd62300ddbb61327b34f53d",
+          "changes": "Preserves focused edits and validation, routes a single property list to contextual sections, and supports explicit form submission and read-only facts."
+        },
+        {
+          "path": "src/lib/ui/collapse.js",
+          "source_path": "template/src/lib/ui/collapse.js",
+          "sha256": "df0eada81cf2d80d934516d66a2740427bf94f53855b5aeb2bf9cd1688c64648",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/page-params.lua",
+          "source_path": "template/src/lib/ui/page-params.lua",
+          "sha256": "0f32ba3e3c997381cf8130cf806a76cf144952e7644ffe2376c90c8c4c4c3a82",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/devices.lua",
+          "source_path": "template/src/lib/ui/devices.lua",
+          "sha256": "809308cc4349a138386e851bf26f41980ff584eff8f01c11e4d1dba43f925f79",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/combobox.js",
+          "source_path": "template/src/lib/ui/combobox.js",
+          "sha256": "5e10fbe5e9dc554d40e44d2383b455f78d4a5b34b538b2a8c1d3943a1c4fcb81",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/collapse.css",
+          "source_path": "template/src/lib/ui/collapse.css",
+          "sha256": "cdfa82a244e4abc68b9fcc5bfb0daf9d2c67ac3cc57861fd8ba9dfd8e226b635",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/color.js",
+          "source_path": "template/src/lib/ui/color.js",
+          "sha256": "fb3a724810088336fbcea39a7ece9b3e0a88c1d70cb393975b24ffafe2f0c60e",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/pickgrid.css",
+          "source_path": "template/src/lib/ui/pickgrid.css",
+          "sha256": "77638aacf6524ce73bfc0d448602a6c7094a2892281d66b8b46193a296749507",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/style.css",
+          "source_path": "template/src/lib/ui/style.css",
+          "sha256": "bf6c0fe405cf28a843b597eb9e4d27b743110dc0bc73606fc47cfcdd7ce92c81",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/page.lua",
+          "source_path": "template/src/lib/ui/page.lua",
+          "sha256": "54726c90523ac5cd27ddd523544d6d3b54309e1c827bf6a5c86456108abb2284",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/menu.js",
+          "source_path": "template/src/lib/ui/menu.js",
+          "sha256": "afd744237a10284dc1d61f922eafc84613cbe2e4dfd086a0bae2bc02bf2dde84",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/menu.css",
+          "source_path": "template/src/lib/ui/menu.css",
+          "sha256": "0dc48cb3376021237700db76e011a584c8e4a26850a6e745c9f92b937425c96f",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/ui/color.css",
+          "source_path": "template/src/lib/ui/color.css",
+          "sha256": "2c4d43f75187058d06c48d37e891bd25d637954f86fbe99f8e88bd4c18b035bb",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/fade.lua",
+          "source_path": "template/src/lib/light/fade.lua",
+          "sha256": "80f9cd4560cfd3bb4af637f86a56a99cb1c72984c0de448b99e7d243bef893c2",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/settings.lua",
+          "source_path": "template/src/lib/light/settings.lua",
+          "sha256": "d396a1583d19a250b7e3535d5c1680a0e911b7f39af64a40db5e526e36b4f698",
+          "changes": "Retain the upstream optional keypad color policy and expose the current On preset identity for a delegated target"
+        },
+        {
+          "path": "src/lib/light/group.lua",
+          "source_path": "template/src/lib/light/group.lua",
+          "sha256": "39c8fe75103c02fe5d9135927e30f699c6829bde7bca32818bbd6ab6c528857b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/scenes.lua",
+          "source_path": "template/src/lib/light/scenes.lua",
+          "sha256": "c87c711ea97b85a9b1ebdb4013c25a0c95b56b5b31d145405d422df16b5a43f9",
+          "changes": "Bound scene XML and flash timing, support legacy read-through, preserve separate rates for linked loads and apply interruptible software fades"
+        },
+        {
+          "path": "src/lib/light/picks.lua",
+          "source_path": "template/src/lib/light/picks.lua",
+          "sha256": "c00bbbfa62cd035657f4275cdd34c19cdb1bb73228ffe4290d086bb489ffd466",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/timer.lua",
+          "source_path": "template/src/lib/light/timer.lua",
+          "sha256": "66d8cd16552a5122f524674d5be344b7f456757be7dc731a9a7a0db411efd6b9",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/buttons.lua",
+          "source_path": "template/src/lib/light/buttons.lua",
+          "sha256": "abda6a5e66cbbdead400d73df30c5a7dfdeed94fb5635414107a3f8631f03d3a",
+          "changes": "Retire pending holds on overrides and calculate delegated group ramp distance from the native target percentage"
+        },
+        {
+          "path": "src/lib/light/proxy.lua",
+          "source_path": "template/src/lib/light/proxy.lua",
+          "sha256": "bdb2eaf7f4e13a6fc61b600be71f0e00eff01cd804c46cc885977dba8b2e89ee",
+          "changes": "Retain upstream optional keypad notifications, report native target percentages and support explicit feedback synchronization"
+        },
+        {
+          "path": "src/lib/light/motion.lua",
+          "source_path": "template/src/lib/light/motion.lua",
+          "sha256": "be36e6f92019eaec397d7b9f618e1a91a6fa5f286fa96fee2e27a8f2dfb4f77c",
+          "changes": "Carry resolved logical power intent without inferring it from a numeric level"
+        },
+        {
+          "path": "src/lib/light/color.lua",
+          "source_path": "template/src/lib/light/color.lua",
+          "sha256": "24e08a431f08ada035faa3a907a90a9bb06973836c5ba0f60f694a6e26701b3c",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/types.lua",
+          "source_path": "template/src/lib/light/types.lua",
+          "sha256": "ce939fa1df88950d538cff6c9290f756c2307ba6fc1447f434f52ca6e776ce2d",
+          "changes": "Document supported suite extensions for lifecycle, power intent, native capabilities, group and scene delegation, transport adapters and deadline-only feedback reads"
+        },
+        {
+          "path": "src/lib/light/range.lua",
+          "source_path": "template/src/lib/light/range.lua",
+          "sha256": "4a2b8b5a79260f3b728db4f460507d3c2f84c05af2e58c26bd900ecaa10cd8c4",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/caps.lua",
+          "source_path": "template/src/lib/light/caps.lua",
+          "sha256": "5ab5a22ec75d3d54543b27eca26037f0d0fa4d1655ef748914974d040e86c43b",
+          "changes": "Limit delegated target capabilities, support static Composer proxy properties and validate deadline-only feedback reads"
+        },
+        {
+          "path": "src/lib/light/oncolor.lua",
+          "source_path": "template/src/lib/light/oncolor.lua",
+          "sha256": "6516310b61aa8656c949661c00abc6f39b018ee5ca6ddeedaf3a54b159499e70",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/handlers.lua",
+          "source_path": "template/src/lib/light/handlers.lua",
+          "sha256": "a7821ece72bcc96afb9386b095e9f76eae69b491f60fd495dd2dd91eae0ba8c9",
+          "changes": "Keep native command dispatch and group precedence, suppress adapter button echoes, delegate target commands and retire owned callbacks"
+        },
+        {
+          "path": "src/lib/light/groups.lua",
+          "source_path": "template/src/lib/light/groups.lua",
+          "sha256": "8ba45a27d9180ae2d4bf328194b33713ff7f4c28e0c7287cc0875f1181cf7f0c",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "src/lib/light/ledger.lua",
+          "source_path": "template/src/lib/light/ledger.lua",
+          "sha256": "11ce339aadc59310d6a6c45a978992f073a74ada94d2bcec6c42f9249b8b40f9",
+          "changes": "Support deadline-only exact state refreshes and skip brightness confirmation for power-only devices"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "source_path": "template/.github/workflows/release.yml",
+          "sha256": "4c7391243a3405fcfc5bed9be2e91863433a02ec51b77526eef503a045b6180e",
+          "changes": "Publish exact suite manifest with inventory; preserve permission scope and numeric prerelease promotion."
+        },
+        {
+          "path": ".github/workflows/build.yml",
+          "source_path": "template/.github/workflows/build.yml.jinja",
+          "sha256": "f987ceea4061e41607d587621945842616eac3941acc0380dc4cd4fbce15e028",
+          "changes": "Verify suite packages and provenance, exercise Coordinator qualification on the built release assets, and enforce numeric release-tag ordering."
+        },
+        {
+          "path": ".github/workflows/label-release-pr.yml",
+          "source_path": "template/.github/workflows/label-release-pr.yml",
+          "sha256": "df90c4e04ff8b282d12278f47a16ded1d37a1f5ee85e3c60d39419f14c8dacb3",
+          "changes": "Identify release PRs by ten-digit project revision"
+        },
+        {
+          "path": "resources/drivercentral/README.md",
+          "source_path": "template/resources/drivercentral/README.md",
+          "sha256": "7a27ad8660aacb281cefce6cae467d1a35a00eef913a5b3041fd09295c52c2a1",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/drivercentral/description.md",
+          "source_path": "template/resources/drivercentral/description.md",
+          "sha256": "4f9b0d2e9b5e3d7a4ac8d7aba00e90f49ad19bde16b7eb60bfbf473fac95f5a7",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/drivercentral/render.sh",
+          "source_path": "template/resources/drivercentral/render.sh",
+          "sha256": "63f4f661a248eb561cf50d98c07465198f1e0d37e474adcccff9577f1e76a30d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/drivercentral/banners/spotlight-4096x848.html",
+          "source_path": "template/resources/drivercentral/banners/spotlight-4096x848.html.jinja",
+          "sha256": "36977ba6b946d17d0d8f06a00c1e767816cb85e545ec81164cbfc550f54231d3",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": "resources/drivercentral/banners/launch-post-2400x1200.html",
+          "source_path": "template/resources/drivercentral/banners/launch-post-2400x1200.html.jinja",
+          "sha256": "67ab09e2784240f42e4adcf5a6733617a2d4bce4673fa1ee6dab6ba185583c61",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": "resources/drivercentral/banners/facts-strip-2400x136.html",
+          "source_path": "template/resources/drivercentral/banners/facts-strip-2400x136.html.jinja",
+          "sha256": "9e1bb03596b9fd6a9d55fece5a6910a3053ac5d95b7eabe439f19aa381a782a2",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": "resources/drivercentral/photos/photos.txt",
+          "source_path": "template/resources/drivercentral/photos/photos.txt",
+          "sha256": "f9cc347580b5d49734d4b90f11917d366a1bdc3a33faf697e3bdcd7d1867b2a9",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/drivercentral/photos/frame.html",
+          "source_path": "template/resources/drivercentral/photos/frame.html.jinja",
+          "sha256": "f64da58419f0e5be0923593f085fe66ed17d648cea4c200b0c47132afedd4c91",
+          "changes": "Copier-rendered configuration / suite adaptation"
+        },
+        {
+          "path": "resources/drivercentral/assets/scene.js",
+          "source_path": "template/resources/drivercentral/assets/scene.js",
+          "sha256": "ee30cef22667e6e2f3bfdc9027967febc33a22099b114e1dee901f6b7984b619",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/drivercentral/assets/finite-labs-logo.png",
+          "source_path": "template/resources/drivercentral/assets/finite-labs-logo.png",
+          "sha256": "b2b2bd1c70c922ff0b5b98c56162462ada49210a28c6504e67e09a4f75b46f22",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/documentation/images/check-drivers.png",
+          "source_path": "template/resources/documentation/images/check-drivers.png",
+          "sha256": "7e7f25916f073db30ab1afc154b9612a64be51cc049eb8a9b0e90ee4f0569923",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "resources/documentation/images/finite-labs-logo.png",
+          "source_path": "template/resources/documentation/images/finite-labs-logo.png",
+          "sha256": "b2b2bd1c70c922ff0b5b98c56162462ada49210a28c6504e67e09a4f75b46f22",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_setup/setup-626.xml",
+          "source_path": "template/test/light_setup/setup-626.xml",
+          "sha256": "95b29b9c376090a9304edab1fd8e5686a9c5bf0980a5e7e99ce834f5d85df440",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_setup/setup-732.xml",
+          "source_path": "template/test/light_setup/setup-732.xml",
+          "sha256": "bdafbfdee4e2abf195af66ea431085a2d161eea325ea01aaadc2dee20d2a83ba",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_setup/setup-732-new.xml",
+          "source_path": "template/test/light_setup/setup-732-new.xml",
+          "sha256": "26c6e93c11d1ec3a7a7b4863e198c390f7cafad5a3fa3102c6e4c635d87b034d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_setup/setup-727.xml",
+          "source_path": "template/test/light_setup/setup-727.xml",
+          "sha256": "269bfc641afbfd4ba7d3dccf237e058c9bbebaae5d51386095315fb3a695a718",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_setup/setup-643.xml",
+          "source_path": "template/test/light_setup/setup-643.xml",
+          "sha256": "9ee3b9dfcbb09f977223a086362a598ce7c460c9e64169251929e9e58b9275fc",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/light_setup/setup-607.xml",
+          "source_path": "template/test/light_setup/setup-607.xml",
+          "sha256": "86bb0c13b6bd6b8571d77e1676f8322b7676d77146f3183669cd94ce46593676",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_light_api_contract.lua",
+          "source_path": "tests/light/test_contract.lua",
+          "sha256": "9859c752ca40f495df1c7323b4389a72d462a24569aaa0a861663428a4d7316c",
+          "changes": "Pin the v0.9.112 Light API documentation and its optional deadline-only suite feedback extension"
+        }
+      ]
+    },
+    {
+      "id": "vendor/json",
+      "repository": "https://github.com/finitelabs/control4-driver-template",
+      "revision": "5efdae849b32d8739d23e4750c0b6e4d60f754c9",
+      "credit": "Jeffrey Friedl",
+      "terms": "CC-BY-3.0; preserve header, links, AUTHOR_NOTE",
+      "permission": "established",
+      "required_notices": [
+        "documentation/provenance.md"
+      ],
+      "copies": [
+        {
+          "path": "vendor/JSON.lua",
+          "source_path": "template/vendor/JSON.lua",
+          "sha256": "2bd8d7d7f9a1b3ae2d31e89d1cc1719a65a9fa4944f84c686a754d06ad0039c9",
+          "changes": "Retain one template/Friedl codec; adapt bounded ASCII string-span copying and four-byte permissive escape correction from skialpine Control4-HA-Switch 4b5fb10/86441f1 and Coordinator 671e493/9102878. Preserve strict/null/array/object behavior and upstream notices; add strict Unicode/tail regression checks and offline CPU benchmark."
+        }
+      ]
+    },
+    {
+      "id": "vendor/version",
+      "repository": "https://github.com/finitelabs/control4-driver-template",
+      "revision": "5efdae849b32d8739d23e4750c0b6e4d60f754c9",
+      "credit": "Kong Inc.; Thijs Schreijer",
+      "terms": "Apache-2.0",
+      "permission": "established",
+      "required_notices": [
+        "documentation/provenance.md"
+      ],
+      "copies": [
+        {
+          "path": "vendor/version.lua",
+          "source_path": "template/vendor/version.lua",
+          "sha256": "e88f09b3a578f0859a880edaba2a12f149a7c8670f6f7bf4213bfbb448deeb43",
+          "changes": "Unmodified copy"
+        }
+      ]
+    },
+    {
+      "id": "vendor/xml",
+      "repository": "https://github.com/finitelabs/control4-driver-template",
+      "revision": "5efdae849b32d8739d23e4750c0b6e4d60f754c9",
+      "credit": "Paul Chakravarti; Manoel Campos da Silva Filho",
+      "terms": "MIT; the complete upstream license and copyright notice ship with each driver",
+      "permission": "established",
+      "required_notices": [
+        "documentation/provenance.md",
+        "vendor/xml/LICENSE"
+      ],
+      "copies": [
+        {
+          "path": "vendor/xml/XmlParser.lua",
+          "source_path": "template/vendor/xml/XmlParser.lua",
+          "sha256": "f895654594efd1049a702057f70580b41df14edf49caf5e973d577015c98a195",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/xml/xml2lua.lua",
+          "source_path": "template/vendor/xml/xml2lua.lua",
+          "sha256": "36c4313338291fb7bdb5015e47ad8f9d8dfdf4280e73a1caf09625141e54a76d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/xml/xmlhandler/print.lua",
+          "source_path": "template/vendor/xml/xmlhandler/print.lua",
+          "sha256": "a0c643a5c86a2e2ab3b914090a79673836359f2c6084612e772f1add620fe25d",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/xml/xmlhandler/tree.lua",
+          "source_path": "template/vendor/xml/xmlhandler/tree.lua",
+          "sha256": "8f80bba6b83f1e00a92c5373f1ea00cfb8c30db69c09d4582b541a29f3c366e4",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/xml/xmlhandler/dom.lua",
+          "source_path": "template/vendor/xml/xmlhandler/dom.lua",
+          "sha256": "2da3020e3e77a3428e03cf2d84580e5c376e2cf2e63691d0db431a444c361d27",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/xml/LICENSE",
+          "source_path": "https://github.com/manoelcampos/xml2lua/blob/b0d2b0b156b4e66078da2dc4b31d978daa69b3ef/LICENSE",
+          "sha256": "c736d3ae9ee32254e28718b2be802b0c768f2c2cbe658d792d8d926406d9e004",
+          "changes": "Unmodified upstream MIT license text"
+        }
+      ]
+    },
+    {
+      "id": "vendor/control4",
+      "repository": "https://github.com/finitelabs/control4-driver-template",
+      "revision": "5efdae849b32d8739d23e4750c0b6e4d60f754c9",
+      "credit": "Snap One, LLC / Control4",
+      "terms": "Retain Snap One copyright and the original terms; the project maintainer confirmed authorization for these copies in the public suite.",
+      "permission": "established",
+      "required_notices": [
+        "documentation/provenance.md",
+        "NOTICE"
+      ],
+      "copies": [
+        {
+          "path": "vendor/drivers-common-public/module/websocket.lua",
+          "source_path": "template/vendor/drivers-common-public/module/websocket.lua",
+          "sha256": "192f9c5cd0532a04bed6ef2b80267118b5fcd2e7ef0b07c839181e0619693ef6",
+          "changes": "Narrow HA transport qualification correction: require HTTP 101 and valid upgrade headers; tolerate missing headers; drain first frames buffered with the upgrade; retain template transport and lifecycle. Lifecycle qualification: contain failed close sends/cancellation/timer allocation, retire connected state, and guard registry/callback cleanup against obsolete socket owners; add fault-injection coverage."
+        },
+        {
+          "path": "vendor/drivers-common-public/global/url.lua",
+          "source_path": "template/vendor/drivers-common-public/global/url.lua",
+          "sha256": "e7180b088874369f3b630213482b1d4e69f553a00b0d6d8d77a4cf0a0fea4fb9",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/drivers-common-public/global/timer.lua",
+          "source_path": "template/vendor/drivers-common-public/global/timer.lua",
+          "sha256": "38804a0913f12105925f7c7790215c8156b6f5cdac2b3bd0bd01bd95d84a5a22",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/drivers-common-public/global/lib.lua",
+          "source_path": "template/vendor/drivers-common-public/global/lib.lua",
+          "sha256": "06b8258cf67681a4f8f25c1cb3d6359d441c2d27f78a1dbe3f7c868cc9d14b6b",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "vendor/drivers-common-public/global/handlers.lua",
+          "source_path": "template/vendor/drivers-common-public/global/handlers.lua",
+          "sha256": "b1909a79bd1ab05a472518315ce55f3f5278bdd8492c7868ae472441fac24e88",
+          "changes": "Unmodified copy"
+        }
+      ],
+      "authorization": {
+        "basis": "Project maintainer confirmation",
+        "date": "2026-11-18",
+        "scope": "Public GitHub source and .c4z packages including the vendored and adapted files listed here"
+      }
+    },
+    {
+      "id": "vendor/drivercentral",
+      "repository": "https://github.com/finitelabs/control4-driver-template",
+      "revision": "5efdae849b32d8739d23e4750c0b6e4d60f754c9",
+      "credit": "DriverCentral",
+      "terms": "Commercial component; reference only, excluded from OSS source and runtime",
+      "permission": "unresolved",
+      "required_notices": [
+        "documentation/provenance.md"
+      ],
+      "copies": []
+    },
+    {
+      "id": "skialpine/control4-group-lighting",
+      "repository": "https://github.com/skialpine/control4-group-lighting",
+      "revision": "96cf673077d15fd49e323566847193387d92c878",
+      "credit": "Jeff Heller (skialpine)",
+      "terms": "AGPL-3.0",
+      "permission": "established",
+      "required_notices": [
+        "LICENSE",
+        "documentation/provenance.md"
+      ],
+      "copies": [
+        {
+          "path": "tools/release_version.py",
+          "source_path": "tools/release_version.py",
+          "sha256": "7dc35abb937ffa36b551eb4e1a5f8da3f8d9a2c388b8c3a9c61812e4e6c9f553",
+          "changes": "Share the version reader with the builder and reject preview tags longer than the Coordinator accepts."
+        },
+        {
+          "path": "tools/test_release_version.py",
+          "source_path": "tools/test_release_version.py",
+          "sha256": "9ac52dad9c32e75bf898784a5a8c965ad8c2e417213e64d638a528214258498c",
+          "changes": "Exercise the Group Lighting revision scheme and the shared preview tag length."
+        }
+      ]
+    }
+  ]
+}

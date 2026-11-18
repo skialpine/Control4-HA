@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/finitelabs/control4-driver-template.git",
+  "revision": "61cfcb7671ee4ec76976170f64ea4c1810aa2b30",
+  "tag_at_generation": "v0.9.112",
+  "copier_version": "9.19.1",
+  "vendor_modules": ["light", "ui"],
+  "cloud_diagnostics": false,
+  "distribution": "oss"
+}

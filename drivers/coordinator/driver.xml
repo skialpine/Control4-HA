@@ -1,0 +1,251 @@
+<devicedata>
+  <name>Home Assistant Connection</name>
+  <version />
+  <manufacturer>skialpine</manufacturer>
+  <model>HA Coordinator</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <combo>true</combo>
+  <controlmethod>ip</controlmethod>
+  <proxy>HA WS</proxy>
+  <copyright>Copyright 2026 skialpine; template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/16/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Other</category>
+  </composer_categories>
+  <conditionals />
+  <events>
+    <event>
+      <id>1</id>
+      <name>Home Assistant Connected</name>
+      <description>The Coordinator connected to Home Assistant.</description>
+    </event>
+    <event>
+      <id>2</id>
+      <name>Home Assistant Disconnected</name>
+      <description>The Coordinator disconnected from Home Assistant.</description>
+    </event>
+  </events>
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default>Not configured</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>HA URL</name>
+        <tooltip>Your Home Assistant address, including http or https and the port if needed. Example: http://homeassistant.local:8123</tooltip>
+        <type>STRING</type>
+        <default />
+      </property>
+      <property>
+        <name>HA Token</name>
+        <tooltip>In Home Assistant, open your profile, choose Security and create a long-lived access token for Control4. Paste it here.</tooltip>
+        <type>STRING</type>
+        <password>true</password>
+        <default />
+      </property>
+      <!-- These original property names retain values already saved on Director. -->
+      <property>
+        <name>Home Assistant URL</name>
+        <type>STRING</type>
+        <default />
+        <tooltip>Enter the host and port, for example homeassistant.local:8123. Choose HTTPS using Use SSL.</tooltip>
+      </property>
+      <property>
+        <name>Long Lived Access Token</name>
+        <type>STRING</type>
+        <password>true</password>
+        <default />
+        <tooltip>The Home Assistant access token for this connection.</tooltip>
+      </property>
+      <property>
+        <name>Use SSL</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items><item>No</item><item>Yes</item></items>
+        <tooltip>Choose Yes if this Home Assistant address uses HTTPS.</tooltip>
+      </property>
+      <property>
+        <name>Directory Start Path</name>
+        <type>LIST</type>
+        <default>Root</default>
+        <items><item>Root</item><item>Driver</item></items>
+        <tooltip>Starting folder for the certificate and key paths.</tooltip>
+      </property>
+      <property>
+        <name>Certificate Path</name>
+        <type>STRING</type>
+        <default />
+        <tooltip>Client certificate file for a Home Assistant server that requires it.</tooltip>
+      </property>
+      <property>
+        <name>Private Key Path</name>
+        <type>STRING</type>
+        <default />
+        <tooltip>File containing the private key for the client certificate.</tooltip>
+      </property>
+      <property>
+        <name>Last action</name>
+        <type>STRING</type>
+        <default />
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>CA Certificate Path</name>
+        <type>STRING</type>
+        <default />
+      </property>
+      <property>
+        <name>HA Version</name>
+        <type>STRING</type>
+        <default />
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Status</name>
+        <type>STRING</type>
+        <default>Disconnected</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default />
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Update channel</name>
+        <type>LIST</type>
+        <default>Production</default>
+        <items><item>Production</item><item>Pre-release</item></items>
+        <tooltip>Production checks stable releases. Pre-release also checks previews.</tooltip>
+      </property>
+      <property>
+        <name>Driver update status</name>
+        <type>STRING</type>
+        <default>Use Actions → Check for driver updates.</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Debug Print</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items><item>Off</item><item>On</item></items>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>DYNAMIC_LIST</type>
+        <default>3 - Info</default>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <property>
+        <name>Latency Diagnostics</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>On</item>
+        </items>
+      </property>
+    </properties>
+    <tabs>
+      <tab name="Quick Setup" file="html/index.html" />
+    </tabs>
+    <commands>
+      <command>
+        <name>Call Service</name>
+        <description>Run Home Assistant action PARAM1 (target: PARAM2)</description>
+        <params>
+          <param><name>Service</name><type>STRING</type></param>
+          <param><name>Entity ID</name><type>STRING</type></param>
+          <param><name>Data</name><type>STRING</type></param>
+          <param><name>${VAR1}</name><type>VARIABLE_SELECTOR</type><variabletype>all</variabletype></param>
+          <param><name>${VAR2}</name><type>VARIABLE_SELECTOR</type><variabletype>all</variabletype></param>
+          <param><name>${VAR3}</name><type>VARIABLE_SELECTOR</type><variabletype>all</variabletype></param>
+        </params>
+      </command>
+      <command>
+        <name>RetrySelected</name>
+        <description>Retry connections for devices linked to Home Assistant</description>
+      </command>
+      <command>
+        <name>PrintTiming</name>
+        <description>Print timing summary to Lua</description>
+      </command>
+      <command>
+        <name>ResetTiming</name>
+        <description>Reset Timing Samples</description>
+      </command>
+    </commands>
+    <actions>
+      <action><name>Check for driver updates</name><command>CheckDriverUpdates</command></action>
+      <action><name>Print connection diagnostics to Lua</name><command>PrintDiagnostics</command></action>
+      <action><name>Print linked Home Assistant IDs to Lua</name><command>PRINT_ENTITY_TABLE</command></action>
+      <action><name>Connect to Home Assistant</name><command>WS_CONNECT</command></action>
+      <action><name>Disconnect from Home Assistant</name><command>WS_DISCONNECT</command></action>
+      <action>
+        <name>Retry linked device connections</name>
+        <command>RetrySelected</command>
+      </action>
+      <action>
+        <name>Print timing summary to Lua</name>
+        <command>PrintTiming</command>
+      </action>
+      <action>
+        <name>Reset Timing Samples</name>
+        <command>ResetTiming</command>
+      </action>
+    </actions>
+  </config>
+  <capabilities />
+  <proxies />
+  <connections>
+    <connection>
+      <id>6001</id>
+      <facing>6</facing>
+      <connectionname>HA Coordinator</connectionname>
+      <type>4</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+    </connection>
+    <connection>
+      <id>1</id>
+      <facing>2</facing>
+      <connectionname>HA Suite Coordinator</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>HA_DEVICE</classname>
+          <autobind>True</autobind>
+        </class>
+        <class>
+          <classname>SKIALPINE_HA_SUITE_V1</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

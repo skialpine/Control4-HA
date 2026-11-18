@@ -1,0 +1,12 @@
+Control4-HA
+
+Portions copyright Snap One, LLC or its licensors. All rights reserved.
+The Control4 shared libraries come from drivers-common-public through the
+Finite Labs Control4 Driver Template. Their source files retain copyright and
+adaptation notices.
+
+The project uses the Finite Labs Control4 Driver Template under AGPL-3.0.
+It builds on the original Home Assistant driver family by BP / bphillips09.
+See documentation/provenance.md for source revisions, changes and notices.
+
+This project is independent of Control4, Home Assistant and Finite Labs.

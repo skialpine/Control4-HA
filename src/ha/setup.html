@@ -1,0 +1,78 @@
+<main class="panel active setup">
+  <section class="card" aria-labelledby="device-title">
+    <div class="setup-heading" aria-live="polite">
+      <h1 id="device-title">Device Setup</h1>
+      <span class="kit-pill info" id="device-status">Connecting</span>
+    </div>
+    <p class="setup-detail" id="device-detail" tabindex="-1">Connecting to the driver…</p>
+    <dl class="setup-facts" id="device-facts" hidden>
+      <dt id="target-label">Controls</dt>
+      <dd id="device-target"></dd>
+      <dt id="capabilities-label">Supports</dt>
+      <dd id="device-capabilities"></dd>
+    </dl>
+    <div class="setup-actions">
+      <button class="btn btn-primary" type="button" id="retry" hidden>Retry setup</button>
+      <button class="btn btn-primary" type="button" id="browse" aria-expanded="false" aria-controls="picker" disabled>Choose device</button>
+      <button class="btn btn-primary" type="button" id="read-retry" hidden>Retry loading setup</button>
+    </div>
+    <p class="setup-detail" id="setup-message" role="status" tabindex="-1" hidden></p>
+    <p class="setup-detail" id="setup-operation" role="status" hidden></p>
+  </section>
+
+  <section class="card" id="picker" aria-labelledby="picker-title" hidden>
+    <div class="setup-heading">
+      <h2 id="picker-title">Choose a device</h2>
+      <button class="btn btn-outline" type="button" id="close-picker">Cancel</button>
+    </div>
+    <p class="setup-detail" id="picker-current" hidden></p>
+    <label for="search">Search by name or room</label>
+    <input id="search" type="search" autocomplete="off" aria-controls="choices" />
+    <p class="setup-detail" id="picker-status" role="status"></p>
+    <p class="setup-detail" id="picker-names" role="status" hidden></p>
+    <p class="setup-detail" id="picker-helper" hidden>To set up buttons or built-in indicator lights on a compatible wall switch, install HA Gesture Bridge in Home Assistant, then choose the wall switch by name.</p>
+    <button class="btn btn-outline" type="button" id="reload" hidden>Reload devices</button>
+    <fieldset id="choices" hidden>
+      <legend class="setup-visually-hidden">Available devices</legend>
+      <div id="choice-rows"></div>
+    </fieldset>
+    <div class="setup-actions">
+      <button class="btn btn-primary" type="button" id="apply" disabled>Use selected device</button>
+      <button class="btn btn-outline" type="button" id="previous" hidden>Previous results</button>
+      <button class="btn btn-outline" type="button" id="more" hidden>Next results</button>
+    </div>
+    <details class="manual-entry" data-property-section hidden>
+      <summary>Enter a Home Assistant device ID</summary>
+      <div id="manual-settings"></div>
+    </details>
+  </section>
+
+  <section class="card" id="indicator-section" hidden>
+    <h2 id="indicator-title">Indicator lights</h2>
+    <p id="indicator-hint" class="setup-detail" hidden></p>
+    <div id="indicators" hidden>
+      <p class="setup-detail" id="indicator-status" tabindex="-1" role="status" hidden></p>
+      <div id="indicator-rows"></div>
+    </div>
+    <div data-property-section hidden><div id="indicator-settings"></div></div>
+  </section>
+  <section class="card" data-property-section hidden>
+    <h2>Button controls</h2>
+    <div id="button-settings"></div>
+  </section>
+  <details class="support-section" id="troubleshooting">
+    <summary>Troubleshooting</summary>
+    <p class="setup-detail" id="indicator-help" hidden>If your wall switch has indicator lights, set it up in HA Gesture Bridge in Home Assistant. Then choose <strong>Change device</strong> and select the wall switch by name.</p>
+    <section class="card" data-property-section hidden><div id="settings"></div></section>
+    <section class="card" aria-labelledby="timing-title">
+      <h2 id="timing-title">Timing report</h2>
+      <div class="setup-actions">
+        <button class="btn btn-outline" type="button" id="timing-report" disabled>Show timing report</button>
+        <button class="btn btn-outline" type="button" id="timing-reset" disabled>Clear timing samples</button>
+      </div>
+      <p class="setup-detail" id="timing-status" role="status" hidden></p>
+      <pre class="kit-pre" id="timing-output" tabindex="0" aria-label="Timing report" hidden></pre>
+    </section>
+  </details>
+  <div id="migration-slot"></div>
+</main>

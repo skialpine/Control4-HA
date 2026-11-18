@@ -1,0 +1,70 @@
+.quick-setup { max-width: 960px; margin: 0 auto; }
+.quick-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 6px; }
+.quick-heading .setup-detail, #review-hint { margin: 0; }
+#review-hint { margin-bottom: 6px; }
+.quick-filters { display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr) auto; align-items: end; gap: 6px; }
+.quick-filters > .btn { min-height: 30px; }
+.quick-selected-view { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.quick-picker { padding-bottom: 0; }
+.quick-table-wrap { margin-top: 8px; border-top: 1px solid var(--border); }
+.quick-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.quick-table th { white-space: normal; padding: 6px 8px; background: var(--surface); border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; font-weight: 600; text-align: left; }
+.quick-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow-wrap: anywhere; }
+.quick-table tr:last-child td { border-bottom: none; }
+.quick-table th:first-child { width: 34px; }
+.quick-table th:nth-child(3) { width: 30%; }
+.quick-table th:nth-child(4) { width: 24%; }
+.quick-table tr.is-picked td { background: var(--surface-hover); }
+.quick-table .quick-select-cell { text-align: center; }
+.quick-table input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.quick-row-name { font-weight: 600; }
+.quick-row-detail { color: var(--text-muted); font-size: 12px; }
+.quick-name-field { margin-top: 4px; }
+.quick-table [aria-invalid="true"] { border-color: var(--danger); }
+.quick-footer { position: sticky; bottom: 0; z-index: 1; padding: 5px 0; background: var(--surface); border-top: 1px solid var(--border); }
+.quick-bottom, .quick-selection, .quick-batch { display: flex; align-items: center; gap: 4px 8px; }
+.quick-bottom { flex-wrap: wrap; }
+.quick-selection { margin-right: auto; }
+.quick-batch { flex: 0 1 265px; min-width: 0; }
+.quick-batch .btn, #review { white-space: nowrap; }
+.quick-batch select { min-width: 0; text-overflow: ellipsis; }
+.quick-footer .btn, .quick-footer select { min-height: 30px; }
+.quick-footer .btn-link { min-height: 24px; white-space: nowrap; }
+.quick-footer .setup-actions { margin-top: 0; }
+.quick-footer .quick-operation:not(:empty) { color: var(--text); }
+#apply-status:not(:empty) { margin-bottom: 4px; }
+.quick-footer-detail { width: 100%; color: var(--text-muted); font-size: 12px; }
+#review-issues { display: flex; align-items: baseline; gap: 8px; }
+#review-blocker { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-footer-detail:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.quick-footer [aria-disabled="true"] { opacity: 0.65; cursor: wait; }
+.add-list { list-style: none; }
+.add-list li { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }
+@media (max-width: 520px) {
+  .quick-setup { padding: 8px; }
+  .quick-picker { padding: 8px 8px 0; }
+  .quick-filters { grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) auto; }
+  .quick-filters .btn, .quick-footer .btn:not(.btn-link) { padding-inline: 8px; }
+  .quick-bottom.has-batch .quick-selection { width: 100%; }
+  .quick-batch { flex: 1 1 190px; }
+  .quick-table th, .quick-table td { padding-inline: 4px; }
+  .quick-table th { padding-block: 4px; line-height: 1.3; }
+  .quick-table th:first-child { width: 25px; }
+  .quick-table th:nth-child(3) { width: 33%; }
+  .quick-table th:nth-child(4) { width: 21%; }
+  .quick-table select { font-size: 12px; }
+}
+.quick-setup .small-caption { display: none; }
+@media (max-width: 360px) {
+  .quick-setup .regular-caption { display: none; }
+  .quick-setup .small-caption { display: inline; }
+  .quick-filters { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; }
+  .quick-filters #browse { font-size: 19px; line-height: 1; }
+
+  .quick-batch { flex-basis: 145px; }
+  .quick-batch .btn { flex: 0 0 79px; white-space: normal; font-size: 11px; line-height: 1.1; }
+  .quick-batch select { padding-right: 19px; background-position: right 5px center; }
+  .quick-table th { font-size: 10px; letter-spacing: 0.25px; }
+  .quick-table th:nth-child(4) { width: 23%; }
+}
+.quick-table label.quick-row-name { margin: 0; color: var(--text); font-size: 13px; cursor: pointer; }

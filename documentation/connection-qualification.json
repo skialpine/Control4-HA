@@ -1,0 +1,22 @@
+{
+  "task": "3.1",
+  "version": "20261117",
+  "source_date_epoch": 1794895200,
+  "evidence_boundary": "local C4 shim and built-package startup; no real HA or Director connection qualification",
+  "checks": {
+    "test/test_ha_connection.lua": {"passed": 71, "failed": 0},
+    "test/test_ha_coordinator_config.lua": {"passed": 16, "failed": 0},
+    "test/test_websocket.lua": {"passed": 31, "failed": 0},
+    "python_unittests": {"passed": 10, "failed": 0},
+    "make_check": "passed",
+    "suite_build_and_package_inspection": "passed; three packages, unsupported OS rejected, baseline OS accepted with no control traffic",
+    "openspec_strict_validation": "passed"
+  },
+  "pending": [
+    "Real HA lab fixtures and service checks: 1Password CLI authorization timeout",
+    "Real HA request/result/state matrix in task 3.6",
+    "Director TLS trust and hostname verification qualification",
+    "Public distribution remains gated on the recorded unresolved vendor reuse terms",
+    "Full Light conformance requires the pending Light adapter implementation"
+  ]
+}

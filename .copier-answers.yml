@@ -1,0 +1,17 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.9.112
+_src_path: https://github.com/finitelabs/control4-driver-template.git
+cloud_diagnostics: false
+dc_pid: 0
+embedded_drivers: ''
+extra_build_secrets: ''
+extra_required_checks: ''
+github_org: skialpine
+icon_style: shaped
+primary_color: '#109EFF'
+project_description: Home Assistant Coordinator, Light and Switch for Control4
+project_name: Control4-HA
+readme_driver_slug: root
+repo_visibility: public
+stale_issues: false
+vendor_modules: light ui

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Setup</title>
+<style>
+<!-- #embed ../../../../src/lib/ui/style.css -->
+<!-- #embed ../../../../src/ha/setup.css -->
+<!-- #embed ../../../../src/ha/commission-ui.css -->
+</style>
+</head>
+<body>
+<main class="panel active setup quick-setup">
+  <section class="quick-heading" aria-labelledby="add-title">
+    <h1 id="add-title">Home Assistant devices</h1>
+    <p class="setup-detail" id="connection" role="status">Checking connection…</p>
+    <button class="btn btn-outline" id="reload-state" type="button" hidden>Check connection</button>
+  </section>
+  <section class="card quick-picker" id="picker" aria-labelledby="add-title" hidden>
+    <div id="picker-inputs">
+      <p class="setup-detail" id="review-hint">Choose devices to add to your Control4 rooms.</p>
+      <div class="quick-filters" id="filters">
+        <div class="quick-field">
+          <label for="setup-kind">Device type</label>
+          <select id="setup-kind"></select>
+        </div>
+        <div class="quick-field">
+          <label for="search">Search devices</label>
+          <input id="search" type="search" placeholder="Name or room" autocomplete="off">
+        </div>
+        <button class="btn btn-outline" id="browse" type="button" aria-label="Refresh device list" title="Refresh device list"><span class="regular-caption">Refresh</span><span class="small-caption" aria-hidden="true">↻</span></button>
+      </div>
+      <div class="quick-selected-view" id="selected-view" hidden>
+        <h2>Selected devices</h2>
+        <button class="btn btn-link" id="show-all" type="button">Back to results</button>
+      </div>
+      <p class="setup-detail" id="catalog-status" role="status"></p>
+      <p class="setup-detail" id="helper" hidden>The optional HA Gesture Bridge adds setup for compatible buttons and remotes.</p>
+      <div id="choices" class="quick-table-wrap" hidden>
+        <table class="quick-table" aria-labelledby="add-title">
+          <thead><tr><th scope="col"><span class="setup-visually-hidden">Select</span></th><th scope="col"><span class="regular-caption">Home Assistant device</span><span class="small-caption">Device</span></th><th scope="col"><span class="regular-caption">Control4 room</span><span class="small-caption">Room</span></th><th scope="col"><span class="regular-caption">Control4 type</span><span class="small-caption">Type</span></th></tr></thead>
+          <tbody id="choice-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="quick-footer quick-bottom">
+      <div class="quick-selection">
+        <span id="selected-count" role="status">No devices selected</span>
+        <button class="btn btn-link" id="clear" type="button" hidden>Clear selection</button>
+      </div>
+      <div class="quick-batch" id="batch" hidden>
+        <label class="setup-visually-hidden" for="bulk-room">Room for selected devices with no room</label>
+        <select id="bulk-room" aria-describedby="batch-scope"></select>
+        <button class="btn btn-outline" id="assign-room" type="button" aria-describedby="batch-scope" disabled>Fill empty rooms</button>
+      </div>
+      <button class="btn btn-primary" id="review" type="button" aria-describedby="review-hint addition-status" disabled>Review devices</button>
+      <div class="quick-footer-detail" id="batch-scope" hidden></div>
+      <div class="quick-footer-detail" id="review-issues">
+        <span id="review-blocker" role="status"></span>
+        <button class="btn btn-link" id="fix-selection" type="button" hidden>Fix selection</button>
+      </div>
+      <div class="quick-footer-detail quick-operation" id="addition-status" role="status"></div>
+    </div>
+  </section>
+  <section class="card quick-picker" id="preview" aria-labelledby="preview-title" hidden>
+    <h2 id="preview-title" tabindex="-1">Review Control4 driver changes</h2>
+    <p class="setup-detail" id="review-detail"></p>
+    <ul class="add-list" id="preview-rows"></ul>
+    <div class="quick-footer">
+      <div class="quick-operation" id="apply-status" role="status"></div>
+      <div class="setup-actions">
+        <button class="btn btn-outline" id="edit" type="button">Back to edit</button>
+        <button class="btn btn-primary" id="apply" type="button" aria-describedby="review-detail apply-status" disabled>Confirm setup changes</button>
+      </div>
+    </div>
+  </section>
+  <section class="card" id="results" aria-labelledby="results-title" hidden>
+    <h2 id="results-title" tabindex="-1">Control4 setup results</h2>
+    <p class="setup-detail" id="result-detail" role="status"></p>
+    <div class="setup-actions"><button class="btn btn-outline" id="back" type="button" aria-describedby="result-detail">Back to device list</button></div>
+    <ul class="add-list" id="result-rows"></ul>
+  </section>
+</main>
+<script>
+<!-- #embed ../../../../src/lib/ui/page.js -->
+<!-- #embed ../../../../src/ha/commission-ui.js -->
+</script>
+</body>
+</html>

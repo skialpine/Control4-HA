@@ -1,0 +1,30 @@
+# This suite builds only the free distribution. Never compile a licensing client.
+override DISTRIBUTIONS := oss
+
+.PHONY: check-provenance test-project suite-build suite-verify suite-verify-first-demo
+check-provenance:
+	python3 tools/check_provenance.py
+
+test: test-project
+test-project:
+	python3 -m unittest discover -s test -p 'test_*.py'
+
+suite-build:
+	python3 tools/build_suite.py --version "$(DRIVER_VERSION)"
+
+suite-verify:
+	python3 tools/check_packages.py
+	python3 tools/package.py check-version oss "$(DRIVER_VERSION)"
+	python3 tools/release_manifest.py --verify --revision "$(DRIVER_VERSION)"
+	LUA_PATH="test/?.lua;src/?.lua;src/?/init.lua;vendor/?.lua;vendor/?/init.lua;;" \
+		luajit test/test_ha_release_check.lua dist/oss
+
+suite-verify-first-demo:
+	python3 tools/check_first_demo.py --version "$(DRIVER_VERSION)" \
+		$(if $(FIRST_DEMO_BASELINES),--baseline-dir "$(FIRST_DEMO_BASELINES)")
+
+
+.PHONY: retire-interim-packages
+package: retire-interim-packages
+retire-interim-packages:
+	python3 tools/check_packages.py --retire-interim

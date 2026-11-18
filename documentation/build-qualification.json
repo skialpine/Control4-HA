@@ -1,0 +1,12 @@
+{
+  "identical": true,
+  "version": "20261116",
+  "source_date_epoch": 1794895200,
+  "hashes": {
+    "dist/oss/c4z/Control4.HA.Coordinator.c4z": "98cabb0aa3a5aa4d88ba2fa0cafe9f385031b0872a48248994837c00427440d2",
+    "dist/oss/c4z/Control4.HA.Light.c4z": "ce81ddd48f80c5c00da83f6c77bd2cad4ce7514879a742562343445b49153c1d",
+    "dist/oss/c4z/Control4.HA.Switch.c4z": "772034cbc4241af93ccc590eb97938558948e06a83753db386ba82990797af59",
+    "dist/oss/inventory.json": "17f331ad3dc3a93e55354e00603da437d56ed96be6843930e10bec5de15e2ba2",
+    "dist/oss/inventory.sha256": "6ae4496ba4728bde7491a71a0cf649d12551d66f6c4b6251540f4d694ecb970f"
+  }
+}

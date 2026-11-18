@@ -1,0 +1,21 @@
+# Project-owned seed for the dedicated Container lab, never production.
+homeassistant:
+  name: Control4 HA Lab
+  latitude: 1
+  longitude: 1
+  time_zone: America/Denver
+  unit_system: metric
+  country: US
+
+# Explicit components keep radio/network discovery out of this seed.
+frontend:
+api:
+websocket_api:
+config:
+logger:
+  default: warning
+recorder:
+  purge_keep_days: 1
+history:
+backup:
+demo:

@@ -1,0 +1,534 @@
+<devicedata>
+  <name>Home Assistant Light</name>
+  <version />
+  <manufacturer>skialpine</manufacturer>
+  <model>HA Light</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <controlmethod>IP</controlmethod>
+  <combo>false</combo>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 skialpine; template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/16/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Lighting</category>
+  </composer_categories>
+  <conditionals />
+  <events />
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <property>
+        <name>Selected Device</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Not selected</default>
+      </property>
+      <property>
+        <name>Controls</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default />
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default>Not configured</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Next step</name>
+        <type>STRING</type>
+        <default>Open Device Setup and choose a device.</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Entity Selection</name><type>LIST</type><readonly>false</readonly><attributes>1</attributes>
+        <items><item>Manual Entity ID</item></items><default>Manual Entity ID</default>
+        <description>Choose a Home Assistant device. Use Refresh Home Assistant devices in Actions to update this list.</description>
+      </property>
+      <property>
+        <name>Manual entity ID</name>
+        <type>STRING</type>
+        <default />
+        <description>Use the entity ID shown in Home Assistant. Saving an empty ID clears a manual selection.</description>
+      </property>
+      <property>
+        <name>Button behavior</name>
+        <type>LIST</type>
+        <default>Automatic</default>
+        <description>Automatic uses the connected light. Buttons only keeps button presses available for programming.</description>
+        <items>
+          <item>Automatic</item>
+          <item>Home Assistant device</item>
+          <item>Connected Control4 light</item>
+          <item>Buttons only</item>
+        </items>
+      </property>
+      <property>
+        <name>App Control Link</name>
+        <type>LIST</type>
+        <default>Automatic</default>
+        <attributes>1</attributes>
+        <description>Choose the button link the app uses to control the light. Automatic uses a shared destination when the linked buttons control the same light. A dedicated App Control Link connection takes precedence.</description>
+        <items>
+          <item>Automatic</item>
+          <item>Top</item>
+          <item>Bottom</item>
+          <item>Toggle</item>
+        </items>
+      </property>
+      <property>
+        <name>LED Behavior</name>
+        <type>LIST</type>
+        <default>Use Device Setting</default>
+        <attributes>1</attributes>
+        <readonly>false</readonly>
+        <description>Choose Follow Bound Device to match the connected light.</description>
+        <items>
+          <item>Use Device Setting</item>
+          <item>Follow Load</item>
+          <item>Follow Load (Inverted)</item>
+          <item>Always On</item>
+          <item>Always Off</item>
+          <item>Follow Bound Device</item>
+        </items>
+      </property>
+      <property>
+        <name>LED Feedback Source</name>
+        <type>LIST</type>
+        <default>Disabled</default>
+        <attributes>1</attributes>
+        <readonly>false</readonly>
+        <description>Choose the button connected to the light whose state you want to show.</description>
+        <items>
+          <item>Disabled</item>
+          <item>Top</item>
+          <item>Bottom</item>
+          <item>Toggle</item>
+        </items>
+      </property>
+      <property>
+        <name>LED Indicator</name>
+        <type>LIST</type>
+        <items>
+          <item>Toggle</item>
+        </items>
+        <default>Toggle</default>
+        <readonly>false</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>LED On Color</name>
+        <type>COLOR_SELECTOR</type>
+        <default>255,255,255</default>
+        <readonly>false</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>LED Off Color</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <readonly>false</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Last Gesture</name><type>STRING</type><readonly>true</readonly><default />
+        <description>The most recent button press, hold or release delivered to Control4 programming.</description>
+      </property>
+      <property>
+        <name>Gesture Count</name><type>STRING</type><readonly>true</readonly><default>0</default>
+        <description>Button events delivered since the driver last started.</description>
+      </property>
+      <property>
+        <name>Last Sequence</name><type>STRING</type><readonly>true</readonly><default>0</default>
+        <description>The latest event number reported by the selected wall control.</description>
+      </property>
+      <property>
+        <name>Debug Mode</name><type>LIST</type><default>Off</default><readonly>false</readonly>
+        <items><item>Off</item><item>On</item></items>
+        <description>Print up to 25 button-event summaries to the Lua window. Turn off and on to start a new set.</description>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default />
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>DYNAMIC_LIST</type>
+        <default>3 - Info</default>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <property>
+        <name>Latency Diagnostics</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>On</item>
+        </items>
+      </property>
+      <property>
+        <name>Device Setup</name>
+        <type>STRING</type>
+        <default>Choose a Home Assistant device in Device Setup.</default>
+        <readonly>true</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Mode Description</name>
+        <type>STRING</type>
+        <default>Choose a device to see what it controls.</default>
+        <readonly>true</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Connected Light</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>No connected C4 light</default>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Status</name>
+        <type>STRING</type>
+        <default>Waiting for state</default>
+        <readonly>true</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Selected Capabilities</name>
+        <type>STRING</type>
+        <default>Waiting for metadata</default>
+        <readonly>true</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Button Capabilities</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Button events need HA Gesture Bridge</default>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>LED Status</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Not exposed/configured</default>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Discovery Status</name>
+        <type>STRING</type>
+        <default>Not refreshed</default>
+        <readonly>true</readonly>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Entity ID</name>
+        <type>STRING</type>
+        <default>light.table_lamp</default>
+        <readonly>false</readonly>
+      </property>
+      <property>
+        <name>Operation Mode</name>
+        <type>LIST</type>
+        <default>Control HA Device</default>
+        <readonly>false</readonly>
+        <items>
+          <item>Control HA Device</item>
+          <item>Control HA Device with Button Events</item>
+          <item>Programming Events Only</item>
+          <item>Control Connected C4 Light</item>
+        </items>
+      </property>
+      <property>
+        <name>Discovery Catalog Entity ID</name><type>STRING</type><readonly>false</readonly><attributes>1</attributes>
+        <default>sensor.ha_gesture_bridge_catalog</default>
+        <description>Optional Home Assistant sensor with device names and rooms. Leave blank to use the standard device list.</description>
+      </property>
+    </properties>
+    <tabs>
+      <tab name="Device Setup" file="html/index.html" />
+    </tabs>
+    <commands>
+      <command><name>Turn On</name><description>Turn on NAME</description></command>
+      <command><name>Turn Off</name><description>Turn off NAME</description></command>
+      <command><name>Toggle</name><description>Toggle NAME on or off</description></command>
+      <command>
+        <name>PrintTiming</name>
+        <description>Print timing summary to Lua</description>
+      </command>
+      <command>
+        <name>ResetTiming</name>
+        <description>Reset Timing Samples</description>
+      </command>
+      <command>
+        <name>Set LED On Color</name>
+        <description>For NAME, use PARAM2 when PARAM1 is on</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Color</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set LED Off Color</name>
+        <description>For NAME, use PARAM2 when PARAM1 is off</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Color</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set LED Current Color</name>
+        <description>On NAME, change the PARAM1 indicator color to PARAM2</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Color</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set All LED Colors</name>
+        <description>On NAME, change all indicator colors to PARAM1</description>
+        <params>
+          <param>
+            <name>Color</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set LED Behavior</name>
+        <description>On NAME, set the PARAM1 indicator to PARAM2</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Behavior</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set LED Brightness</name>
+        <description>On NAME, set the PARAM1 indicator brightness to PARAM2 percent</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Brightness</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+    </commands>
+    <actions>
+      <action><name>Print device diagnostics to Lua</name><command>PrintDiagnostics</command></action>
+      <action>
+        <name>Print timing summary to Lua</name>
+        <command>PrintTiming</command>
+      </action>
+      <action>
+        <name>Reset Timing Samples</name>
+        <command>ResetTiming</command>
+      </action>
+      <action>
+        <name>Refresh LED Feedback</name>
+        <command>RefreshLEDFeedback</command>
+      </action>
+      <action><name>Refresh Home Assistant devices</name><command>RefreshEntities</command></action>
+      <action>
+        <name>Choose Home Assistant device</name><command>SelectDevice</command>
+        <params><param><name>Device</name><type>CUSTOM_SELECT:BrowseHALightDevices</type>
+          <search><filters><filter name="all">All devices</filter><filter name="switch">Switches</filter>
+            <filter name="dimmer">Dimmers</filter><filter name="gesture">Devices with buttons</filter>
+          </filters></search>
+        </param></params>
+      </action>
+    </actions>
+  </config>
+  <!-- The light's capabilities are the build's, written from the profile the driver gives Light.new. -->
+  <capabilities />
+  <proxies>
+    <proxy proxybindingid="5001" primary="True" name="Home Assistant Light">light_v2</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>999</id>
+      <facing>1</facing>
+      <connectionname>Home Assistant Connection</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>HA_DEVICE</classname>
+          <autobind>True</autobind>
+        </class>
+        <class>
+          <classname>SKIALPINE_HA_SUITE_V1</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Light</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>LIGHT_V2</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>200</id>
+      <facing>6</facing>
+      <connectionname>On Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>202</id>
+      <facing>6</facing>
+      <connectionname>Toggle Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>201</id>
+      <facing>6</facing>
+      <connectionname>Off Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>310</id>
+      <facing>6</facing>
+      <connectionname>App Control Link</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>203</id>
+      <facing>6</facing>
+      <connectionname>Top Control Link</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>205</id>
+      <facing>6</facing>
+      <connectionname>Toggle Control Link</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>204</id>
+      <facing>6</facing>
+      <connectionname>Bottom Control Link</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

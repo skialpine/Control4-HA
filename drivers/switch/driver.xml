@@ -1,0 +1,396 @@
+<devicedata>
+  <name>Home Assistant Switch</name>
+  <version />
+  <manufacturer>skialpine</manufacturer>
+  <model>Control4.HA.Switch</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 skialpine; template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/16/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Other</category>
+  </composer_categories>
+  <conditionals>
+    <conditional>
+      <id>1000</id>
+      <name>IS_ON</name>
+      <type>SIMPLE</type>
+      <condition_statement>Switch is on</condition_statement>
+      <description>Switch is on</description>
+      <sort_order>0</sort_order>
+    </conditional>
+    <conditional>
+      <id>1001</id>
+      <name>IS_OFF</name>
+      <type>SIMPLE</type>
+      <condition_statement>Switch is off</condition_statement>
+      <description>Switch is off</description>
+      <sort_order>1</sort_order>
+    </conditional>
+    <conditional>
+      <id>1002</id>
+      <name>IS_AVAILABLE</name>
+      <type>SIMPLE</type>
+      <condition_statement>Switch is available</condition_statement>
+      <description>Switch is available</description>
+      <sort_order>2</sort_order>
+    </conditional>
+  </conditionals>
+  <events>
+    <event>
+      <id>1000</id>
+      <name>Switch turned on</name>
+      <description>When NAME turns on</description>
+    </event>
+    <event>
+      <id>1001</id>
+      <name>Switch turned off</name>
+      <description>When NAME turns off</description>
+    </event>
+    <event>
+      <id>1002</id>
+      <name>Switch became unavailable</name>
+      <description>When NAME becomes unavailable</description>
+    </event>
+  </events>
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <property>
+        <name>Selected Device</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Not selected</default>
+      </property>
+      <property>
+        <name>Controls</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default />
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default>Not configured</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Next step</name>
+        <type>STRING</type>
+        <default>Open Device Setup and choose a device.</default>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Manual entity ID</name>
+        <type>STRING</type>
+        <default />
+        <description>Use the entity ID shown in Home Assistant. Saving an empty ID clears a manual selection.</description>
+      </property>
+      <property>
+        <name>Button behavior</name>
+        <type>LIST</type>
+        <default>Automatic</default>
+        <description>Automatic uses available features. Device-only control skips button events and indicators. Buttons only turns off app control.</description>
+        <items>
+          <item>Automatic</item>
+          <item>Control linked device only</item>
+          <item>Control device and report presses</item>
+          <item>Home Assistant device</item>
+          <item>Buttons only</item>
+        </items>
+      </property>
+      <property>
+        <name>LED Behavior</name>
+        <type>LIST</type>
+        <items>
+          <item>Use Device Setting</item>
+          <item>Follow Load</item>
+          <item>Follow Load (Inverted)</item>
+          <item>Always On</item>
+          <item>Always Off</item>
+        </items>
+        <default>Use Device Setting</default>
+        <readonly>false</readonly>
+        <attributes>1</attributes>
+        <description>Set how all indicator lights on this switch behave. Use Device Setting leaves their current settings in place.</description>
+      </property>
+      <property>
+        <name>LED Status</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>No indicator lights available</default>
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>Last Gesture</name><type>STRING</type><readonly>true</readonly><default />
+        <description>The most recent button press, hold or release delivered to Control4 programming.</description>
+      </property>
+      <property>
+        <name>Gesture Count</name><type>STRING</type><readonly>true</readonly><default>0</default>
+        <description>Button events delivered since the driver last started.</description>
+      </property>
+      <property>
+        <name>Last Sequence</name><type>STRING</type><readonly>true</readonly><default>0</default>
+        <description>The latest event number reported by the selected wall control.</description>
+      </property>
+      <property>
+        <name>Debug Mode</name><type>LIST</type><default>Off</default><readonly>false</readonly>
+        <items><item>Off</item><item>On</item></items>
+        <description>Print up to 25 button-event summaries to the Lua window. Turn off and on to start a new set.</description>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default />
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>DYNAMIC_LIST</type>
+        <default>3 - Info</default>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <property>
+        <name>Latency Diagnostics</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>On</item>
+        </items>
+      </property>
+      <property>
+        <name>Discovery Catalog Entity ID</name><type>STRING</type><readonly>false</readonly>
+        <default>sensor.ha_gesture_bridge_catalog</default>
+        <description>Optional Home Assistant sensor with device names and rooms. Leave blank to use the standard device list.</description>
+      </property>
+    </properties>
+    <tabs>
+      <tab name="Device Setup" file="html/index.html" />
+    </tabs>
+    <commands>
+      <command>
+        <name>TurnOn</name>
+        <description>Turn On</description>
+      </command>
+      <command>
+        <name>TurnOff</name>
+        <description>Turn Off</description>
+      </command>
+      <command>
+        <name>Toggle</name>
+        <description>Toggle</description>
+      </command>
+      <command>
+        <name>PrintTiming</name>
+        <description>Print timing summary to Lua</description>
+      </command>
+      <command>
+        <name>ResetTiming</name>
+        <description>Reset Timing Samples</description>
+      </command>
+      <command>
+        <name>Set LED Current Color</name>
+        <description>On NAME, change the PARAM1 indicator color to PARAM2</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Color</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set All LED Colors</name>
+        <description>On NAME, change all indicator colors to PARAM1</description>
+        <params>
+          <param>
+            <name>Color</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set LED Behavior</name>
+        <description>On NAME, set the PARAM1 indicator to PARAM2</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Behavior</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+        </params>
+      </command>
+      <command>
+        <name>Set LED Brightness</name>
+        <description>On NAME, set the PARAM1 indicator brightness to PARAM2 percent</description>
+        <params>
+          <param>
+            <name>Button</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+          <param>
+            <name>Brightness</name>
+            <type>STRING</type>
+          </param>
+        </params>
+      </command>
+    </commands>
+    <actions>
+      <action><name>Print device diagnostics to Lua</name><command>PrintDiagnostics</command></action>
+      <action>
+        <name>Print timing summary to Lua</name>
+        <command>PrintTiming</command>
+      </action>
+      <action>
+        <name>Reset Timing Samples</name>
+        <command>ResetTiming</command>
+      </action>
+    </actions>
+  </config>
+  <capabilities>
+    <navigator_display_option proxybindingid="5001">
+      <display_icons>
+        <Icon width="300" height="300">controller://driver/Control4.HA.Switch/icons/unavailable-300.png</Icon>
+        <Icon width="90" height="90">controller://driver/Control4.HA.Switch/icons/unavailable-90.png</Icon>
+        <Icon width="70" height="70">controller://driver/Control4.HA.Switch/icons/unavailable-70.png</Icon>
+        <state id="on">
+          <Icon width="300" height="300">controller://driver/Control4.HA.Switch/icons/on-300.png</Icon>
+          <Icon width="90" height="90">controller://driver/Control4.HA.Switch/icons/on-90.png</Icon>
+          <Icon width="70" height="70">controller://driver/Control4.HA.Switch/icons/on-70.png</Icon>
+        </state>
+        <state id="off">
+          <Icon width="300" height="300">controller://driver/Control4.HA.Switch/icons/off-300.png</Icon>
+          <Icon width="90" height="90">controller://driver/Control4.HA.Switch/icons/off-90.png</Icon>
+          <Icon width="70" height="70">controller://driver/Control4.HA.Switch/icons/off-70.png</Icon>
+        </state>
+        <state id="buttons">
+          <Icon width="300" height="300">controller://driver/Control4.HA.Switch/icons/buttons-300.png</Icon>
+          <Icon width="90" height="90">controller://driver/Control4.HA.Switch/icons/buttons-90.png</Icon>
+          <Icon width="70" height="70">controller://driver/Control4.HA.Switch/icons/buttons-70.png</Icon>
+        </state>
+        <state id="unavailable">
+          <Icon width="300" height="300">controller://driver/Control4.HA.Switch/icons/unavailable-300.png</Icon>
+          <Icon width="90" height="90">controller://driver/Control4.HA.Switch/icons/unavailable-90.png</Icon>
+          <Icon width="70" height="70">controller://driver/Control4.HA.Switch/icons/unavailable-70.png</Icon>
+        </state>
+      </display_icons>
+    </navigator_display_option>
+  </capabilities>
+  <proxies>
+    <proxy proxybindingid="5001" primary="True" name="Home Assistant Switch">uibutton</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>1</id>
+      <facing>5</facing>
+      <connectionname>HA Suite Coordinator</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>SKIALPINE_HA_SUITE_V1</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Switch Experience</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>UIBUTTON</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>2</id>
+      <facing>6</facing>
+      <connectionname>Relay</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>RELAY</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>300</id>
+      <facing>6</facing>
+      <connectionname>On Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>301</id>
+      <facing>6</facing>
+      <connectionname>Toggle Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>302</id>
+      <facing>6</facing>
+      <connectionname>Off Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>
