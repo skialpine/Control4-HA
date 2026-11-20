@@ -1124,9 +1124,9 @@ handoff conditions.
 
 ## Revision 2026111925 Quick Setup recovery
 
-An unrelated Home Assistant device going offline no longer invalidates an open
-draft. The Coordinator refreshes availability and still requires a fresh review
-when the eligible list or capability details change.
+An unrelated native Home Assistant device going offline no longer invalidates an
+open draft. The Coordinator refreshes availability and still requires a fresh
+review when the eligible list or capability details change.
 
 When an added driver has already configured its device and its acknowledgment
 was lost, Quick Setup shows the saved name and room in the default list. The
@@ -1143,3 +1143,12 @@ and 1000 × 550 pixels. All eight checks passed, including keyboard retry, focus
 after recovery, retained draft edits and the explicit setup confirmation. The
 catalog and commissioning tests exercised the backend with simulated Home
 Assistant and Director replies. Native Composer verification is pending.
+
+## Revision 2026111926 Companion catalog recovery
+
+Quick Setup also preserves its open draft when only the companion's load
+availability changes. The Coordinator uses the companion's transfer revision to
+verify each page and keeps a separate revision for the installer draft. Tests
+verify that availability stays fresh, the next request confirms the new transfer
+revision, and a structural change inside the same device descriptor still
+requires a fresh review.

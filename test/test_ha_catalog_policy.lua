@@ -326,6 +326,49 @@ T.eq("when the companion picks the wrapper the native raw relay is still dedupli
 local winner = catalog:choice(wrapped.entity_id, "light", owner.metadata.revision)
 T.eq("source relay ID finds the companion wrapper", winner.entity_aliases, { "switch.a" })
 
+T.section("A companion transfer revision can change while the Quick Setup draft stays valid")
+catalog = Catalog.new(request, function()
+  error("unexpected native fallback")
+end, function()
+  error("verified helper descriptors need no registry requests")
+end)
+local function oneCompanionPage(values, upstreamRevision)
+  local reply = helperPage(1, 1, values, upstreamRevision)
+  reply.response.total, reply.response.pages = 1, 1
+  return reply
+end
+local sourceLoad = helperPhysical.attributes.device_choice.source_load
+sourceLoad.available = true
+local available = open()
+answer(#requests, oneCompanionPage({ helperPhysical }, newUpstream))
+local companionRevision = available.metadata.revision
+local changedTransfer = string.rep("f", 64)
+sourceLoad.available = false
+local offline = open(true)
+answer(#requests, oneCompanionPage({ helperPhysical }, changedTransfer))
+T.eq("an availability-only companion update keeps the draft revision", offline.metadata.revision, companionRevision)
+local fresh = catalog:choice(choiceId, "light", companionRevision)
+T.eq(
+  "the old draft revision sees fresh companion availability",
+  fresh and fresh.attributes.device_choice.source_load.available,
+  false
+)
+local confirmed = open()
+T.eq(
+  "subsequent companion reads confirm the new transfer revision",
+  requests[#requests].message.service_data.revision,
+  changedTransfer
+)
+answer(#requests, oneCompanionPage(nil, changedTransfer))
+T.eq("confirmed transfer preserves the draft revision", confirmed.metadata.revision, companionRevision)
+sourceLoad.name = "Renamed load"
+local renamed = open(true)
+answer(#requests, oneCompanionPage({ helperPhysical }, upstream))
+T.truthy(
+  "a structural change inside the same source descriptor requires review",
+  renamed.metadata.revision ~= companionRevision
+)
+
 T.section("Native availability changes preserve an open revision, while renames still invalidate it")
 local nativeAvailability = codec.array({
   { entity_id = "switch.a", domain = "switch", name = "Selected", available = true, attributes = codec.object() },

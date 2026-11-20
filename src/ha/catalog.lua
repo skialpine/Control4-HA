@@ -16,6 +16,32 @@ local function revision(value)
   return type(value) == "string" and #value == 64 and value:match("^[a-f0-9]+$") ~= nil
 end
 
+local function copyFields(source, omitted)
+  local copy = codec.object({})
+  for key, value in pairs(source) do
+    if key ~= omitted then
+      copy[key] = value
+    end
+  end
+  return copy
+end
+
+local function revisionRow(item, encoded)
+  local choice = item.attributes.device_choice
+  local load = choice and choice.source_load
+  local liveLoad = codec.isObject(load) and load.available ~= nil
+  if item.available == nil and not liveLoad then
+    return encoded
+  end
+  local stable = copyFields(item, "available")
+  if liveLoad then
+    stable.attributes = copyFields(item.attributes)
+    stable.attributes.device_choice = copyFields(choice)
+    stable.attributes.device_choice.source_load = copyFields(load, "available")
+  end
+  return codec.encode(stable)
+end
+
 function Catalog.new(request, native, decorate, supplement)
   return setmetatable(
     { request = request, native = native, decorate = decorate, supplement = supplement, generation = 0 },
@@ -154,18 +180,7 @@ function Catalog:refresh(force)
           fail("invalid_endpoint_metadata")
           return
         end
-        -- A native load can go offline without changing its identity or eligibility.
-        -- Keep the live availability for verification but leave it out of the draft revision.
-        if item.available ~= nil then
-          local stable = codec.object({})
-          for key, value in pairs(item) do
-            if key ~= "available" then
-              stable[key] = value
-            end
-          end
-          encoded = codec.encode(stable)
-        end
-        revisionRows[index] = encoded
+        revisionRows[index] = revisionRow(item, encoded)
         for _, family in ipairs(item.families) do
           indices[family][#indices[family] + 1] = index
         end
@@ -179,19 +194,21 @@ function Catalog:refresh(force)
           end
         end
       end
-      local prefix = (upstreamRevision or "native") .. ":" .. tostring(eligibilityVersion or 0)
+      -- The companion's transfer revision includes load availability. Keep it
+      -- for coherent paging, and hash the local draft from structural data.
+      local prefix = source .. ":" .. tostring(eligibilityVersion or 0)
       local fingerprint = C4:Hash("SHA256", prefix .. "[" .. table.concat(revisionRows, ",") .. "]")
       if not self.snapshot or self.snapshot.revision ~= fingerprint then
         self.snapshot = {
           source = source,
           revision = fingerprint,
-          upstreamRevision = upstreamRevision,
           indices = indices,
           eligibilityVersion = eligibilityVersion,
         }
       end
       self.snapshot.rows, self.snapshot.upstreamRows, self.snapshot.pages =
         values, upstreamRevision and rows or nil, pages
+      self.snapshot.upstreamRevision = upstreamRevision
       complete()
     end
     local function ready(values)
