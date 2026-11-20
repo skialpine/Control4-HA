@@ -1,5 +1,6 @@
 -- Binary load notifications and native command routing for the Switch family.
 require("lib.utils")
+require("drivers-common-public.global.timer")
 local ids = require("ha.identities")
 local contract = require("ha.contract")
 local loadCommand = require("ha.load-command")
@@ -18,6 +19,7 @@ local presentation = {
 local relayActions = { CLOSE = "on", OPEN = "off", TOGGLE = "toggle" }
 local serviceActions = { on = "turn_on", off = "turn_off", toggle = "toggle" }
 local buttonActions = { ["0"] = "on", ["1"] = "off" }
+local CONFIRM_TIMER, CONFIRM_MS = "HA.Switch.Confirm", 3000
 
 local function clickAction(params)
   if type(params) ~= "table" or (params.ACTION ~= 2 and params.ACTION ~= "2") then
@@ -33,7 +35,7 @@ local function clickAction(params)
 end
 
 function Adapter.new()
-  return setmetatable({ generation = 0 }, Adapter)
+  return setmetatable({ generation = 0, inFlight = 0 }, Adapter)
 end
 
 function Adapter:confirmed()
@@ -50,14 +52,91 @@ function Adapter:confirmed()
   end
 end
 
+function Adapter:_clearFeedback()
+  self.pending = nil
+  CancelTimer(CONFIRM_TIMER)
+end
+
+function Adapter:_recoverFeedback(command)
+  if self.pending ~= command then
+    return
+  end
+  command.reading = true
+  local function complete(data)
+    if self.pending ~= command then
+      return
+    end
+    self:_clearFeedback()
+    if contract.state(data, self.entity) and (data.state == "on" or data.state == "off") then
+      self:message("snapshot", data)
+    else
+      self.feedbackUnavailable = true
+      self:lost(self.entity)
+      if self.feedbackUnavailable and self.feedbackChanged then
+        self.feedbackChanged()
+      end
+    end
+  end
+  loadCommand.read(self.consumer, self.entity):next(complete, function()
+    complete(nil)
+  end)
+end
+
+function Adapter:_commandResult(command, status)
+  local generation = self.generation
+  self.inFlight = self.inFlight - 1
+  if self.onResult then
+    self.onResult(status)
+  end
+  if generation ~= self.generation then
+    return
+  end
+  command.status = status
+  local pending = self.pending
+  if self.inFlight ~= 0 or not pending or not pending.status then
+    return
+  end
+  status = pending.status
+  if not pending.overlap and (pending.observed or (status ~= "accepted" and not loadCommand.uncertain(status))) then
+    self:_clearFeedback()
+  elseif status ~= "accepted" then
+    self:_recoverFeedback(pending)
+  elseif not pending.overlap and pending.alreadyAtTarget and self.state == pending.wanted then
+    self:_clearFeedback()
+  else
+    -- When multiple commands overlap, a push may belong to an earlier command.
+    -- Wait for all service results before starting the final confirmation.
+    local timer = SetTimer(CONFIRM_TIMER, CONFIRM_MS, function()
+      self:_recoverFeedback(pending)
+    end)
+    if not timer then
+      self:_recoverFeedback(pending)
+    end
+  end
+end
+
 function Adapter:command(action)
-  if not self.state or not serviceActions[action] then
+  if self.destroyed or not self.state or not serviceActions[action] then
     return false
   end
   local generation = self.generation
-  local sent = loadCommand.send(self.consumer, self.entity, serviceActions[action], {}, self.onResult, function()
+  local command = {
+    wanted = action == "toggle" and (self.state == "on" and "off" or "on") or action,
+    alreadyAtTarget = action == self.state,
+    overlap = self.pending ~= nil or self.inFlight > 0,
+  }
+  self:_clearFeedback()
+  self.pending = command
+  self.inFlight = self.inFlight + 1
+  local sent = loadCommand.send(self.consumer, self.entity, serviceActions[action], {}, function(status)
+    self:_commandResult(command, status)
+  end, function()
     return not self.destroyed and generation == self.generation
   end, "switch." .. action)
+  if not sent and self.pending == command then
+    self.inFlight = self.inFlight - 1
+    self:_clearFeedback()
+  end
   return sent and generation == self.generation
 end
 
@@ -99,7 +178,8 @@ function Adapter:start()
     handlers[key] = fn
     self.owned[#self.owned + 1] = { handlers, key, fn }
   end
-  for command, action in pairs({ TurnOn = "on", TurnOff = "off", Toggle = "toggle" }) do
+  -- The template dispatcher normalizes spaces. Keep the compact names for saved scripts.
+  for command, action in pairs({ Turn_On = "on", Turn_Off = "off", TurnOn = "on", TurnOff = "off", Toggle = "toggle" }) do
     install(EC, command, function()
       return self:command(action)
     end)
@@ -138,6 +218,8 @@ function Adapter:lost(entity)
     return
   end
   self.generation = self.generation + 1
+  self.inFlight = 0
+  self:_clearFeedback()
   if not entity then
     self:setButtonsReady(false)
   end
@@ -147,12 +229,13 @@ function Adapter:lost(entity)
   end
 end
 
-function Adapter:bind(consumer, entity, onResult)
+function Adapter:bind(consumer, entity, onResult, _, feedbackChanged)
   if self.destroyed then
     return
   end
   self:lost()
   self.consumer, self.onResult = consumer, onResult
+  self.feedbackUnavailable, self.feedbackChanged = nil, feedbackChanged
   self.entity = contract.loadDomain(entity) and entity or nil
 end
 
@@ -193,6 +276,16 @@ function Adapter:message(kind, data)
     self:lost(self.entity)
     return
   end
+  local command = self.pending
+  if command then
+    local matches = data.state == command.wanted
+    if command.reading or (not command.overlap and matches and command.status == "accepted") then
+      self:_clearFeedback()
+    else
+      command.observed = matches
+    end
+  end
+  self.feedbackUnavailable = nil
   local previous = self.state
   self.state = data.state
   if previous ~= data.state then

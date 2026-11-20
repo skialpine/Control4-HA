@@ -4,9 +4,6 @@
 .setup .property-entry { display: flex; align-items: start; gap: 6px; }
 .setup .property-entry input { min-width: 0; flex: 1; }
 .setup .property-entry button { flex: none; }
-.setup .manual-entry .pfields { display: block; }
-.setup .manual-entry { margin-top: 12px; }
-.setup .manual-entry[open] summary { margin-bottom: 6px; }
 .setup .pfields > div { min-width: 0; }
 .setup .readout { overflow-wrap: anywhere; }
 @media (max-width: 480px) {
@@ -15,7 +12,7 @@
 }
 .setup h1 { font-size: 17px; font-weight: 600; }
 .setup h2 { font-size: 15px; font-weight: 600; }
-.setup-heading, .setup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.setup-heading, .setup-actions, .setup-picker-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .setup-heading { justify-content: space-between; margin-bottom: 8px; }
 .setup-actions { margin-top: 10px; }
 .setup-detail, .choice-detail { color: var(--text-muted); }

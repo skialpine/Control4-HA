@@ -40,9 +40,9 @@ function Hub.new(connection, emit)
   end
   self.catalog = Catalog.new(catalogRequest, function()
     return connection:readCatalog()
-  end, function(rows, active)
-    return Choices.enrich(rows, catalogRequest, active)
-  end)
+  end, function(rows, active, native)
+    return Choices.enrich(rows, catalogRequest, active, native)
+  end, true)
   local prior = connection.onState
   connection.onState = function(state, detail)
     if prior then
@@ -86,8 +86,8 @@ function Hub:_members(entry, kind, data, legacyStamp)
   if legacyStamp and legacyStamp == entry.legacy and self.legacy then
     local delivery = entry.legacyInitialized and kind or "snapshot"
     local ok, sent = pcall(self.legacy.deliver, self.legacy, delivery, data, legacyStamp)
-    if ok and sent then
-      entry.legacyInitialized = true
+    if entry.legacy == legacyStamp then
+      entry.legacyInitialized = ok and sent == true
     end
   end
   for device in pairs(entry.members) do
@@ -319,12 +319,14 @@ function Hub:_stop(entry)
   end
 end
 
-function Hub:watchLegacy(selected, stamp, requested, retireOnly)
+function Hub:watchLegacy(stamps, requested, retireOnly)
   if self.destroyed then
     return
   end
+  -- A new plan can reuse subscriptions that still have owners. A rejected
+  -- request may revoke a stale plan but cannot authorize its replacement.
   for entity, entry in pairs(self.entities) do
-    if entry.legacy and (not selected[entity] or entry.legacy ~= stamp) then
+    if entry.legacy and (not stamps[entity] or (retireOnly and entry.legacy ~= stamps[entity])) then
       entry.legacy, entry.legacyInitialized = nil, nil
       if not next(entry.members) then
         self:_stop(entry)
@@ -334,7 +336,7 @@ function Hub:watchLegacy(selected, stamp, requested, retireOnly)
   if retireOnly then
     return
   end
-  for entity in pairs(selected) do
+  for entity, stamp in pairs(stamps) do
     local entry = self.entities[entity]
     if not entry then
       entry = { entity = entity, members = {}, revision = 0 }
@@ -598,7 +600,7 @@ function Hub:_operation(consumer, message)
     if message.arguments.cursor then
       page(message.arguments.revision)
     else
-      self.catalog:refresh():next(function(metadata)
+      self.catalog:refresh(message.arguments.refresh):next(function(metadata)
         page(metadata.revision)
       end, function(failure)
         consumer.requests[key] = nil
@@ -949,7 +951,7 @@ function Hub:retry()
     entry.subFailures, entry.readFailures = 0, 0
     if self.online then
       self:_start(entry)
-      if entry.ready and not entry.state then
+      if entry.ready and (not entry.state or (entry.legacy and not entry.legacyInitialized)) then
         self:_read(entry)
       end
     end
@@ -985,6 +987,12 @@ end
 function Hub:destroy()
   if self.destroyed then
     return
+  end
+  if self.switchUpgrade then
+    self.switchUpgrade:destroy()
+  end
+  if self.commissioning then
+    self.commissioning:destroy()
   end
   self:_transport(false)
   self.destroyed = true

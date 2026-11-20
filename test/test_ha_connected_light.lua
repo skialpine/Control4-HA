@@ -29,10 +29,14 @@ local vars = {
 local providers, requests, paddles, paddlePeers, reads = {}, {}, {}, {}, 0
 local rootModel, rootUsesSuiteBinding
 local failedReleases, onReleaseFailure = 0, nil
-local lookupFailures, onPaddlePush = 0, nil
+local lookupFailures, brightnessReadFailures, onPaddlePush = 0, 0, nil
 local read = C4.GetDeviceVariable
 local sendProxy = C4.SendToProxy
 function C4:GetDeviceVariable(device, variable)
+  if device == light and variable == 1001 and brightnessReadFailures > 0 then
+    brightnessReadFailures = brightnessReadFailures - 1
+    error("brightness read failed")
+  end
   if vars[device] then
     reads = reads + 1
     return vars[device][variable]
@@ -332,6 +336,18 @@ Properties["Button behavior"] = "Automatic"
 setup:propertyChanged()
 observe(light, 1001, "23")
 
+T.section("An ordinary paddle release survives an unknown binding lookup")
+proxy:link(ids.lightLinks.bottom, "DO_PUSH")
+attempts = #paddlePeers
+lookupFailures = 1
+proxy:link(ids.lightLinks.bottom, "DO_RELEASE")
+T.eq("the release waits while its peer is unknown", #paddlePeers, attempts)
+clock.run(100)
+T.eq("the ordinary release retries on the original peer", { #paddlePeers, paddlePeers[#paddlePeers] }, {
+  attempts + 1,
+  { originalPeer, "DO_RELEASE" },
+})
+
 T.section("An exhausted release reports one command result")
 proxy:link(ids.lightLinks.bottom, "DO_PUSH")
 attempts = #paddles
@@ -442,9 +458,36 @@ setup:bindingsChanged(appBinding)
 T.section("The scene wrapper delegates timed steps and cancels them when the target changes")
 local scene = { SCENE_ID = "89" }
 providers[appBinding] = light
+brightnessReadFailures = 1
 setup:bindingsChanged(appBinding)
+observe(light, 1001, "57")
+T.eq("the real brightness report recovers after the startup read fails", proxy.level, 57)
 observe(light, 1001, "23")
 observe(light, 1000, "true")
+proxy:send("UPDATE_COLOR_PRESET", { ID = 4, COMMAND = "ADDED", COLOR_X = 0.42, COLOR_Y = 0.38, COLOR_MODE = 0 })
+prior = #requests
+proxy:send("SET_COLOR_TARGET", { LIGHT_COLOR_TARGET_PRESET_ID = 4, LIGHT_COLOR_TARGET_COLOR_RATE = 250 })
+T.eq("stored color preset delegates once", #requests, prior + 1)
+T.eq("stored color preset forwards its color and rate", {
+  last().parameters.LIGHT_COLOR_TARGET_X,
+  last().parameters.LIGHT_COLOR_TARGET_Y,
+  last().parameters.LIGHT_COLOR_TARGET_RATE,
+}, { 0.42, 0.38, 250 })
+prior = #requests
+local agentTarget = {
+  LIGHT_COLOR_TARGET_PRESET_ID = 4,
+  LIGHT_COLOR_TARGET_PRESET_ORIGIN = 2,
+  LIGHT_COLOR_TARGET_COLOR_RATE = 250,
+}
+proxy:send("SET_COLOR_TARGET", agentTarget)
+T.eq("an unresolved Color Agent preset sends no command to the linked light", #requests, prior)
+agentTarget.LIGHT_COLOR_TARGET_X, agentTarget.LIGHT_COLOR_TARGET_Y = 0.29, 0.31
+proxy:send("SET_COLOR_TARGET", agentTarget)
+T.eq("the linked light receives the Color Agent's explicit coordinates", {
+  last().parameters.LIGHT_COLOR_TARGET_X,
+  last().parameters.LIGHT_COLOR_TARGET_Y,
+  last().parameters.LIGHT_COLOR_TARGET_RATE,
+}, { 0.29, 0.31, 250 })
 proxy:send("PUSH_SCENE", {
   SCENE_ID = scene.SCENE_ID,
   ELEMENTS = "<elements><element><brightness>72</brightness><brightnessRate>400</brightnessRate>"
@@ -453,6 +496,10 @@ proxy:send("PUSH_SCENE", {
     .. "<element><delay>600</delay><level>40</level></element></elements>",
 })
 prior = #requests
+lookupFailures = 1
+proxy:send("ACTIVATE_SCENE", scene)
+clock.run(2000)
+T.eq("an unknown target on the first step cancels later scene steps", #requests, prior)
 proxy:send("ACTIVATE_SCENE", scene)
 T.eq(
   "wrapped elements use the target's native color and brightness commands",
@@ -481,6 +528,18 @@ T.eq(
 )
 proxy:send("STOP_SCENE_RAMP", scene)
 T.eq("interactive stop forwards to a target that supports it", last().command, "SET_BRIGHTNESS_STOP")
+proxy:send("PUSH_SCENE", {
+  SCENE_ID = scene.SCENE_ID,
+  ELEMENTS = "<element><brightness>52</brightness><colorEnabled>True</colorEnabled>"
+    .. "<brightnessEnabled>True</brightnessEnabled><colorX>0.41</colorX><colorY>0.39</colorY></element>",
+})
+prior = #requests
+proxy:send("RAMP_SCENE_DOWN", { SCENE_ID = scene.SCENE_ID, RATE = 2000 })
+T.eq("an older color scene can still ramp a dimmer-only group", { #requests, last() }, {
+  prior + 1,
+  { id = group, command = "RAMP_TO_LEVEL", parameters = { LEVEL = 0, TIME = 2000 } },
+})
+proxy:send("STOP_SCENE_RAMP", scene)
 local previousPersist = PersistData
 PersistData = {
   LightScenes = {

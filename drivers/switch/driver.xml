@@ -185,16 +185,16 @@
     </tabs>
     <commands>
       <command>
-        <name>TurnOn</name>
-        <description>Turn On</description>
+        <name>Turn On</name>
+        <description>Turn NAME On</description>
       </command>
       <command>
-        <name>TurnOff</name>
-        <description>Turn Off</description>
+        <name>Turn Off</name>
+        <description>Turn NAME Off</description>
       </command>
       <command>
         <name>Toggle</name>
-        <description>Toggle</description>
+        <description>Toggle NAME</description>
       </command>
       <command>
         <name>PrintTiming</name>

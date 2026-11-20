@@ -7,9 +7,9 @@ local operations = require("ha.operations")
 local color = require("lib.light.color")
 local deferred = require("deferred")
 
-local function fixture(entity)
+local function fixture(entity, proxyOptions)
   local clock = F.virtualClock()
-  local proxy = P.install(clock)
+  local proxy = P.install(clock, proxyOptions)
   local adapter = Adapter.new()
   local calls, results = {}, {}
   local ready = true
@@ -212,9 +212,10 @@ T.section("logical On keeps HA semantics and explicit numeric levels use the tem
 do
   local f = fixture("light.lamp")
   local attrs = { supported_color_modes = codec.array({ "brightness" }) }
+  f.state("on", { supported_color_modes = attrs.supported_color_modes, brightness = 91 })
   f.state("off", attrs)
   f.proxy:send("ON")
-  T.eq("logical On uses HA default behavior", f.rpc().service_data, codec.object({}))
+  T.eq("logical On leaves HA in charge of remembered brightness", f.rpc().service_data, codec.object({}))
   f.calls[1].completion:resolve({})
   T.eq("acceptance does not become confirmed feedback", f.results, { "accepted" })
   attrs.brightness = 180
@@ -519,6 +520,31 @@ do
   f.done()
 end
 
+T.section("Native color targets distinguish device presets from Color Agent presets")
+do
+  local f = fixture("light.color_preset")
+  f.state("on", {
+    color_mode = "xy",
+    brightness = 120,
+    supported_color_modes = codec.array({ "xy" }),
+    xy_color = codec.array({ 0.32, 0.34 }),
+  })
+  f.proxy:send("UPDATE_COLOR_PRESET", { ID = 10, COMMAND = "ADDED", COLOR_X = 0.42, COLOR_Y = 0.38, COLOR_MODE = 0 })
+  local params = { LIGHT_COLOR_TARGET_PRESET_ID = 10, LIGHT_COLOR_TARGET_PRESET_ORIGIN = 2 }
+  f.proxy:send("SET_COLOR_TARGET", params)
+  T.eq("an unresolved Color Agent preset sends no HA command", #f.calls, 0)
+  params.LIGHT_COLOR_TARGET_X, params.LIGHT_COLOR_TARGET_Y = 0.29, 0.31
+  f.proxy:send("SET_COLOR_TARGET", params)
+  T.eq(
+    "Color Agent coordinates take precedence over the stored device color",
+    f.rpc().service_data.xy_color,
+    { 0.29, 0.31 }
+  )
+  f.proxy:send("SET_COLOR_TARGET", { LIGHT_COLOR_TARGET_PRESET_ID = 10, LIGHT_COLOR_TARGET_PRESET_ORIGIN = 1 })
+  T.eq("a device preset still resolves its stored color", f.rpc().service_data.xy_color, { 0.42, 0.38 })
+  f.done()
+end
+
 T.section("legacy mired ranges are inverted into Kelvin")
 do
   local f = fixture("light.legacy_temp")
@@ -553,6 +579,170 @@ do
   f.proxy:send("UPDATE_BRIGHTNESS_PRESET", { ID = 52, COMMAND = "REMOVED" })
   f.proxy:send("ON")
   T.eq("removing the explicit mode restores plain HA On", f.rpc().service_data, codec.object({}))
+  f.done()
+end
+
+T.section("The native Default On setting and its preset stay in sync")
+do
+  local f = fixture("light.preset")
+  f.state("off", { supported_color_modes = codec.array({ "brightness" }) })
+  f.proxy:send("UPDATE_BRIGHTNESS_ON_MODE", { BRIGHTNESS_PRESET_ID = 1, BRIGHTNESS_PRESET_LEVEL = 75 })
+  f.proxy:send("SET_PRESET_LEVEL", { LEVEL = 55 })
+  f.proxy:send("ON")
+  T.eq("an On command follows the edited Default On level", f.rpc().service_data.brightness, 140)
+  f.proxy:appOn(55)
+  T.eq("the Navigator target requests the edited preset level", f.rpc().service_data.brightness, 140)
+  f.proxy:send("UPDATE_BRIGHTNESS_PRESET", { ID = 1, COMMAND = "MODIFIED", NAME = "On", LEVEL = 53 })
+  T.eq("editing preset one keeps the reported Default On level in sync", f.adapter.light.settings:presetLevel(), 53)
+  f.proxy:send("UPDATE_BRIGHTNESS_ON_MODE", { BRIGHTNESS_PRESET_ID = 10, BRIGHTNESS_PRESET_LEVEL = 41 })
+  f.proxy:send("SET_PRESET_LEVEL", { LEVEL = 55 })
+  T.eq("editing Default On preserves another selected mode", f.adapter.light.settings:onModeLevel(), 41)
+  f.proxy:send("UPDATE_BRIGHTNESS_PRESET", { ID = 10, COMMAND = "REMOVED" })
+  f.proxy:send("SET_PRESET_LEVEL", { LEVEL = 100 })
+  f.done()
+end
+
+T.section("An upgraded Light honors Default On without a native mode selection")
+do
+  local settings = require("lib.light.settings")
+  local persist = require("lib.persist")
+  persist:delete(settings.P_BRIGHTNESS_ON_MODE_PRESET)
+  persist:delete(settings.P_ON_MODE)
+  persist:delete(settings.P_PRESET_LEVEL)
+  persist:delete(settings.P_BRIGHTNESS_PRESETS)
+  local f = fixture("light.legacy_preset")
+  f.state("off", { supported_color_modes = codec.array({ "brightness" }) })
+  T.eq("the proxy has no saved brightness mode", f.adapter.light.settings:brightnessPresetId(), nil)
+  f.proxy:send("SET_PRESET_LEVEL", { LEVEL = 55 })
+  f.proxy:send("ON")
+  T.eq(
+    "plain On uses the saved level on a proxy that only exposes Default On Brightness",
+    f.rpc().service_data.brightness,
+    140
+  )
+  persist:delete(settings.P_PRESET_LEVEL)
+  persist:delete(settings.P_BRIGHTNESS_PRESETS)
+  f.done()
+
+  f = fixture("light.legacy_preset", {
+    setup = '<setup><brightnesses><level id="1" name="On" level="55"/></brightnesses></setup>',
+  })
+  f.state("off", { supported_color_modes = codec.array({ "brightness" }) })
+  f.proxy:send("ON")
+  T.eq("after reload the native preset is used without resaving", f.rpc().service_data.brightness, 140)
+  persist:delete(settings.P_PRESET_LEVEL)
+  persist:delete(settings.P_BRIGHTNESS_PRESETS)
+  f.done()
+end
+
+T.section("Startup drops the On mode for a preset the native setup no longer lists")
+do
+  local attrs = { supported_color_modes = codec.array({ "brightness" }) }
+  local f = fixture("light.removed_preset")
+  f.state("off", attrs)
+  f.proxy:send("SET_PRESET_LEVEL", { LEVEL = 57 })
+  f.proxy:send("UPDATE_BRIGHTNESS_PRESET", { ID = 42, COMMAND = "ADDED", NAME = "Reading", LEVEL = 43 })
+  f.proxy:send("SET_BRIGHTNESS_ON_MODE", { PRESET_ID = 42 })
+  f.proxy:send("ON")
+  T.eq("before reload the custom On level reaches HA", f.rpc().service_data.brightness, 110)
+  f.done()
+
+  f = fixture("light.removed_preset", {
+    setup = "<setup><light_brightness_on_mode_preset_id>42</light_brightness_on_mode_preset_id>"
+      .. '<brightnesses><level id="1" name="On" level="57"/></brightnesses></setup>',
+  })
+  f.state("off", attrs)
+  f.proxy:send("ON")
+  T.eq("after reload On uses the saved Default On level", f.rpc().service_data.brightness, 145)
+  T.eq("the missing preset is no longer selected", f.adapter.light.settings:brightnessPresetId(), nil)
+  f.proxy:send("UPDATE_BRIGHTNESS_PRESET", { ID = 42, COMMAND = "ADDED", NAME = "Evening", LEVEL = 80 })
+  f.proxy:send("ON")
+  T.eq("reusing the ID leaves Default On selected", f.rpc().service_data.brightness, 145)
+  f.proxy:send("UPDATE_BRIGHTNESS_PRESET", { ID = 42, COMMAND = "REMOVED", LEVEL = 80 })
+  f.proxy:send("SET_PRESET_LEVEL", { LEVEL = 100 })
+  f.done()
+end
+
+T.section("Navigator shows numeric fade targets and identifies brightness presets on completion")
+do
+  local f = fixture("light.preset")
+  local attrs = { brightness = 140, supported_color_modes = codec.array({ "brightness" }), supported_features = 32 }
+  f.state("on", attrs)
+  f.proxy:mark()
+  f.proxy:send("SET_BRIGHTNESS_TARGET", {
+    LIGHT_BRIGHTNESS_TARGET = "0",
+    LIGHT_BRIGHTNESS_TARGET_PRESET_ID = "2",
+    RATE = "750",
+  })
+  T.eq("Off sends a single turn_off with the native transition", { #f.calls, f.rpc().service, f.rpc().service_data }, {
+    1,
+    "turn_off",
+    codec.object({ transition = 0.75 }),
+  })
+  T.eq("the native ramp uses the explicit zero target", f.proxy:last("LIGHT_BRIGHTNESS_CHANGING"), {
+    LIGHT_BRIGHTNESS_CURRENT = 55,
+    LIGHT_BRIGHTNESS_TARGET = 0,
+    RATE = 750,
+  })
+  f.state("off", { supported_color_modes = attrs.supported_color_modes, supported_features = 32 })
+  f.clock.run(750)
+  T.eq("the landed brightness preserves the native Off preset", f.proxy:last("LIGHT_BRIGHTNESS_CHANGED"), {
+    LIGHT_BRIGHTNESS_CURRENT = 0,
+    LIGHT_BRIGHTNESS_CURRENT_PRESET_ID = 2,
+  })
+  f.proxy:send("UPDATE_BRIGHTNESS_ON_MODE", { BRIGHTNESS_PRESET_ID = 1, BRIGHTNESS_PRESET_LEVEL = 55 })
+  f.proxy:appOn(55)
+  local onRamp = f.proxy:last("LIGHT_BRIGHTNESS_CHANGING")
+  T.eq(
+    "the Default On ramp shows the saved numeric target",
+    { onRamp.LIGHT_BRIGHTNESS_TARGET, onRamp.LIGHT_BRIGHTNESS_TARGET_PRESET_ID },
+    { 55 }
+  )
+  f.state("on", attrs)
+  f.clock.run(750)
+  T.eq("the landed brightness identifies Default On", f.proxy:last("LIGHT_BRIGHTNESS_CHANGED"), {
+    LIGHT_BRIGHTNESS_CURRENT = 55,
+    LIGHT_BRIGHTNESS_CURRENT_PRESET_ID = 1,
+  })
+  f.proxy:send("SET_BRIGHTNESS_TARGET", {
+    LIGHT_BRIGHTNESS_TARGET = "37",
+    LIGHT_BRIGHTNESS_TARGET_PRESET_ID = "10",
+    RATE = "750",
+  })
+  T.eq("the Previous Level ramp shows the remembered numeric target", f.proxy:last("LIGHT_BRIGHTNESS_CHANGING"), {
+    LIGHT_BRIGHTNESS_CURRENT = 55,
+    LIGHT_BRIGHTNESS_TARGET = 37,
+    RATE = 750,
+  })
+  attrs.brightness = 94
+  f.state("on", attrs)
+  f.clock.run(750)
+  T.eq("the landed brightness identifies Previous Level", f.proxy:last("LIGHT_BRIGHTNESS_CHANGED"), {
+    LIGHT_BRIGHTNESS_CURRENT = 37,
+    LIGHT_BRIGHTNESS_CURRENT_PRESET_ID = 10,
+  })
+  f.proxy:send("SET_BRIGHTNESS_TARGET", {
+    LIGHT_BRIGHTNESS_TARGET = "64",
+    LIGHT_BRIGHTNESS_TARGET_PRESET_ID = "42",
+    RATE = "750",
+  })
+  T.eq("the custom preset also sends a numeric fade target", f.proxy:last("LIGHT_BRIGHTNESS_CHANGING"), {
+    LIGHT_BRIGHTNESS_CURRENT = 37,
+    LIGHT_BRIGHTNESS_TARGET = 64,
+    RATE = 750,
+  })
+  local targets = {}
+  for i = 1, 3 do
+    targets[i] = f.proxy.vars["1110"].value
+    f.clock.run(250)
+  end
+  T.eq("the native target shows 64 throughout the fade", targets, { "64", "64", "64" })
+  attrs.brightness = 163
+  f.state("on", attrs)
+  T.eq("the landed brightness identifies the custom preset", f.proxy:last("LIGHT_BRIGHTNESS_CHANGED"), {
+    LIGHT_BRIGHTNESS_CURRENT = 64,
+    LIGHT_BRIGHTNESS_CURRENT_PRESET_ID = 42,
+  })
   f.done()
 end
 
@@ -666,6 +856,76 @@ for _, case in ipairs({
   T.eq("later scene step canceled on " .. case.name, #f.calls, sent)
   T.eq("timers did not raise after " .. case.name, f.clock.errors, {})
   f.done()
+end
+
+T.section("Original BP scenes play from their stored ALS record")
+do
+  local f = dimmer(true)
+  local persist = require("lib.persist")
+  local retirementKey = "HA.Light.BPSceneRetirements"
+  local original = C4:ParseXml("<element><delay>500</delay><level>35.5</level><brightness>75</brightness></element>")
+  local second = C4:ParseXml("<element><brightness>64</brightness></element>")
+  C4:PersistSetValue("ALS:81", original, false)
+  C4:PersistSetValue("ALS:82", second, false)
+  C4:PersistSetValue("ALS:83", C4:ParseXml("<element><brightness>101</brightness></element>"), false)
+  ShimPersistLand()
+
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "83" })
+  T.eq("invalid BP brightness sends no command", #f.calls, 0)
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "81" })
+  T.eq("BP activation uses its first level immediately", f.rpc().service_data.brightness, 91)
+  T.eq("activation leaves the original parsed scene intact", C4:PersistGetValue("ALS:81", false), original)
+  T.eq("read-only activation writes no compatibility settings", C4:PersistGetValue(retirementKey, false), nil)
+
+  f.proxy:send("REMOVE_SCENE", { SCENE_ID = "81" })
+  local sent = #f.calls
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "81" })
+  T.eq("a removed scene cannot reappear while the storage write is pending", #f.calls, sent)
+  ShimPersistLand()
+  persist._persist[retirementKey] = nil
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "81" })
+  T.eq("a removed scene stays retired on a cold read", #f.calls, sent)
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "82" })
+  T.eq("removal keeps unrelated BP scenes playable", f.rpc().service_data.brightness, 163)
+
+  f.proxy:send("CLEAR_ALL_SCENES")
+  sent = #f.calls
+  ShimPersistLand()
+  persist._persist[retirementKey] = nil
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "82" })
+  T.eq("clear-all retires BP scenes after a cold read", #f.calls, sent)
+  T.eq("scene removal keeps the original records for rollback", {
+    C4:PersistGetValue("ALS:81", false),
+    C4:PersistGetValue("ALS:82", false),
+  }, { original, second })
+  f.proxy:send("PUSH_SCENE", { SCENE_ID = "82", ELEMENTS = "<element><level>20</level></element>" })
+  f.proxy:send("ACTIVATE_SCENE", { SCENE_ID = "82" })
+  T.eq("Composer can save a new scene at a retired BP ID", f.rpc().service_data.brightness, 51)
+  persist:set(retirementKey, nil)
+  f.done()
+end
+
+T.section("Director's first Light scene survives a cold read")
+do
+  local persist = require("lib.persist")
+  local scenesKey = "scenes"
+  local sceneId = "0"
+  local before = dimmer(true)
+  before.proxy:send("PUSH_SCENE", {
+    SCENE_ID = sceneId,
+    ELEMENTS = "<element><level>40</level></element>",
+  })
+  before.done()
+  ShimPersistLand()
+  persist._persist[scenesKey] = nil
+
+  local after = dimmer(true)
+  after.proxy:send("ACTIVATE_SCENE", { SCENE_ID = sceneId })
+  T.eq("the saved scene still sends its brightness without another push", after.rpc().service_data.brightness, 102)
+  after.proxy:send("REMOVE_SCENE", { SCENE_ID = sceneId })
+  after.done()
+  ShimPersistLand()
+  persist._persist[scenesKey] = nil
 end
 
 T.section("Prototype scenes play from the original persisted table and obey native stop")

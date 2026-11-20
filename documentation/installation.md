@@ -77,15 +77,41 @@ for **HA Gesture Bridge** under **Add integration**.
 Save a backup and keep the original packages. Update supported **HA
 Coordinator** and **HA Light** instances in place using their existing
 filenames. Check that each keeps its saved selection, connections and
-programming. For an original or prototype **HA Switch**, add an unconfigured
-**Home Assistant Switch** replacement. Open **Device Setup → Review an older
-driver** on the replacement and select the original. Follow the preview and
-verify any connections or programming it asks you to recreate in Composer. Keep
-the original driver and project backup until the new switch passes a control and
-programming check. Use that backup to restore the project if the cutover fails.
-[Compatibility](compatibility.md)
+programming. For an original or prototype **HA Switch** controlling a device
+directly, open **Home Assistant Connection → Quick Setup → Migrate switch
+drivers**. Follow the preview and verify any connections or programming it asks
+you to recreate in Composer. For a prototype switch that uses button events,
+follow **Manual migration for button switches** in the Coordinator’s
+**Documentation** tab. Keep the original driver and project backup until the
+replacement passes its control and programming checks. Use the backup to restore
+the project if the cutover fails. [Compatibility](compatibility.md)
 
 Use the Coordinator’s **Check for driver updates** action to check the suite.
 The current development builds report availability and verify the files.
 Installation still needs an installer.
 [Driver releases](build.md#check-for-a-driver-release)
+
+## Find where setup stopped
+
+| What you see                                                  | What to check                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The device fails in Home Assistant                            | Test the selected entity and any separate linked load in Home Assistant. For a paddle, verify its input under HA Gesture Bridge before retrying Device Setup.                                                                                                                                           |
+| The Coordinator is disconnected                               | In **Home Assistant Connection → Properties**, check Driver Status, HA URL and the saved account. For HTTPS, verify the trust chain and the final reachable origin. [Connection](connection.md)                                                                                                         |
+| The Coordinator connects but the picker or preparation fails  | Check **Driver Status** and **Next step** on the selected Light or Switch. Correct the named error and retry the failed step. The current choice stays in place while a replacement is checked. [Device Setup](device-setup.md#when-setup-needs-attention)                                              |
+| A physical paddle or the app operates the wrong light         | Read **Selected Device** and **Controls** on the Light. Compare the app target with the separate paddle links in Composer **Connections**. [Connected lighting](connected-control4-lighting.md)                                                                                                         |
+| An old Switch migration stops or a replacement fails its test | Read the affected row in the Coordinator's **Quick Setup**. Keep the original and use the saved project backup if the prior settings, links or programming cannot be restored and verified. [Coordinator documentation](../drivers/coordinator/www/documentation/index.md#migrate-older-switch-drivers) |
+
+For a support report, note the three driver revisions, the HA and optional
+companion versions, the step that failed, and the exact short status shown.
+Share only the relevant error text. Keep tokens, certificate keys and raw Home
+Assistant messages out of the report.
+
+## Optional assistant setup
+
+For a release that includes the assistant skill, download
+`control4-ha-setup.zip` from the same release as the drivers. Extract the
+`control4-ha-setup` folder and install it using your assistant's Agent Skills
+instructions. Its reference map lists the matching manuals and the Home
+Assistant connector requirements. Use the skill to check Home Assistant
+readiness and prepare the Composer handoff.
+[Suite releases](https://github.com/skialpine/Control4-HA/releases)

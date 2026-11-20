@@ -4,10 +4,6 @@ local ids = require("ha.identities")
 require("lib.utils")
 local prototypeSelection = require("ha.prototype-selection")
 local M = {}
-local packages = {
-  ["HA.Switch.c4z"] = { model = "HA Switch", family = "switch", versions = { ["106"] = "BP", ["107"] = "Prototype" } },
-  ["HA.Light.c4z"] = { model = "HA Light", family = "light", versions = { ["106"] = "BP", ["1"] = "Prototype" } },
-}
 local roles = {
   [999] = { class = "HA_DEVICE", name = "Home Assistant connection", provider = false, new = ids.coordinatorBinding },
   [1] = { class = "RELAY", name = "Relay", provider = true, new = ids.relay },
@@ -38,13 +34,59 @@ local function numeric(value)
   return contract.integer(n) and n or nil
 end
 
+function M.deviceLabel(name, room)
+  return name .. (type(room) == "string" and room:match("%S") and (" in " .. room) or " in an unknown room")
+end
+
+function M.deviceLocation(id, fallbackName, fallbackRoom)
+  local rows = C4:GetDevices({ DeviceIds = tostring(id) }) or {}
+  local device = rows[id] or rows[tostring(id)]
+  local name = device and device.deviceName or fallbackName or "Unknown device"
+  local room = device and device.roomName or fallbackRoom
+  return M.deviceLabel(name, room), device
+end
+
+local lightEvents = { [5100] = "Turned On", [5101] = "Turned Off" }
+
+local function eventName(device, reference)
+  if device and device.driverFileName == "light_v2.c4i" and lightEvents[reference.event] then
+    return lightEvents[reference.event]
+  end
+  local got, xml = pcall(C4.GetDeviceData, C4, reference.device, "events")
+  if not got or type(xml) ~= "string" or #xml > 65536 then
+    return
+  end
+  local parsed, tree = pcall(ParseXml, "<root>" .. xml .. "</root>")
+  local root = parsed and Select(tree, "root")
+  local events = Select(root, "events", "event") or Select(root, "event")
+  if type(events) ~= "table" then
+    return
+  end
+  for _, event in pairs(events.id and { events } or events) do
+    if type(event) == "table" and tonumber(event.id) == reference.event and type(event.name) == "string" then
+      if #event.name <= 160 and event.name:match("%S") and not event.name:find("%c") then
+        return event.name
+      end
+    end
+  end
+end
+
+function M.programReference(reference, original)
+  local location, device = M.deviceLocation(reference.device, original and original.name, original and original.room)
+  return {
+    location = location,
+    event = eventName(device, reference),
+    eventId = reference.event,
+  }
+end
+
 function M.source(id, row)
-  local package = row and packages[row.driverFileName]
+  local package = row and ids.legacyPrototypes[row.driverFileName]
   if not package or C4:GetDeviceData(id, "model") ~= package.model or C4:GetDeviceData(id, "manufacturer") ~= "BP" then
     return nil
   end
   local version = tostring(C4:GetDeviceData(id, "version"))
-  local origin = package.versions[version]
+  local origin = version == package.version and "Prototype" or version == "106" and "BP" or nil
   if not origin then
     return nil
   end
@@ -61,15 +103,15 @@ function M.source(id, row)
   }
 end
 
-function M.sources()
-  local found = C4:GetDevices({ C4iNames = "HA.Switch.c4z,HA.Light.c4z" })
+function M.sources(family)
+  local found = C4:GetDevices({ C4iNames = family == "switch" and "HA.Switch.c4z" or "HA.Switch.c4z,HA.Light.c4z" })
   assert(type(found) == "table")
   local list = {}
   for key, row in pairs(found) do
     local id = numeric(key)
     if id and type(row) == "table" and not next(row.protocol or {}) then
       local candidate = M.source(id, row)
-      if candidate then
+      if candidate and (not family or candidate.family == family) then
         list[#list + 1] = candidate
       end
     end
@@ -154,21 +196,45 @@ local function bindings(report, owner)
   return known
 end
 
+local powerCommands = { ["Turn On"] = true, ["Turn Off"] = true, TurnOn = true, TurnOff = true }
+
+-- Only single, unconditional power commands with empty arguments have a verified mapping.
+local function powerCommand(node, depth)
+  local xml = type(node.cmdcond) == "table" and node.cmdcond.xml
+  if depth ~= 1 or node.enabled == false or type(xml) ~= "string" or #xml > 2048 then
+    return
+  end
+  local ok, parsed = pcall(ParseXml, xml)
+  local command = ok and Select(parsed, "devicecommand")
+  if
+    type(command) == "table"
+    and powerCommands[command.command]
+    and (command.params == nil or type(command.params) == "table" and not next(command.params))
+  then
+    return command.command
+  end
+end
+
 -- The published GetAllCodeItems schema separates structural targets from private cmdcond XML.
-local function programming(members)
-  local programs = C4:GetAllCodeItems()
+local function programming(members, programs)
   local summary = { readable = false, attached = {}, incoming = {}, opaque = false }
   if type(programs) ~= "table" or type(programs.event_mgr) ~= "table" then
     return summary
   end
   local remaining = 25000
-  local function visit(node, depth)
+  local function visit(node, depth, location, active)
     remaining = remaining - 1
     if remaining < 0 or depth > 64 or type(node) ~= "table" then
       error("unsupported program structure")
     end
     local target = numeric(node.device)
-    local referenced = target and members[target] or false
+    if target and members[target] then
+      location.actionCount = location.actionCount + 1
+      local command = active and powerCommand(node, depth)
+      if command then
+        location.commands[command] = (location.commands[command] or 0) + 1
+      end
+    end
     if type(node.cmdcond) == "table" and node.cmdcond.xml ~= nil and node.cmdcond.xml ~= "" then
       summary.opaque = true
     end
@@ -176,20 +242,17 @@ local function programming(members)
       error("unsupported branch structure")
     end
     for _, child in pairs(node.subitems or {}) do
-      if visit(child, depth + 1) then
-        referenced = true
-      end
+      visit(child, depth + 1, location, active)
     end
-    return referenced
   end
   for _, event in pairs(programs.event_mgr) do
     local id, trigger = numeric(event.deviceid), tonumber(event.eventid)
     if not id or not trigger or trigger < 0 or trigger ~= math.floor(trigger) then
       return summary
     end
-    local location = { device = id, event = trigger }
-    local references = visit(event.codeitem, 0)
-    local locations = members[id] and summary.attached or references and summary.incoming
+    local location = { device = id, event = trigger, actionCount = 0, commands = {} }
+    visit(event.codeitem, 0, location, event.codeitem.enabled ~= false)
+    local locations = members[id] and summary.attached or location.actionCount > 0 and summary.incoming
     if locations then
       if #locations >= 128 then
         summary.truncated = true
@@ -205,6 +268,35 @@ local function programming(members)
   table.sort(summary.incoming, order)
   summary.readable = true
   return summary
+end
+
+function M.programmingSnapshot()
+  local ok, programs = pcall(C4.GetAllCodeItems, C4)
+  return ok and programs or false
+end
+
+local function readProgramming(members, snapshot)
+  if snapshot == nil then
+    snapshot = M.programmingSnapshot()
+  end
+  local safe, programs = pcall(programming, members, snapshot)
+  return safe and programs or { readable = false, attached = {}, incoming = {} }
+end
+
+function M.deviceProgramming(id)
+  local row = lookup(id)
+  if not row or next(row.protocol or {}) then
+    return { readable = false, attached = {}, incoming = {} }
+  end
+  local members = { [id] = true }
+  for key in pairs(row.proxies or {}) do
+    local proxy = numeric(key)
+    if not proxy then
+      return { readable = false, attached = {}, incoming = {} }
+    end
+    members[proxy] = true
+  end
+  return readProgramming(members)
 end
 
 function M.assess(requested, options)
@@ -275,6 +367,8 @@ function M.assess(requested, options)
   report.empty = entity == "" and count == 1 and variable == ""
   if count == 1 and entity == variable and contract.entity(entity) then
     report.entity = entity
+  elseif count == 1 and contract.entity(entity) and contract.entity(variable) then
+    report.selection_disagrees = true
   elseif (entity == nil or entity == false) and count == 1 and contract.entity(variable) then
     report.candidate_entity = variable
   elseif count == 0 and contract.entity(entity) then
@@ -282,13 +376,49 @@ function M.assess(requested, options)
   end
   report.mode = ok and type(props) == "table" and prototypeSelection.mode(props["Operation Mode"]) or nil
   if not (options and options.skipPrograms) then
-    local safe, programs = pcall(programming, members)
-    report.programs = safe and programs or { readable = false, attached = {}, incoming = {} }
+    report.programs = readProgramming(members, options and options.programming)
   end
   return report
+end
+
+function M.switchSelectionIssue(source)
+  if source.selection_disagrees then
+    return "Re-enter the correct Entity ID in the original switch’s Properties in Composer, then refresh the list."
+  end
 end
 
 function M.destination(sourceBinding)
   return roles[sourceBinding]
 end
+
+function M.legacyCoordinator(source)
+  if not source or not source.interfaces then
+    return nil
+  end
+  local provider = numeric(C4:GetBoundProviderDevice(source.id, ids.lightCoordinatorBinding))
+  if provider then
+    for _, edge in ipairs(source.edges) do
+      if
+        edge.owner == source.id
+        and edge.binding == ids.lightCoordinatorBinding
+        and edge.direction == "input"
+        and edge.device == provider
+        and edge.port == ids.coordinatorBinding
+      then
+        return provider
+      end
+    end
+  end
+end
+
+function M.switchMigrationModeIssue(source)
+  if source.mode == "direct" or (source.version == "106" and source.mode == nil) then
+    return nil
+  end
+  if source.mode == "bridge" or source.mode == "buttons" then
+    return "This switch uses button events. See Manual migration for button switches in the Home Assistant Connection driver’s Documentation tab."
+  end
+  return "Check Operation Mode in the original switch’s Properties in Composer, then refresh or reopen this review."
+end
+
 return M

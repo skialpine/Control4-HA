@@ -88,8 +88,9 @@ end
 local function read(device, variable)
   local ok, value = pcall(C4.GetDeviceVariable, C4, device, variable)
   if ok then
-    return value
+    return value, true
   end
+  return nil, false
 end
 
 local function ownProxySet()
@@ -198,9 +199,9 @@ function Target:_seed(target)
     if self.target ~= target then
       return
     end
-    local value = read(target.device, variable)
+    local value, readable = read(target.device, variable)
     target.values[variable] = value
-    if value ~= nil and not target.watch[variable] then
+    if (value ~= nil or not readable) and not target.watch[variable] then
       local flags = OWVC.suppressDebug[target.device] or {}
       OWVC.suppressDebug[target.device] = flags
       flags[variable] = true
@@ -383,12 +384,11 @@ end
 
 function Target:_send(operation, command, parameters)
   local target = self.target
-  if
-    not target
-    or self.sending
-    or not samePeer(target.link, self.links[target.link.role])
-    or not sameLinks(self.links, peers(self.ownIds))
-  then
+  if not target or self.sending or not samePeer(target.link, self.links[target.link.role]) then
+    return false
+  end
+  local readOK, live = pcall(peers, self.ownIds)
+  if not readOK or not sameLinks(self.links, live) then
     return false
   end
   local span = metrics:start(operation)
@@ -498,14 +498,17 @@ end
 
 -- Leaving connected mode blocks new presses but does not retire cleanup for
 -- a press already sent. Each retry checks the actual original binding.
-function Target:_release(role, hold)
+function Target:_release(role, hold, peerUnknown)
   if self.held[role] ~= hold then
     return
   end
   local timer = "HA.Connected.Release." .. role
   CancelTimer(timer)
   self.held[role] = nil
-  local matches = currentPeer(hold.link, self.ownIds)
+  local matches
+  if not peerUnknown then
+    matches = currentPeer(hold.link, self.ownIds)
+  end
   if matches == false then
     return
   end
@@ -535,15 +538,22 @@ end
 -- Feedback uses the selected paddle, which may control a different light than the app.
 function Target:feedbackLink(role)
   local link = self.links[role]
-  return self.enabled and role ~= "app" and link and samePeer(link, peers(self.ownIds)[role]) and link or nil
+  return self.enabled and role ~= "app" and link and currentPeer(link, self.ownIds) and link or nil
 end
 
 function Target:button(role, action, buttonId)
   local link = self.links[role]
-  if not self.enabled or not link or role == "app" or not currentPeer(link, self.ownIds) then
+  if not self.enabled or not link or role == "app" then
     return false
   end
   local held = self.held[role]
+  local matches = currentPeer(link, self.ownIds)
+  if not matches then
+    if matches == nil and action == "release" and held and held.buttonId == buttonId then
+      self:_release(role, held, true)
+    end
+    return false
+  end
   if held and not samePeer(held.link, link) then
     self:_release(role, held)
     held = nil

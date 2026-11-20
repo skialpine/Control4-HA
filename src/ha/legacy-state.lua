@@ -1,4 +1,4 @@
--- Only fields read by the pinned BP Parse functions may cross a legacy wire.
+-- Only fields used by the pinned predecessors may cross the shared wire.
 local codec = require("ha.codec")
 local M = {}
 local fields = {
@@ -55,6 +55,7 @@ local lists = {
   preset_modes = true,
   options = true,
 }
+local prototypeFields = { "friendly_name", "supported_features" }
 local function scalar(value)
   return type(value) == "boolean" or type(value) == "number" or type(value) == "string" and #value <= 4096
 end
@@ -94,9 +95,17 @@ function M.project(state, models)
       attrs[key] = value
     end
   end
+  if models.prototype then
+    for _, key in ipairs(prototypeFields) do
+      local value = state.attributes[key]
+      if scalar(value) then
+        attrs[key] = value
+      end
+    end
+  end
   local out = { entity_id = state.entity_id, state = state.state, attributes = attrs }
   if
-    domain == "sensor"
+    (domain == "sensor" or models.prototype)
     and type(state.last_updated) == "string"
     and #state.last_updated <= 40
     and state.last_updated:match("^%d%d%d%d%-%d%d%-%d%dT[%d:.+Z%-]+$")

@@ -16,8 +16,11 @@ local function revision(value)
   return type(value) == "string" and #value == 64 and value:match("^[a-f0-9]+$") ~= nil
 end
 
-function Catalog.new(request, native, decorate)
-  return setmetatable({ request = request, native = native, decorate = decorate, generation = 0 }, Catalog)
+function Catalog.new(request, native, decorate, supplement)
+  return setmetatable(
+    { request = request, native = native, decorate = decorate, supplement = supplement, generation = 0 },
+    Catalog
+  )
 end
 function Catalog:invalidate(kind)
   metrics:finish(self.timing, "retired")
@@ -38,11 +41,17 @@ function Catalog:_metadata(family)
     family = family,
   }
 end
-function Catalog:refresh()
+function Catalog:refresh(force)
   if self.pending then
+    self.pending.refresh_native = self.pending.refresh_native or force == true
     return self.pending
   end
   local pending = deferred.new()
+  if not force and self.snapshot and self.snapshot.source == "native" and self.verified == self.generation then
+    pending:resolve(self:_metadata())
+    return pending
+  end
+  pending.refresh_native = force == true
   self.pending = pending
   self.timing = metrics:start(self.snapshot and "catalog.refresh" or "catalog.cold")
   local generation, rows, seen, bytes = self.generation, codec.array({}), {}, 0
@@ -51,6 +60,7 @@ function Catalog:refresh()
   end
   local function fail(kind)
     if active() then
+      self.verified = nil
       self.pending = nil
       metrics:finish(self.timing, kind == "timeout" and "timeout" or "failed")
       pending:reject({ kind = kind, boundary = "catalog" })
@@ -82,6 +92,43 @@ function Catalog:refresh()
     metrics:finish(self.timing, "ok")
     pending:resolve(self:_metadata())
   end
+  local function readNative(callback)
+    local ok, work = pcall(self.native)
+    if not ok or type(work) ~= "table" or type(work.next) ~= "function" then
+      fail("filtered_read_failed")
+      return
+    end
+    work:next(function(values)
+      if not active() then
+        return
+      end
+      if not codec.isArray(values) or #values > MAX_ROWS then
+        fail("invalid_filtered_catalog")
+        return
+      end
+      local seen = {}
+      for _, row in ipairs(values) do
+        if not contract.catalogRow(row) or seen[row.entity_id] then
+          fail("invalid_filtered_catalog")
+          return
+        end
+        seen[row.entity_id] = true
+      end
+      callback(values)
+    end, function(error)
+      fail(error.kind or "filtered_read_failed")
+    end)
+  end
+  local function decorate(values, callback, native)
+    local ok, work = pcall(self.decorate, values, active, native)
+    if not ok or type(work) ~= "table" or type(work.next) ~= "function" then
+      fail("invalid_endpoint_metadata")
+      return
+    end
+    work:next(callback, function(failure)
+      fail(failure.kind or "filtered_registry_failed")
+    end)
+  end
   local function publish(source, upstreamRevision, pages, eligibilityVersion)
     if not active() then
       return
@@ -91,6 +138,10 @@ function Catalog:refresh()
         return
       end
       local indices = { all = {}, light = {}, switch = {}, quick_lighting = {}, quick_light = {}, quick_switch = {} }
+      if #values > MAX_ROWS then
+        fail("invalid_endpoint_metadata")
+        return
+      end
       table.sort(values, function(a, b)
         return a.entity_id < b.entity_id
       end)
@@ -125,6 +176,7 @@ function Catalog:refresh()
           revision = fingerprint,
           upstreamRevision = upstreamRevision,
           rows = values,
+          upstreamRows = upstreamRevision and rows or nil,
           indices = indices,
           pages = pages,
           eligibilityVersion = eligibilityVersion,
@@ -132,41 +184,40 @@ function Catalog:refresh()
       end
       complete()
     end
+    local function ready(values)
+      if not active() then
+        return
+      end
+      if source == "companion" and self.supplement then
+        readNative(function(nativeRows)
+          decorate(nativeRows, function(filtered)
+            if active() then
+              publishValues(Choices.merge(values, filtered))
+            end
+          end, true)
+        end)
+      else
+        publishValues(values)
+      end
+    end
     if eligibilityVersion == 1 then
       local ok, values = pcall(Choices.apply, rows)
       if ok and values then
-        publishValues(values)
+        ready(values)
       else
         fail("invalid_endpoint_metadata")
       end
       return
     end
-    local ok, work = pcall(self.decorate, rows, active)
-    if not ok or type(work) ~= "table" or type(work.next) ~= "function" then
-      fail("invalid_endpoint_metadata")
-      return
-    end
-    work:next(publishValues, function(failure)
-      fail(failure.kind or "filtered_registry_failed")
-    end)
+    decorate(rows, ready, source == "native")
   end
   local function native()
-    local ok, work = pcall(self.native)
-    if not ok or type(work) ~= "table" or type(work.next) ~= "function" then
-      fail("filtered_read_failed")
-      return
-    end
-    work:next(function(values)
-      if not active() then
-        return
-      end
+    readNative(function(values)
       if not append(values) then
         fail("invalid_filtered_catalog")
         return
       end
       publish("native")
-    end, function(error)
-      fail(error.kind or "filtered_read_failed")
     end)
   end
   local expected, total, pages, eligibilityVersion
@@ -222,7 +273,7 @@ function Catalog:refresh()
           or not known
           or response.revision ~= known
           or response.entities ~= nil
-          or response.total ~= #self.snapshot.rows
+          or response.total ~= #(self.snapshot.upstreamRows or self.snapshot.rows)
           or response.pages ~= self.snapshot.pages
         then
           fail("invalid_revision_confirmation")
@@ -231,18 +282,31 @@ function Catalog:refresh()
         if response.eligibility_version ~= self.snapshot.eligibilityVersion then
           -- A producer upgrade or downgrade may preserve its row hash. Do not
           -- reuse descriptors accepted under a different eligibility contract.
+          self.verified = nil
           page(1, true)
           return
         end
-        if response.eligibility_version == 1 then
+        if
+          response.eligibility_version == 1
+          and (not self.supplement or (not pending.refresh_native and self.verified == generation))
+        then
           complete()
           return
         end
-        rows = self.snapshot.rows
+        rows = self.snapshot.upstreamRows or self.snapshot.rows
         publish("companion", known, self.snapshot.pages, response.eligibility_version)
         return
       end
       if index == 1 then
+        if
+          self.snapshot
+          and (
+            response.revision ~= self.snapshot.upstreamRevision
+            or response.eligibility_version ~= self.snapshot.eligibilityVersion
+          )
+        then
+          self.verified = nil
+        end
         expected, total, pages, eligibilityVersion =
           response.revision, response.total, response.pages, response.eligibility_version
       end
@@ -305,9 +369,12 @@ function Catalog:read(rev, cursor, family)
   result.cursor, result.next_cursor = cursor, indices[index] and index or codec.null
   return result
 end
-function Catalog:choice(id, family)
+function Catalog:choice(id, family, expectedRevision)
   if not self.snapshot or self.verified ~= self.generation then
-    return nil
+    return nil, "catalog_unverified"
+  end
+  if expectedRevision and expectedRevision ~= self.snapshot.revision then
+    return nil, "revision_changed"
   end
   for _, index in ipairs(self.snapshot.indices[family] or {}) do
     local row = self.snapshot.rows[index]
@@ -315,6 +382,7 @@ function Catalog:choice(id, family)
       return row
     end
   end
+  return nil, "unsupported_endpoint"
 end
 
 return Catalog

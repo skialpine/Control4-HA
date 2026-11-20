@@ -15,6 +15,10 @@ Light SHALL expose On/Off, brightness, full color, white temperature and transit
 - **WHEN** valid CCT capability and current-state evidence arrive
 - **THEN** Navigator exposes the supported temperature range and changes are confirmed through target feedback
 
+#### Scenario: Choose a color while a direct Home Assistant light is off
+- **WHEN** the user chooses a color without turning on the light
+- **THEN** the light remains off and uses the chosen color the next time Control4 turns it on
+
 ### Requirement: Native advanced lighting features
 Qualified lights SHALL support native presets, On modes, rates, Advanced Lighting Scenes, programming conditions and load groups where the target supports their behavior. Eligibility and settings MUST survive initialization, capability refresh and updates; unsupported features MUST NOT be advertised.
 

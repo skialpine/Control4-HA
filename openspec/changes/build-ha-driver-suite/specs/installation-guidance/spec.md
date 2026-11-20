@@ -26,7 +26,7 @@ Light and Switch SHALL each have worked examples and a reference for properties,
 - **THEN** the guide identifies the correct physical selection, operating mode, app target and Controller Link roles without creating a redundant HA-exported C4 group
 
 ### Requirement: Migration and recovery
-The Switch migration guide SHALL explain the new Switch identity, project backup, explicit recreation of selections/bindings/programming, disabling duplicate control and rollback. It MUST NOT imply that renaming a package preserves an existing proxy topology or automatically migrates scenes.
+The Switch migration guide SHALL direct the installer to the open **Migrate switch drivers** section at the top of the Coordinator's Quick Setup page while migration or removal work remains. It SHALL explain how migration moves control to new drivers for the same hardware, how to confirm the project backup, how to resolve any specific programming or scene work reported by the wizard and how to restore the original project.
 
 #### Scenario: Pilot driver fails during migration
 - **WHEN** the installer rolls back using the guide
@@ -51,4 +51,4 @@ The guide SHALL identify the correct same-instance Coordinator and Light update,
 
 #### Scenario: An installer starts with a mixed project
 - **WHEN** they select instructions for their installed packages
-- **THEN** they can identify which instances update, what requires confirmation and how to restore the original project
+- **THEN** they can apply one suite release to all affected drivers, confirm the migration, verify that the destinations run the same revision and restore the original project if cutover fails

@@ -4,6 +4,7 @@ local codec = require("ha.codec")
 local contract = require("ha.contract")
 local page = require("ha.setup-page")
 local Choices = require("ha.choices")
+local metrics = require("ha.performance").shared
 local M = {}
 local errors = {
   preview_required = "Review your selection again before adding devices.",
@@ -14,6 +15,7 @@ local errors = {
   invalid_request = "Choose a device, a room and a name, then review your selection again.",
   configuration_unconfirmed = "The new driver has not confirmed setup. Check the driver and review your selection again to finish setup.",
   retired = "The connection restarted. Review your selection again.",
+  project_unavailable = "Could not check which devices already have a Control4 driver. Refresh the list to try again.",
 }
 function M.install(current)
   local register = page.commands(current)
@@ -50,7 +52,24 @@ function M.install(current)
     local function read(revision)
       local result, err = owner.catalog:read(revision, query.cursor, index)
       if result then
-        done(page.choices(result, true))
+        local response = page.choices(result, true)
+        local span = metrics:start("commissioning.catalog_matches")
+        local ok, existing, staged = pcall(owner.commissioning.existingChoices, owner.commissioning, result)
+        metrics:finish(span, ok and "ok" or "failed")
+        if not ok then
+          failed(done, { kind = "project_unavailable" })
+          return
+        end
+        for _, choice in ipairs(response.choices) do
+          choice.existing = existing[choice.id] or nil
+          local pending = staged[choice.id]
+          for _, family in ipairs(choice.families) do
+            if pending and family == pending.family then
+              choice.resume = pending
+            end
+          end
+        end
+        done(response)
       else
         failed(done, { kind = err })
       end
@@ -58,7 +77,7 @@ function M.install(current)
     if query.cursor or (params.setup and query.revision) then
       read(query.revision)
     else
-      owner.catalog:refresh():next(function(metadata)
+      owner.catalog:refresh(params.refresh == true):next(function(metadata)
         read(metadata.revision)
       end, function(err)
         failed(done, err)

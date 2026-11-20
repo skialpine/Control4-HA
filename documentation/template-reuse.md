@@ -34,6 +34,12 @@ library tests. Translate prototype behavioral tests into adapter/contract tests
 without carrying forward a second scene engine, property framework, transport
 stack or Base compatibility layer.
 
+The Light library owns its motion and report deadlines. The Switch uses the
+template's one-shot timer and native UI Button notifications because it has no
+Light motion engine. Both adapters use the shared HA load command module for
+service outcomes and exact selected-state reads. Device Setup uses the same
+scoped read for either family's recovery action.
+
 The pinned Light library currently needs two local corrections before the
 adapters can rely on it: explicit logical power intent on commands and permanent
 destruction. Record their changed files and hashes in the provenance inventory;
@@ -100,6 +106,105 @@ group owner's internal membership tables. The separate Light Group project owns
 its member handling and already publishes a change callback with on-count and
 synchronization status.
 [Upstream group hook](https://github.com/finitelabs/control4-driver-template/pull/239/files)
+
+### Advanced Lighting Scene IDs
+
+The pinned library accepts scene ID zero. The suite's added range guard excluded
+it, so CORE 1 could save its first scene but the Light ignored its activation.
+Retain the template's zero-based ID contract when validating incoming IDs. The
+Light adapter regression test saves and activates ID zero after a cold read.
+
+### Native Brightness On Mode
+
+The pinned `example_light` and Light Group profiles both enable `defaultOn` and
+`onModes`. The suite originally enabled only `onModes`. The CORE 1 Composer
+screen showed a Default On Brightness spinner where Light Group showed Preset
+and Previous Level choices. Revision 2026111826 adds the template's `defaultOn`
+profile option. The package verifier requires the native On mode and default-on
+capabilities. The adapter test confirms that an ordinary HA On with remembered
+brightness and an unset Control4 mode still leaves brightness to Home Assistant.
+Explicit On presets have their own test.
+
+CORE 1 reported both brightness mode flags enabled and supplied a Previous On
+preset for a fresh test copy of the same driver. Its existing BP-upgraded Light
+reported both flags disabled. The revision 2026111827 experiment sent the flags
+through `DYNAMIC_CAPABILITIES_CHANGED`, and the existing proxy continued to
+report them disabled. Revision 2026111828 removes that notification change and
+retains the template profile. Applying it in Composer also left both flags
+disabled on the existing proxy. Director later reported both flags enabled after
+a controller reboot, and Composer showed both controls on the existing Light.
+
+Both published driver sources use the template's same brightness notification
+path. They also use the same two inputs for preset edits. A single
+`SET_PRESET_LEVEL` packet updated the Default On fallback and left the active
+preset level stale until the proxy's follow-up `UPDATE_BRIGHTNESS_PRESET`. Keep
+those values in sync in the shared settings library. The regression exercises
+both edit commands, ordinary On and the preservation of a different On mode.
+CORE 1's complete native command sequence already includes the follow-up.
+
+An upgraded Light can expose Default On Brightness without a named On mode. The
+template already chooses its saved fallback level in that case. The HA adapter
+now passes that level through when the proxy supplied it. An On with no usable
+proxy value still leaves the remembered level to Home Assistant.
+
+The stock `example_light` on OS 3.4.3 reported a target of 65535 while fading to
+its 55% Default On preset. The upstream fix in `0f02a91` sends the numeric
+brightness target during the fade and sends the preset ID once the light
+settles. This replaces the suite's built-in-only workaround. The suite imports
+the measured proxy behavior in `test/light_proxy_fake.lua` and tests Off,
+Default On, Previous Level and a custom preset through the HA adapter. Before
+the backport, the fake proxy held 37% throughout the requested fade to 64% for
+the custom preset. With the fix it showed 64% and reported preset 42 on landing.
+
+[Upstream fix #242](https://github.com/finitelabs/control4-driver-template/pull/242)
+
+### v0.9.112 to v0.9.114
+
+Tag v0.9.114 includes the fade fix and its proxy fixture updates. The rendered
+group library also adds `Group:onChange` from PR #239. HA Light uses the member
+side of the library, so it needs no subscription to the group owner's callback.
+The only example diff is PR #240's variable restore in `OnDriverInit`. The suite
+foundation already does that work, and its restart test covers stable variable
+IDs. The upstream lighting suite exercises the new callback, proxy fixture and
+fade behavior.
+
+The suite's Light settings regression found that a removed brightness preset
+could still supply the active On level when Director includes `LEVEL` on the
+removal. The suite clears that selected ID and ignores the removal's level.
+Re-selecting the same mode preserves the level reported by the proxy, while a
+new mode with an uncached preset cannot inherit a different preset's level. The
+packaged two-VM test exercises addition, editing, removal, stale stored values,
+and rate persistence. Recheck these behaviors when adopting the next template
+pin.
+[Upstream issue #244](https://github.com/finitelabs/control4-driver-template/issues/244)
+
+### v0.9.114 to v0.9.116
+
+The `example-driver/drivers/example_light` diff is empty. Both intervening
+changes arrive through the template libraries and tests.
+
+- PR #245 keeps the live brightness preset removal fix and adds cleanup when
+  startup setup names a preset that is absent. It also checks the preset origin
+  before resolving a stored device color. The suite uses that same lookup for
+  App Control Links. Tests cover Default On after restart and ID reuse,
+  coordinate-only and preset color routing, and Color Agent ID collisions in
+  direct and linked modes.
+- PR #243 declares the restore phase for bindings, events and values and tests
+  each driver's startup in a fresh Lua VM. The shared foundation restores
+  bindings early alongside values. Light and Switch restore their saved
+  programming events in late initialization. Device Setup still retires the old
+  extra tap events, and prototype Light events use IDs outside the library's
+  cleanup range.
+
+Revision 2026111924 passed source checks and the packaged suite, including the
+two-VM Light settings readback. The independent review exercised a saved
+double-tap event during startup before Home Assistant connects on both driver
+fixtures and confirmed the retired fourth-tap row stayed hidden. Native Composer
+checks for preset removal, Color Agent selection and the Programming list remain
+pending.
+
+[PR #243](https://github.com/finitelabs/control4-driver-template/pull/243) ·
+[PR #245](https://github.com/finitelabs/control4-driver-template/pull/245)
 
 ### Applying the rule by driver
 

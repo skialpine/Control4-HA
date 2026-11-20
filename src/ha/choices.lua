@@ -48,7 +48,7 @@ local function enabled(entry)
 end
 -- A nil registry map means the supported companion projection already applied
 -- eligibility and alias policy. Family capability rules remain shared.
-function M.apply(rows, entries)
+function M.apply(rows, entries, native)
   local projected = entries == nil
   entries = entries or {}
   local result, byEntity, byRegistry, wrappers, candidates = codec.array({}), {}, {}, {}, {}
@@ -113,10 +113,13 @@ function M.apply(rows, entries)
       if projected and (item.is_group ~= true or item.domain == "event") then
         return nil
       end
-      eligible = (projected or enabled(entry))
+      eligible = (
+        projected
+        or enabled(entry)
+        or (native and entry == codec.null and contract.loadDomain(item.entity_id))
+      )
         and item.c4_exported ~= true
         and item.device_disabled ~= true
-        and (registryId(item.device_id) or item.is_group == true or entry.platform == "switch_as_x")
       local modes = item.attributes.supported_color_modes
         or (codec.isObject(entry) and codec.isObject(entry.capabilities) and entry.capabilities.supported_color_modes)
       dims = lightCapabilities.fromModes(modes)
@@ -156,13 +159,13 @@ function M.apply(rows, entries)
     local entry = entries[item.entity_id]
     if item.domain == "light" and not item.is_group and codec.isObject(entry) and entry.platform == "switch_as_x" then
       local options = codec.isObject(entry.options) and (entry.options.switch_as_x or entry.options.light)
-      local target = codec.isObject(options) and options.invert == false and options.entity_id
+      local target = codec.isObject(options) and options.entity_id
       local base = type(target) == "string" and byEntity[byRegistry[target] or target]
-      if base and base.domain == "switch" and not base.is_group then
+      if base and (base.domain == "switch" or base.domain == "input_boolean") and not base.is_group then
         local baseEntry = entries[base.entity_id]
         if base.c4_exported == true or (codec.isObject(baseEntry) and baseEntry.platform == "control4") then
           item.families = codec.array({})
-        else
+        elseif options.invert == false then
           for _, family in ipairs({ "light", "switch" }) do
             if has(item, family) and has(base, family) then
               local key = family .. ":" .. base.entity_id
@@ -175,6 +178,10 @@ function M.apply(rows, entries)
             end
           end
         end
+      elseif native then
+        -- A loaded Switch as X on supported HA publishes its target in the
+        -- entity registry. An unproven wrapper cannot establish eligibility.
+        item.families = codec.array({})
       end
     end
   end
@@ -209,7 +216,78 @@ function M.apply(rows, entries)
   return result
 end
 
-function M.enrich(rows, request, active)
+-- The companion supplies the richer physical choice. Native discovery fills
+-- independent loads and attaches aliases only when registry evidence proves
+-- equivalence for this family.
+function M.merge(preferred, native)
+  local result, owners, byId = codec.array({}), {}, {}
+  local function key(family, entity)
+    return family .. ":" .. entity
+  end
+  local function names(row)
+    local entities = { row.source_entity_id or row.entity_id }
+    for _, id in ipairs(row.entity_aliases or {}) do
+      entities[#entities + 1] = id
+    end
+    return entities
+  end
+  for _, row in ipairs(preferred) do
+    local item = codec.object(CopyTable(row, true))
+    item.attributes = row.attributes
+    item.families, item.entity_aliases = row.families, codec.array({})
+    for _, id in ipairs(row.entity_aliases or {}) do
+      item.entity_aliases[#item.entity_aliases + 1] = id
+    end
+    byId[item.entity_id] = item
+    result[#result + 1] = item
+    for _, family in ipairs(item.families) do
+      for _, entity in ipairs(names(item)) do
+        owners[key(family, entity)] = item
+      end
+    end
+  end
+  for _, row in ipairs(native) do
+    if #row.families > 0 then
+      local entities, families = names(row), codec.array({})
+      for _, family in ipairs(row.families) do
+        local matched
+        for _, entity in ipairs(entities) do
+          matched = owners[key(family, entity)]
+          if matched then
+            break
+          end
+        end
+        if matched then
+          if type(row.available) == "boolean" and not matched.attributes.device_choice then
+            matched.available = row.available
+          end
+          local have = { [matched.entity_id] = true }
+          for _, entity in ipairs(names(matched)) do
+            have[entity] = true
+          end
+          for _, entity in ipairs(entities) do
+            if not have[entity] then
+              matched.entity_aliases[#matched.entity_aliases + 1] = entity
+              have[entity] = true
+            end
+          end
+        else
+          families[#families + 1] = family
+        end
+      end
+      if #families > 0 and not byId[row.entity_id] then
+        row.families = families
+        result[#result + 1] = row
+      end
+    end
+  end
+  for _, row in ipairs(result) do
+    table.sort(row.entity_aliases)
+  end
+  return result
+end
+
+function M.enrich(rows, request, active, native)
   local pending, ids, wanted, entries = deferred.new(), {}, {}, {}
   for _, row in ipairs(rows) do
     local id = source(row)
@@ -235,7 +313,7 @@ function M.enrich(rows, request, active)
       return
     end
     if offset > #ids then
-      local result = M.apply(rows, entries)
+      local result = M.apply(rows, entries, native)
       if result then
         pending:resolve(result)
       else

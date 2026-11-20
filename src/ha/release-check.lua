@@ -2,7 +2,7 @@
 local updater = require("lib.github-updater")
 local http = require("lib.http")
 local codec = require("ha.codec")
-local ids = require("ha.identities")
+local installedSuite = require("ha.installed-suite")
 local deferred = require("deferred")
 local version = require("version")
 
@@ -10,12 +10,6 @@ local M = {}
 local REPOSITORY = "skialpine/Control4-HA"
 local MANIFEST = "ha-suite-release.json"
 local MAX_PACKAGE = 4 * 1024 * 1024
-local packages = {
-  { family = "Coordinator", file = ids.packages.coordinator.file, model = ids.packages.coordinator.model },
-  { family = "Light", file = ids.packages.light.file, model = ids.packages.light.model, proxy = "light_v2" },
-  { family = "Switch", file = ids.packages.switch.file, model = ids.packages.switch.model, proxy = "uibutton" },
-}
-
 local function revision(raw)
   return type(raw) == "string" and #raw == 10 and raw:match("^%d+$") and tonumber(raw) <= 2147483647 and tonumber(raw)
 end
@@ -208,36 +202,6 @@ local function download(row)
     end)
 end
 
-local function readInstalled()
-  local installed, summary = {}, {}
-  for _, package in ipairs(packages) do
-    local instances = {}
-    local low, high
-    for key in pairs(C4:GetDevicesByC4iName(package.file) or {}) do
-      local device = tonumber(key)
-      if
-        not device
-        or device < 1
-        or device ~= math.floor(device)
-        or C4:GetDeviceData(device, "model") ~= package.model
-      then
-        return nil
-      end
-      local rev = tonumber(C4:GetDeviceData(device, "version"))
-      if not rev or rev < 1 or rev > 2147483647 or rev ~= math.floor(rev) then
-        return nil
-      end
-      instances[device] = rev
-      low, high = math.min(low or rev, rev), math.max(high or rev, rev)
-    end
-    if low then
-      installed[#installed + 1] = { package = package, low = low, high = high, instances = instances }
-      summary[#summary + 1] = package.family .. " " .. (low == high and tostring(low) or low .. "–" .. high)
-    end
-  end
-  return #installed > 0 and installed or nil, table.concat(summary, ", ")
-end
-
 local function installationMatches(installed, latest)
   if not latest or #latest ~= #installed then
     return false
@@ -402,7 +366,7 @@ end
 
 local function check(channel, retainBytes)
   return releaseList(1, codec.array({})):next(function(releases)
-    local installed, summary = readInstalled()
+    local installed, summary = installedSuite.read()
     if not installed then
       return reject("installed_unknown")
     end
@@ -423,7 +387,7 @@ local function check(channel, retainBytes)
       return { kind = "current", installed = summary, revision = target }
     end
     return qualify(release, installed, target, retainBytes):next(function(qualified)
-      if not installationMatches(installed, readInstalled()) then
+      if not installationMatches(installed, installedSuite.read()) then
         return reject("installed_changed")
       end
       return { kind = "available", installed = summary, revision = target, assets = retainBytes and qualified or nil }

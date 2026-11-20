@@ -23,15 +23,17 @@
   <section class="card" id="picker" aria-labelledby="picker-title" hidden>
     <div class="setup-heading">
       <h2 id="picker-title">Choose a device</h2>
-      <button class="btn btn-outline" type="button" id="close-picker">Cancel</button>
+      <div class="setup-picker-actions">
+        <button class="btn btn-outline" type="button" id="reload" disabled>Reload devices</button>
+        <button class="btn btn-outline" type="button" id="close-picker">Cancel</button>
+      </div>
     </div>
     <p class="setup-detail" id="picker-current" hidden></p>
-    <label for="search">Search by name or room</label>
+    <label for="search">Search by name, room or entity ID</label>
     <input id="search" type="search" autocomplete="off" aria-controls="choices" />
     <p class="setup-detail" id="picker-status" role="status"></p>
     <p class="setup-detail" id="picker-names" role="status" hidden></p>
     <p class="setup-detail" id="picker-helper" hidden>To set up buttons or built-in indicator lights on a compatible wall switch, install HA Gesture Bridge in Home Assistant, then choose the wall switch by name.</p>
-    <button class="btn btn-outline" type="button" id="reload" hidden>Reload devices</button>
     <fieldset id="choices" hidden>
       <legend class="setup-visually-hidden">Available devices</legend>
       <div id="choice-rows"></div>
@@ -41,10 +43,6 @@
       <button class="btn btn-outline" type="button" id="previous" hidden>Previous results</button>
       <button class="btn btn-outline" type="button" id="more" hidden>Next results</button>
     </div>
-    <details class="manual-entry" data-property-section hidden>
-      <summary>Enter a Home Assistant device ID</summary>
-      <div id="manual-settings"></div>
-    </details>
   </section>
 
   <section class="card" id="indicator-section" hidden>

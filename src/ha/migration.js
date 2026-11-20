@@ -30,6 +30,11 @@ function installSwitchMigration(nextId) {
   field("close").onclick = function () { send("cancel", {token: token}); };
   field("refresh").onclick = function () { send("status"); };
   field("check").onclick = function () { send("check"); };
+  field("complete").onclick = function () {
+    if (window.confirm("Have you tested on/off and status feedback after reload, and checked every scene, button link and programming action that uses this switch?")) {
+      send("complete", {confirmed: true});
+    }
+  };
   ["configure", "transfer", "rollback"].forEach(function (action) {
     field(action).onclick = function () {
       var text = "Use " + current.entity + " on " + current.replacement_name + " now?";
@@ -58,6 +63,7 @@ function installSwitchMigration(nextId) {
     field("configure").hidden = !data.can_configure;
     field("check").hidden = !data.can_check;
     field("transfer").hidden = !data.can_transfer;
+    field("complete").hidden = !data.can_complete;
     field("rollback").hidden = !data.can_rollback;
     field("restore-help").hidden = !data.rollback_help;
     field("restore-help").textContent = data.rollback_help || "";
@@ -71,7 +77,7 @@ function installSwitchMigration(nextId) {
       var select = field("source"); select.textContent = "";
       (data.sources || []).forEach(function (item) {
         var option = document.createElement("option"); option.value = item.id;
-        option.textContent = (item.name || item.model) + " · " + (item.room || "Room unknown") + " (device " + item.id + ")";
+        option.textContent = (item.name || item.model) + (item.room ? " in " + item.room : " in an unknown room");
         select.appendChild(option);
       });
       field("preview").disabled = !select.options.length;

@@ -75,7 +75,9 @@ Settings.P_BRIGHTNESS_ON_MODE_PRESET = "brightness_on_mode_preset"
 Settings.P_MAX_ON_LEVEL = "max_on_level"
 Settings.P_MIN_ON_LEVEL = "min_on_level"
 
--- The proxy's own Previous On color and level presets: id 10 among its device presets (origin 1).
+-- The proxy's fixed device preset IDs.
+Settings.DEFAULT_ON_PRESET_ID = 1
+Settings.OFF_PRESET_ID = 2
 Settings.PRESET_ORIGIN_DEVICE = 1
 Settings.PREVIOUS_ON_PRESET_ID = 10
 
@@ -123,11 +125,25 @@ end
 --- @return integer|nil level 1-100.
 function Settings:onModeLevel()
   local onMode = self.profile.onModes and persist:get(Settings.P_ON_MODE)
+  local appliedId = onMode and tointeger(onMode.id)
+  local selectedId = appliedId and self:brightnessPresetId()
+  if selectedId and appliedId ~= selectedId then
+    return nil
+  end
   local level = onMode and tointeger(onMode.level)
   if level and level >= 1 then
     return math.min(level, 100)
   end
   return nil
+end
+
+--- Whether a proxy supplied a usable On level, including proxies with only Default On Brightness.
+function Settings:hasConfiguredOnLevel()
+  if self:onModeLevel() ~= nil then
+    return true
+  end
+  local saved = tointeger(persist:get(Settings.P_PRESET_LEVEL))
+  return self.profile.defaultOn == true and saved ~= nil and saved > 0
 end
 
 --- The level a Top click ramps to: the brightness on mode's, else the Default On level.
@@ -198,10 +214,15 @@ local function presetColor(preset)
   return { x = preset.x, y = preset.y, mode = Color.fromProxyMode(preset.mode) }
 end
 
---- The color of a color preset the proxy pushed, for a SET_COLOR_TARGET that names only its id.
+--- The color of a color preset the proxy pushed, for a SET_COLOR_TARGET that names only the preset. The proxy
+--- pushes only the device's presets, and the Color Agent's use the same ids, so another origin has none.
 --- @param id integer
+--- @param origin integer|nil
 --- @return LightColor|nil
-function Settings:colorPreset(id)
+function Settings:colorPreset(id, origin)
+  if origin ~= nil and origin ~= Settings.PRESET_ORIGIN_DEVICE then
+    return nil
+  end
   return presetColor(persist:get(Settings.P_COLOR_PRESETS, {})[tostring(id)])
 end
 
@@ -330,6 +351,9 @@ function Settings:readSetup(xml)
   local level = levelId and setupPreset(levels, levelId)
   if level and tonumber(level.level) then
     self:_updateBrightnessOnMode({ BRIGHTNESS_PRESET_ID = levelId, BRIGHTNESS_PRESET_LEVEL = level.level })
+  elseif levelId and not level then
+    persist:delete(Settings.P_ON_MODE)
+    persist:delete(Settings.P_BRIGHTNESS_ON_MODE_PRESET)
   end
   -- A preset's level is sent only when it changes, so the setup holds Previous On's, which an unlit ramp's end keeps.
   for _, element in ipairs(IsList(levels) and levels or { levels }) do
@@ -391,7 +415,13 @@ end
 --- @private
 --- @param tParams table<string, string>
 function Settings:_setPresetLevel(tParams)
-  persist:set(Settings.P_PRESET_LEVEL, tointeger(Select(tParams, "LEVEL")) or DEFAULT_PRESET_LEVEL)
+  local id = Settings.DEFAULT_ON_PRESET_ID
+  local saved = persist:get(Settings.P_BRIGHTNESS_PRESETS, {})[tostring(id)]
+  self:_updateBrightnessPreset({
+    ID = id,
+    LEVEL = tointeger(Select(tParams, "LEVEL")) or DEFAULT_PRESET_LEVEL,
+    NAME = saved and saved.name,
+  })
 end
 
 --- UPDATE_BRIGHTNESS_ON_MODE: the on level, and the preset whose edits it follows.
@@ -413,13 +443,20 @@ function Settings:_setBrightnessOnMode(tParams)
     return
   end
   persist:set(Settings.P_BRIGHTNESS_ON_MODE_PRESET, presetId)
+  local applied = persist:get(Settings.P_ON_MODE)
+  if applied and tointeger(applied.id) == presetId then
+    return
+  end
   local preset = persist:get(Settings.P_BRIGHTNESS_PRESETS, {})[tostring(presetId)]
   if preset and preset.level then
     persist:set(Settings.P_ON_MODE, { id = presetId, level = preset.level })
+  else
+    persist:delete(Settings.P_ON_MODE)
   end
 end
 
---- UPDATE_BRIGHTNESS_PRESET. The on level follows an edit of the preset the on mode names.
+--- UPDATE_BRIGHTNESS_PRESET. The on level follows an edit of the preset the on mode names, and removing that
+--- preset leaves no on mode.
 --- @private
 --- @param tParams table<string, string>
 function Settings:_updateBrightnessPreset(tParams)
@@ -427,17 +464,25 @@ function Settings:_updateBrightnessPreset(tParams)
   if presetId == nil then
     return
   end
-  local level = tonumber(Select(tParams, "LEVEL"))
+  local removed = Select(tParams, "COMMAND") == "REMOVED"
+  -- A removal carries the deleted preset's LEVEL too (Light V2 UPDATE_BRIGHTNESS_PRESET).
+  local level = not removed and tonumber(Select(tParams, "LEVEL")) or nil
   local presets = persist:get(Settings.P_BRIGHTNESS_PRESETS, {})
   local key = tostring(presetId)
-  if Select(tParams, "COMMAND") == "REMOVED" then
+  if removed then
     presets[key] = nil
   else
     presets[key] = { id = presetId, name = Select(tParams, "NAME"), level = level }
   end
   persist:set(Settings.P_BRIGHTNESS_PRESETS, presets)
+  if presetId == Settings.DEFAULT_ON_PRESET_ID and level ~= nil then
+    persist:set(Settings.P_PRESET_LEVEL, level)
+  end
   local activeId = self:brightnessPresetId()
   if activeId ~= nil and activeId == presetId then
+    if removed then
+      persist:delete(Settings.P_BRIGHTNESS_ON_MODE_PRESET)
+    end
     if level == nil then
       persist:delete(Settings.P_ON_MODE)
     else

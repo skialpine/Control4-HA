@@ -186,6 +186,8 @@ local function fixture(driverFamily, beforeInit)
       end)
     end)
   end)
+  -- Catalog policy and combined discovery have their own protocol fixtures.
+  hub.catalog.supplement = false
   function SendSecretToDevice(device, command, params)
     assert(device == coordinator and command == "HA_SUITE_V1")
     local decoded = codec.decode(params.PAYLOAD)
@@ -323,7 +325,7 @@ for _, accepted in ipairs({ false, true }) do
   }, {
     "Device unavailable",
     "Device unavailable",
-    "In Actions, select Refresh Home Assistant devices. If the device stays unavailable, check it in Home Assistant.",
+    "Open Device Setup and select Refresh device state.",
     "Device unavailable",
   })
   T.eq("missing feedback leaves the selected device and subscription alone", {
@@ -332,15 +334,29 @@ for _, accepted in ipairs({ false, true }) do
     #c.sent,
   }, { savedSelection, 2, accepted and 0 or 1 })
 
-  EC.RefreshEntities()
+  local retry = view()
+  T.eq("state refresh is the offered recovery action", { retry.retry, retry.feedback_retry }, { true, true })
+  request("HA_SETUP_RETRY", { request = "feedback-failure", feedback = true })
+  c:completeRead("light.recovery", nil, nil, "read_failed")
+  T.truthy("a failed retry answers without taking away recovery", last("HA_SETUP_RESULT", "feedback-failure").error)
+  T.eq("the same selected device can still be refreshed", view().feedback_retry, true)
+  request("HA_SETUP_RETRY", { request = "feedback-success", feedback = true })
   attrs.brightness = 102
   c:completeRead("light.recovery", "on", attrs)
-  T.eq("the existing refresh action restores the same device and its actual level", {
+  T.eq("refresh restores the same device and its actual level", {
     view().status,
     Properties["Selected Device"],
     advanced()["Device feedback"].value,
     tonumber(levels[#levels]),
   }, { "Device connected", "Stair dimmer", "Receiving current state", 40 })
+  T.eq(
+    "refresh reply confirms the read completed",
+    last("HA_SETUP_RESULT", "feedback-success").message,
+    "Device state refreshed."
+  )
+  T.falsy("the recovery action disappears when confirmed", view().feedback_retry)
+  request("HA_SETUP_RETRY", { request = "feedback-stale", feedback = true })
+  T.truthy("a stale refresh cannot take the setup retry route", last("HA_SETUP_RESULT", "feedback-stale").error)
 end
 
 T.section("A chooser handler failure answers its own tab without waiting for the browser timer")
@@ -476,7 +492,8 @@ do
   T.eq("browsing did not read state", #c.reads, 0)
 
   choose("choose-native", relay, page.revision)
-  native()
+  T.eq("choosing a listed load starts only its normal subscription", #c.sent, 1)
+  T.eq("choosing does not request separate availability verification", #c.reads, 0)
   T.eq("choose reports success", pickResult("choose-native").error, nil)
   T.eq(
     "native selection persists the exact load",
@@ -486,6 +503,38 @@ do
   c:snapshot(relay, "off", { friendly_name = "Patio relay" })
   T.eq("simple load has no physical-indicator settings to configure", view().indicator_hint, nil)
   T.eq("view shows confirmed load", { view().status, view().target }, { "Device connected", "Patio relay" })
+
+  browse("native-cached-list")
+  T.eq(
+    "opening the unchanged native list reuses its verified revision",
+    last("HA_SETUP_PAGE", "native-cached-list").revision,
+    page.revision
+  )
+  T.eq("opening another native picker makes no HA request", { #c.sent, #c.native }, { 0, 0 })
+  request("HA_SETUP_BROWSE", { request = "native-unavailable-list", refresh = true })
+  c:reply("get_devices", nil, "not_found")
+  local unavailable = "switch.sleeping"
+  table.remove(c.native, 1):resolve(wire(codec.array({
+    {
+      entity_id = unavailable,
+      name = "Sleeping relay",
+      domain = "switch",
+      available = false,
+      attributes = codec.object(),
+    },
+  })))
+  c:reply("config/entity_registry/get_entries", { [unavailable] = codec.null })
+  local nextPage = assert(last("HA_SETUP_PAGE", "native-unavailable-list"))
+  choose("native-unavailable", unavailable, nextPage.revision)
+  T.check(
+    "cached unavailability gives an actionable result",
+    pickResult("native-unavailable").error:find("unavailable")
+  )
+  T.eq(
+    "the working load remains bound without a second HA call",
+    { view().selected_id, #c.sent, #c.reads },
+    { relay, 0, 0 }
+  )
 
   for _, id in pairs(ids.lightLinks) do
     T.truthy("a keypad can operate the Light through its Button Link", links[id].provider)
@@ -660,7 +709,6 @@ do
   choose("denied", choiceId, page.revision)
   T.eq("setup is pending before reply", view().status, "Setting up your device")
   T.eq("pending selection owns no HA endpoint", #selected[#selected], 0)
-  c:reply("get_devices", result({ remote }, true))
   local prep = c:reply("prepare_device", nil, "unauthorized")
   T.eq("preparation derives device from catalog", prep.service_data.device_id, device)
   T.check("permission denial has a human explanation", pickResult("denied").error:find("denied access", 1, true))
@@ -670,7 +718,6 @@ do
   T.eq("pending selection reloads", view().status, "Setup needs attention")
 
   request("HA_SETUP_RETRY", { request = "retry" })
-  c:reply("get_devices", result({ remote }, true))
   c:reply("prepare_device", {
     response = {
       version = 1,
@@ -754,12 +801,10 @@ do
 
   local oldRevision = string.rep("b", #page.revision)
   choose("tab-one-stale", choiceId, oldRevision)
-  c:reply("get_devices", result({ remote }, true))
   T.check("outdated picker must reopen", pickResult("tab-one-stale").error:find("device list changed", 1, true))
   T.eq("stale selection sends no preparation", #c.sent, 0)
 
   choose("tab-two-apply", choiceId, page.revision)
-  c:reply("get_devices", result({ remote }, true))
   setProperty("Manual entity ID", relay)
   c:reply("prepare_device", {
     response = { version = 1, device_id = device, input_ready = false, gesture_entity_id = gesture },
@@ -804,17 +849,18 @@ for _, familyName in ipairs({ "light", "switch" }) do
   local original = endpoint("a", relay, "Patio load")
   local alternative = endpoint("b", replacement, "Patio accent light")
   local rows = { original, alternative }
-  local function resolve(choice, tag)
+  local function resolve(choice, tag, available)
     choose(tag, choice.entity_id, last("HA_SETUP_PAGE", "picker").revision)
-    c:reply("get_devices", result(rows, true))
     local deviceChoice = choice.attributes.device_choice
+    local resolvedLoad = wire(deviceChoice.source_load)
+    resolvedLoad.available = available
     c:reply("prepare_device", {
       response = {
         version = 1,
         device_id = deviceChoice.device_id,
         input_ready = false,
         source_load = deviceChoice.source_load,
-        controlled_load = deviceChoice.source_load,
+        controlled_load = resolvedLoad,
         controlled_load_origin = "selected_endpoint",
       },
     })
@@ -840,7 +886,7 @@ for _, familyName in ipairs({ "light", "switch" }) do
   )
   local count = #selected
   local originalRecord = persist:get(saved, nil, true)
-  resolve(alternative, "replace")
+  resolve(alternative, "replace", false)
   T.eq("resolution keeps active feedback", view().status, "Device connected")
   T.eq("resolution cannot change subscriptions before checking availability", #selected, count)
   if familyName == "light" then
@@ -867,7 +913,6 @@ for _, familyName in ipairs({ "light", "switch" }) do
       },
     }))
   end)
-  c:completeRead(replacement, "unavailable")
   T.check("unavailable replacement gets a clear error", pickResult("replace").error:find("is unavailable", 1, true))
   T.eq("failed replacement leaves status and subscriptions intact", { view().status, #selected }, {
     "Device connected",
@@ -875,6 +920,14 @@ for _, familyName in ipairs({ "light", "switch" }) do
   })
   T.eq("replacement failure retains the persisted device", persist:get(saved, nil, true), originalRecord)
   T.eq("failed replacement offers an explicit retry", view().retry, true)
+  local requestsBeforeRefresh = #c.sent
+  request("HA_SETUP_RETRY", { request = "stale-feedback-refresh", feedback = true })
+  T.truthy("a stale state refresh cannot retry a failed replacement", pickResult("stale-feedback-refresh").error)
+  T.eq("a stale state refresh leaves the pending choice and active device alone", {
+    #c.sent,
+    persist:get(saved, nil, true),
+    view().retry,
+  }, { requestsBeforeRefresh, originalRecord, true })
 
   setProperty("Manual entity ID", replacement)
   T.eq("manual property displays the accepted value while a check is pending", Properties["Manual entity ID"], "")
@@ -912,8 +965,7 @@ for _, familyName in ipairs({ "light", "switch" }) do
 
   c.sent = {}
   resolve(alternative, "replace-verified")
-  T.eq("the original route remains selected until verification passes", selected[#selected], { relay })
-  c:completeRead(replacement, "on")
+  T.eq("the valid preparation sends no extra HA verification", #c.reads, 0)
   T.eq("successful verification completes the request", pickResult("replace-verified").error, nil)
   T.eq("a verified picker replacement becomes the only active route", selected[#selected], { replacement })
   T.eq("the replacement is persisted", codec.decode(persist:get(saved, nil, true)).key, alternative.entity_id)
@@ -925,7 +977,6 @@ do
   browse("buttons-browse")
   c:reply("get_devices", result({ remote }, false))
   choose("buttons-choose", choiceId, last("HA_SETUP_PAGE", "buttons-browse").revision)
-  c:reply("get_devices", result({ remote }, true))
   c:reply("prepare_device", {
     response = {
       version = 1,
@@ -967,18 +1018,16 @@ do
   browse("other-buttons")
   c:reply("get_devices", result({ other }, false, "b"))
   choose("replace-buttons", otherKey, last("HA_SETUP_PAGE", "other-buttons").revision)
-  c:reply("get_devices", result({ other }, true, "b"))
   c:reply("prepare_device", {
     response = {
       version = 1,
       device_id = otherDevice,
-      input_ready = true,
+      input_ready = false,
       control_id = "other",
       gesture_entity_id = otherGesture,
     },
   })
-  c:completeRead(otherGesture, "unknown", attrs)
-  T.check("ready evidence for a foreign source cannot verify new buttons", pickResult("replace-buttons").error)
+  T.check("unready prepared buttons cannot replace the working source", pickResult("replace-buttons").error)
   T.eq("the original buttons remain active after a failed verification", { view().status, icons[#icons] }, {
     "Buttons connected",
     "buttons",
@@ -1011,7 +1060,6 @@ for _, familyName in ipairs({ "light", "switch" }) do
   browse("indicator-browse")
   c:reply("get_devices", result({ remote }, false))
   choose("indicator-device", choiceId, last("HA_SETUP_PAGE", "indicator-browse").revision)
-  c:reply("get_devices", result({ remote }, true))
   c:reply("prepare_device", {
     response = {
       version = 1,
@@ -1059,7 +1107,6 @@ for _, familyName in ipairs({ "light", "switch" }) do
   }
   if familyName == "light" then
     attrs.bridge_sources = codec.array({ { id = "native", ready = true, availability = "available" } })
-    c:completeRead(gesture, "unknown", attrs)
   end
   local subscription = c:snapshot(gesture, "unknown", attrs)
   T.eq(familyName .. " startup/selection never sends LED commands", #c.sent, 0)
@@ -1772,7 +1819,6 @@ do
   c:reply("get_devices", result({ remote }, true))
   T.eq("refresh leaves target unchanged", persist:get(saved, nil, true), nil)
   ExecuteCommand("SelectDevice", { Device = codec.encode(wire(remote.attributes.device_choice)) })
-  c:reply("get_devices", result({ remote }, true))
   c:reply("prepare_device", {
     response = {
       version = 1,
@@ -1826,12 +1872,7 @@ do
   T.eq("sensor change and refresh do not choose the device", persist:get(saved, nil, true), nil)
   Properties["Entity Selection"] = list[1].text
   OnPropertyChanged("Entity Selection")
-  T.eq(
-    "unverified native picker edit displays the last committed value",
-    Properties["Entity Selection"],
-    "Manual Entity ID"
-  )
-  c:reply("get_devices", result({ group }, true))
+  T.eq("verified native picker commit does not refresh Home Assistant", #c.sent, 1)
   T.eq("native property action selects exact group", codec.decode(persist:get(saved, nil, true)).key, group.entity_id)
   c:snapshot(group.entity_id, "off")
   ExecuteCommand("RefreshEntities", {})

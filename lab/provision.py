@@ -203,6 +203,18 @@ def provision(
     network = next((n for n in networks if n["Name"] == inventory["network"]), None)
     if network:
         assert_owned(network, inventory)
+    backup = (
+        ROOT
+        / ".cache/lab-backups"
+        / (inventory["lab_id"] + "-" + inventory["container"] + "-seed.tar")
+    )
+    if backup.exists():
+        if backup.read_bytes() != seed:
+            raise ValueError(
+                "Existing private seed archive differs; refusing overwrite"
+            )
+    else:
+        save_private(backup, seed)
     image = "ghcr.io/home-assistant/home-assistant:" + inventory["ha_version"]
     print(
         "Pulling the explicit HA image onto the Docker host (not this Mac).", flush=True
@@ -283,18 +295,6 @@ def provision(
     client.call(
         "PUT", "/containers/" + container_id + "/archive?path=/config", seed, raw=True
     )
-    backup = (
-        ROOT
-        / ".cache/lab-backups"
-        / (inventory["lab_id"] + "-" + inventory["container"] + "-seed.tar")
-    )
-    if backup.exists():
-        if backup.read_bytes() != seed:
-            raise ValueError(
-                "Existing private seed archive differs; refusing overwrite"
-            )
-    else:
-        save_private(backup, seed)
     inventory["container_id"] = container_id
     inventory["image_digest"] = digest
     inventory["seed_backup"] = backup.relative_to(ROOT).as_posix()

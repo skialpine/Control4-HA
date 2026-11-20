@@ -5,7 +5,7 @@ Give every supported driver family a consistent, capability-driven setup experie
 ## ADDED Requirements
 
 ### Requirement: Consistent configuration surfaces
-Every family SHALL offer searchable device selection, selected-device identity, relevant capabilities, understandable status and compact configuration. The picker MUST provide manual entity selection. Properties SHALL expose applicable settings directly, and Troubleshooting SHALL provide connection and preparation details and opt-in logging.
+Every family SHALL offer searchable device selection, selected-device identity, relevant capabilities, understandable status and compact configuration. The picker SHALL filter its existing choices by name, room or exact entity ID. An ID outside the current list MUST NOT offer a selection action. Properties SHALL expose applicable settings directly, and Troubleshooting SHALL provide connection and preparation details and opt-in logging.
 
 #### Scenario: Configure a lock after a light
 - **WHEN** an installer opens the lock's setup
@@ -30,7 +30,7 @@ Light and Switch SHALL offer single, double and triple taps for buttons that rep
 - **THEN** Composer shows the first three counts together under each button name, with no fourth or fifth tap entry
 
 ### Requirement: Appropriate and deduplicated choices
-Selectors SHALL offer usable endpoints for the family, exclude configuration/diagnostic entities and C4-exported duplicates, and collapse only proven equivalent representations. Independent endpoints and distinct functions of one physical device MUST remain selectable.
+Selectors SHALL include usable native and companion loads for the family. The lighting picker SHALL include lights and compatible switches and toggle helpers. It SHALL exclude diagnostic, configuration and C4-exported entities. It SHALL present one most-capable choice for equivalent representations and keep independent loads selectable.
 
 #### Scenario: Multiple functions share one device
 - **WHEN** a device exposes an independent light, fan and sensor
@@ -38,7 +38,7 @@ Selectors SHALL offer usable endpoints for the family, exclude configuration/dia
 
 #### Scenario: Relay and gesture representations are equivalent
 - **WHEN** the selected family can use a prepared gesture representation of the same endpoint
-- **THEN** the picker shows one most-capable choice rather than separate relay and gesture duplicates
+- **THEN** the picker shows one most-capable choice, and the exact IDs of equivalent representations still find that row
 
 ### Requirement: Browsing is read-only
 Opening, searching and closing setup SHALL NOT create C4 instances or HA controls, attach unused source listeners or modify hardware settings. Preparation MUST happen only after a user commits a choice.
@@ -55,11 +55,15 @@ Committed selections SHALL resolve their endpoint, optional gestures and support
 - **THEN** the driver defaults to connected-C4 control and identifies the target light
 
 ### Requirement: Shared responsive discovery
-Drivers SHALL share one Coordinator-owned selector dataset and verify its revision when available. Consumer setup MUST NOT require a full rediscovery or retain duplicate catalog caches between openings. Ordinary native setup MUST work through scoped discovery without the optional companion.
+Drivers SHALL share one Coordinator-owned selector dataset, verify its revision and avoid duplicate consumer caches. Ordinary setup SHALL work through scoped discovery without the optional companion. Selecting a current listed load SHALL use the verified revision without a separate Home Assistant confirmation.
 
 #### Scenario: Open a second driver's picker
 - **WHEN** the shared catalog revision has not changed
 - **THEN** the picker reuses that dataset rather than downloading it again
+
+#### Scenario: Commit a listed load
+- **WHEN** the site confirms an eligible current choice
+- **THEN** the normal subscription supplies live state, and a physical device receives only its required preparation
 
 ### Requirement: Honest setup and errors
 An unconfigured driver SHALL say it is not configured rather than report an invalid entity. Missing integration, permission denial, unavailable endpoint, pending preparation and disconnected transport MUST have distinct explanations and recovery steps.
@@ -76,7 +80,7 @@ The Coordinator SHALL offer an explicit preview for adding selected devices, inc
 - **THEN** it identifies completed additions and resumes without creating duplicates
 
 ### Requirement: Shared Quick Setup workflow
-Drivers SHALL declare Properties before custom tabs and keep connection settings there. Quick Setup SHALL list Home Assistant devices on entry or type changes and retain room assignments and selections across filters. Adding drivers SHALL require a summary and separate confirmation.
+Drivers SHALL declare Properties before custom tabs and keep connection settings there. Quick Setup SHALL list Home Assistant devices on entry or type changes and retain room assignments and selections across filters. Quick Setup SHALL hide confirmed existing Control4 drivers by default and provide **Show all devices** to reveal them. A conflicting or unconfirmed match SHALL remain subject to project verification at review. Adding drivers SHALL require a summary and separate confirmation.
 
 #### Scenario: Open an installed driver in Composer
 - **WHEN** qualifying its landing screen

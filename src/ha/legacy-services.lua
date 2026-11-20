@@ -1,5 +1,6 @@
 -- Original BP service envelopes, as emitted by the eleven pinned consumers.
 local codec = require("ha.codec")
+local operations = require("ha.operations")
 local M = {}
 local empty = {}
 local services = {
@@ -106,17 +107,7 @@ function M.property(model, domain, service)
   end
 end
 
-function M.request(params)
-  if type(params) ~= "table" or type(params.JSON) ~= "string" or GetTableSize(params) ~= 1 then
-    return nil
-  end
-  local ok, raw = pcall(codec.decode, params.JSON)
-  if not ok or not codec.isObject(raw) or not codec.isObject(raw.target) or not codec.isObject(raw.service_data) then
-    return nil
-  end
-  if GetTableSize(raw) ~= 4 or GetTableSize(raw.target) ~= 1 or domainOf(raw.target.entity_id) ~= raw.domain then
-    return nil
-  end
+local function originalRequest(raw)
   local fields = services[raw.domain] and services[raw.domain][raw.service]
   if not fields then
     return nil
@@ -135,6 +126,28 @@ function M.request(params)
   end
   raw.type = "call_service"
   return raw
+end
+
+function M.request(params)
+  if type(params) ~= "table" or type(params.JSON) ~= "string" or GetTableSize(params) ~= 1 then
+    return nil
+  end
+  local ok, raw = pcall(codec.decode, params.JSON)
+  if not ok or not codec.isObject(raw) or not codec.isObject(raw.target) or not codec.isObject(raw.service_data) then
+    return nil
+  end
+  if GetTableSize(raw) ~= 4 or GetTableSize(raw.target) ~= 1 or domainOf(raw.target.entity_id) ~= raw.domain then
+    return nil
+  end
+  local prototype = operations.build(
+    "service",
+    raw.target.entity_id,
+    codec.object({
+      action = raw.service,
+      parameters = raw.service_data,
+    })
+  )
+  return originalRequest(raw), prototype
 end
 
 return M

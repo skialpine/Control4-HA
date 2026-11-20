@@ -2,7 +2,7 @@
 -- HA renders this read-only snapshot only when a picker explicitly requests it.
 return [=[
 {% set result = namespace(rows=[]) %}
-{% for domain in ['light', 'switch'] %}
+{% for domain in ['light', 'switch', 'input_boolean'] %}
 {% for item in states[domain] %}
 {% set modes = item.attributes.get('supported_color_modes', []) %}
 {% set attrs = {'supported_features': item.attributes.get('supported_features', 0)} %}
@@ -23,6 +23,7 @@ return [=[
 {% set members = item.attributes.get('entity_id') %}
 {% set result.rows = result.rows + [dict(entity_id=item.entity_id, domain=domain,
 name=item.attributes.get('friendly_name', item.entity_id), device_id=device,
+available=item.state in ['on', 'off'],
 area_name=area_name(item.entity_id), attributes=attrs, c4_exported=policy.exported or false,
 device_disabled=device and device_attr(device, 'disabled_by') is not none or false,
 is_group=members is iterable and members is not string and members is not mapping and members|list|length > 0)] %}

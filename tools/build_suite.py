@@ -8,12 +8,15 @@ import os
 from pathlib import Path
 from shutil import copyfile
 import subprocess
+import sys
 import tempfile
 import zipfile
 
-from check_packages import PACKAGE_NOTICES, check
-from release_manifest import NAME as RELEASE_MANIFEST, manifest
+from check_packages import PACKAGE_NOTICES
+from package import make_zip
+from release_manifest import DRIVER_BUNDLE, NAME as RELEASE_MANIFEST, manifest
 from release_version import current, validate
+from setup_skill import setup_skill
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGER_REVISION = "465ecc1cf73a85a4fdaf62fb688e9aed83e6d530"
@@ -126,15 +129,19 @@ def main():
     run("make", "docs-html", "package")
     for path in sorted((ROOT / "dist/oss/c4z").glob("*.c4z")):
         canonicalize(path)
-    check()
+    run(sys.executable, "tools/check_packages.py")
     data = (
         json.dumps(inventory(args.version, args.epoch), indent=2, sort_keys=True) + "\n"
     )
     output = ROOT / "dist/oss/inventory.json"
+    setup_skill(output.parent, args.version)
     output.write_text(data)
     digest = hashlib.sha256(data.encode()).hexdigest()
     (ROOT / "dist/oss/inventory.sha256").write_text(f"{digest}  inventory.json\n")
     release = manifest(output.parent, args.version)
+    bundle = output.parent / DRIVER_BUNDLE
+    make_zip(bundle, [str(output.parent / "c4z" / name) for name in release["assets"]])
+    canonicalize(bundle)
     (output.parent / RELEASE_MANIFEST).write_text(
         json.dumps(release, indent=2, sort_keys=True) + "\n"
     )

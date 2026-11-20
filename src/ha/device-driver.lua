@@ -3,6 +3,7 @@ local Setup = require("ha.setup")
 local foundation = require("ha.foundation")
 local codec = require("ha.codec")
 local ids = require("ha.identities")
+local events = require("lib.events")
 local page = require("lib.ui.page")
 local setupPage = require("ha.setup-page")
 local properties = require("lib.ui.tab-properties")
@@ -207,6 +208,7 @@ function M.install(family, makeAdapter)
         "rejected_manual",
         "helper",
         "retry",
+        "feedback_retry",
         "can_browse",
         "indicator_hint",
         "indicator_lease",
@@ -245,8 +247,17 @@ function M.install(family, makeAdapter)
   register("HA_SETUP_CHOOSE", "HA_SETUP_RESULT", function(owner, params, done)
     owner:choose(params, done)
   end)
-  register("HA_SETUP_RETRY", "HA_SETUP_RESULT", function(owner, _, done)
-    if not owner:view().retry then
+  register("HA_SETUP_RETRY", "HA_SETUP_RESULT", function(owner, params, done)
+    local state = owner:view()
+    if params.feedback == true then
+      if state.feedback_retry then
+        owner:refreshFeedback(done)
+      else
+        done({ error = "Device status changed. Check its current status before retrying." })
+      end
+      return
+    end
+    if not state.retry or state.feedback_retry then
       done({ error = "Open the device list to choose a device." })
       return
     end
@@ -377,6 +388,7 @@ function M.install(family, makeAdapter)
   function OnDriverLateInit()
     retireOwner()
     if foundation.lateInit() then
+      events:restoreEvents()
       setup = Setup.new(family, publish, adapter)
       if adapter then
         adapter:start()

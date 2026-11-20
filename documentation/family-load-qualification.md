@@ -8,8 +8,8 @@ Setup flow. Match the driver to what the device does in Control4.
 Add **Home Assistant Switch** to the room and connect its Coordinator binding.
 In **Device Setup**, choose the Home Assistant switch that represents the
 equipment's on/off control. Review the selected target before using the
-Navigator button or a programmed action. If discovery cannot identify the device
-by name, open **Choose device** and expand **Enter a Home Assistant device ID**.
+Navigator button or a programmed action. To find a listed device by its exact
+Home Assistant entity ID, enter the ID in the same search field.
 
 The Navigator experience sends a toggle and updates its icon when Home Assistant
 reports the new state. Programming can use **Turn on**, **Turn off** and
@@ -22,8 +22,8 @@ interlocks and physical operation require qualification with the equipment.
 
 Use **Home Assistant Light** when the relay controls a lamp and should be
 presented as a light. In **Device Setup**, choose that switch's lighting
-endpoint or enter its exact ID in the device picker. Control4 presents binary
-lighting controls and sends only Home Assistant switch power commands. A
+endpoint by name or exact entity ID in the device picker. Control4 presents
+binary lighting controls and sends only Home Assistant switch power commands. A
 dimmable HA light adds brightness controls once that capability is established.
 
 Color-capable lights use the capabilities Home Assistant reports. A color chosen

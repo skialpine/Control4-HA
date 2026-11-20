@@ -15,11 +15,13 @@ local Buttons = require("lib.light.buttons")
 local Picks = require("lib.light.picks")
 local Effects = require("ha.light-effects")
 local OnColor = require("lib.light.oncolor")
+local persist = require("lib.persist")
 
 local Adapter = {}
 Adapter.__index = Adapter
 
 local STEPS, TRANSITION = 255, 32
+local BP_SCENE_RETIREMENTS = "HA.Light.BPSceneRetirements"
 local buttonRoles = { [Buttons.TOP] = "top", [Buttons.BOTTOM] = "bottom", [Buttons.TOGGLE] = "toggle" }
 local appLinkRoles = { Top = "top", Bottom = "bottom", Toggle = "toggle" }
 local linkActions = { DO_PUSH = "press", DO_CLICK = "click", DO_RELEASE = "release" }
@@ -149,6 +151,7 @@ function Adapter.new()
     color = true,
     cct = true,
     fades = true,
+    defaultOn = true,
     onModes = true,
     scenes = true,
     flash = true,
@@ -181,8 +184,6 @@ function Adapter:_clearEffects()
   self.effects = nil
 end
 
-local uncertainResult =
-  { timeout = true, disconnected = true, rejected = true, invalid_response = true, not_found = true }
 local notSent = { permission_denied = true, busy = true, invalid_request = true }
 
 local function settle(light, report)
@@ -219,7 +220,7 @@ function Adapter:_recoverLoad(command)
     complete()
     return
   end
-  self.consumer:request("read_load", self.entity, codec.object({})):next(complete, function()
+  commandSender.read(self.consumer, self.entity):next(complete, function()
     complete(nil)
   end)
 end
@@ -242,7 +243,7 @@ function Adapter:_sendService(action, parameters, operation)
       -- prediction with the last confirmed report for this selection.
       command.finished = true
       settle(self.light, self.reported)
-    elseif uncertainResult[status] then
+    elseif commandSender.uncertain(status) then
       self:_recoverLoad(command)
     elseif status == "accepted" then
       command.accepted = true
@@ -446,9 +447,39 @@ function Adapter:releaseGesture(buttonId)
   end
 end
 
+local function bpSceneLevel(key)
+  -- BP 106 stored the parsed ELEMENTS node and used its first level or brightness.
+  local nodes = Select(C4:PersistGetValue("ALS:" .. key, false), "ChildNodes")
+  if type(nodes) ~= "table" then
+    return nil
+  end
+  for _, node in ipairs(nodes) do
+    local name = Select(node, "Name")
+    if name == "level" or name == "brightness" then
+      local level = tonumber(node.Value)
+      return inRange(level, 0, 100) and level or nil
+    end
+  end
+end
+
+local function bpSceneRetirements()
+  local retired = persist:get(BP_SCENE_RETIREMENTS, {})
+  return type(retired) == "table" and retired or {}
+end
+
 function Adapter:legacyScene(key)
   local scenes = type(PersistData) == "table" and PersistData.LightScenes
-  return type(scenes) == "table" and scenes[key] or nil
+  if type(scenes) == "table" and scenes[key] ~= nil then
+    return scenes[key]
+  end
+  local retired = bpSceneRetirements()
+  if retired.all or retired[key] then
+    return nil
+  end
+  local level = bpSceneLevel(key)
+  if level ~= nil then
+    return { xml = "<element><level>" .. tostring(level) .. "</level></element>" }
+  end
 end
 
 function Adapter:forgetLegacyScene(key)
@@ -458,6 +489,16 @@ function Adapter:forgetLegacyScene(key)
       scenes[key] = nil
     else
       PersistData.LightScenes = nil
+    end
+  end
+  -- Retire only on scene removal. Keep the original rows available for rollback.
+  if not key then
+    persist:set(BP_SCENE_RETIREMENTS, { all = true })
+  elseif bpSceneLevel(key) ~= nil then
+    local retired = bpSceneRetirements()
+    if not retired.all and not retired[key] then
+      retired[key] = true
+      persist:set(BP_SCENE_RETIREMENTS, retired)
     end
   end
 end
@@ -509,8 +550,9 @@ function Adapter:delegateScene(intent)
   end
   local generation = self.light.scenes.generation
   local sent = true
-  if intent.color then
-    sent = self.connected:command("SET_COLOR_TARGET", sceneColorParams(intent))
+  local colorParams = intent.color and sceneColorParams(intent)
+  if colorParams and (not intent.ramp or self.connected:canSetColor(colorParams)) then
+    sent = self.connected:command("SET_COLOR_TARGET", colorParams)
   end
   if generation ~= self.light.scenes.generation then
     return true
@@ -616,15 +658,26 @@ function Adapter:delegate(binding, command, params)
       self.connectedPicks:noted({ kind = "on", presetId = preset }, { on = false })
     end
   else
+    local colorPreset = command == "SET_COLOR_TARGET" and tonumber(params.LIGHT_COLOR_TARGET_PRESET_ID) or nil
+    local colorPresetOrigin = command == "SET_COLOR_TARGET" and tonumber(params.LIGHT_COLOR_TARGET_PRESET_ORIGIN) or nil
     local follow = command == "SET_COLOR_TARGET"
       and OnColor.followUp({
         kind = "color",
         color = true,
-        presetId = tonumber(params.LIGHT_COLOR_TARGET_PRESET_ID),
-        presetOrigin = tonumber(params.LIGHT_COLOR_TARGET_PRESET_ORIGIN),
+        presetId = colorPreset,
+        presetOrigin = colorPresetOrigin,
       }, self.connectedPicks:forOn(), self.light.settings:forOn())
     self.connectedPicks:reset()
     if not follow then
+      if colorPreset then
+        local color, fromPreset = LightHandlers.targetColor(self.light, params, colorPreset, colorPresetOrigin)
+        if fromPreset and color then
+          params = sceneColorParams({
+            color = color,
+            sceneColorRate = params.LIGHT_COLOR_TARGET_RATE or params.LIGHT_COLOR_TARGET_COLOR_RATE or params.RATE,
+          })
+        end
+      end
       self.connected:command(command, params)
     end
   end
@@ -699,13 +752,12 @@ function Adapter:send(command)
   local parameters = codec.object({})
   local action = command.on and "turn_on" or "turn_off"
   local operation = command.on and "light.on" or "light.off"
-  -- A plain On leaves HA's remembered level in charge. An explicit
-  -- Control4 On mode is a user-owned setting and carries its chosen level.
+  -- Use the library's On level when the proxy supplied a mode or Default On Brightness.
   if
     command.on
     and command.setsLevel
     and device.dims
-    and (command.intent ~= "on" or self.light.settings:onModeLevel() ~= nil)
+    and (command.intent ~= "on" or self.light.settings:hasConfiguredOnLevel())
   then
     if not inRange(command.level, 0, 1) then
       return

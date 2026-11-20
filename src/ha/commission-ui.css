@@ -1,7 +1,8 @@
 .quick-setup { max-width: 960px; margin: 0 auto; }
 .quick-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 6px; }
 .quick-heading .setup-detail, #review-hint { margin: 0; }
-#review-hint { margin-bottom: 6px; }
+.quick-list-scope { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: 6px; }
+.quick-list-scope .btn { min-height: 30px; }
 .quick-filters { display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr) auto; align-items: end; gap: 6px; }
 .quick-filters > .btn { min-height: 30px; }
 .quick-selected-view { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -35,9 +36,9 @@
 #apply-status:not(:empty) { margin-bottom: 4px; }
 .quick-footer-detail { width: 100%; color: var(--text-muted); font-size: 12px; }
 #review-issues { display: flex; align-items: baseline; gap: 8px; }
-#review-blocker { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#review-blocker { overflow-wrap: anywhere; }
 .quick-footer-detail:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.quick-footer [aria-disabled="true"] { opacity: 0.65; cursor: wait; }
+.quick-footer [aria-disabled="true"], .quick-filters [aria-disabled="true"] { opacity: 0.65; cursor: wait; }
 .add-list { list-style: none; }
 .add-list li { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }
 @media (max-width: 520px) {
@@ -68,3 +69,18 @@
   .quick-table th:nth-child(4) { width: 23%; }
 }
 .quick-table label.quick-row-name { margin: 0; color: var(--text); font-size: 13px; cursor: pointer; }
+.upgrade-list { list-style: none; margin: 0; padding: 0; }
+.upgrade-list li + li { border-top: 1px solid var(--border); }
+.upgrade-row { display: flex; gap: 12px; padding: 10px 0; align-items: start; }
+.upgrade-row strong { display: block; color: var(--text); font-size: 15px; }
+.upgrade-row input { margin-top: 4px; }
+.upgrade-row .setup-detail { margin: 2px 0 0; }
+.upgrade-list details { margin: 0 0 10px 24px; }
+.upgrade-list .upgrade-worklist { margin: 0 0 10px 24px; }
+.upgrade-worklist li { padding: 4px 0; }
+.upgrade-complete { padding: 5px 0; color: var(--text-muted); }
+.upgrade-complete strong { color: var(--text); }
+#migration-guide { margin: 6px 0; }
+.upgrade-backup { display: flex; gap: 8px; align-items: start; }
+.upgrade-programming-confirm { margin: 6px 0 10px 24px; }
+.upgrade-footer .btn-primary { margin-left: auto; }

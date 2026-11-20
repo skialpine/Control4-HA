@@ -25,7 +25,8 @@ use **Long Lived Access Token** for the token.
 Once the connection is working, you can add a driver yourself or use **Quick
 Setup** to add several devices together.
 
-1. Open **Quick Setup**. Lights and switches appear together. Use **Device
+1. Open **Quick Setup**. The list hides devices that already have a matching
+   Control4 driver. Choose **Show all devices** to include them. Use **Device
    type** to show only lights or only switches, or search by name or room.
 1. Select the devices you want to add. Check the room on each selected row. When
    the Home Assistant area matches one Control4 room, the page suggests it.
@@ -47,6 +48,61 @@ extra Home Assistant integration. The optional HA Gesture Bridge also discovers
 compatible wall controls, remotes and their linked devices. If you use it, add
 **HA Gesture Bridge** in Home Assistant under **Settings → Devices & services**.
 Return to Quick Setup and refresh the list.
+
+## Migrate older switch drivers
+
+Open **Quick Setup** on Home Assistant Connection. When there are older switch
+drivers that use a different Control4 driver type from the new version, the
+section at the top lists them automatically. Save a project backup and review
+the listed changes before starting. Migration keeps your switches, names, and
+rooms. Test that each new driver turns its switch on and off and run any
+programming you changed. Return to Quick Setup and choose **Review old drivers
+for removal**. Confirm those tests, then choose **Check old drivers**. The
+wizard identifies which originals you can delete separately in Composer.
+
+When a switch needs programming changes, Quick Setup prepares a replacement and
+shows the driver name and its Control4 room. The original still controls the
+switch. Open **Programming**, select the listed device and event, and change the
+indicated actions to use the new driver. Keep the other actions in each script.
+For a switch that triggers a program, recreate the event using the new driver
+and verify the program in Composer.
+
+Return to Quick Setup and choose **Check programming**. For recognized On and
+Off actions, it checks the replacement action in the same event before moving
+control. **Tools → Detective Suite → Programming** can help find other
+references. If a scene operates the switch through a script, follow the same
+steps for that script. Test changed programming after the new driver is
+connected and before removing the original.
+
+Some programming, such as conditional actions and events triggered by the old
+switch, needs your review in Composer. After **Check programming**, the wizard
+asks you to confirm that the reviewed programming uses the new driver. The old
+driver controls the switch until you confirm and the connection is verified.
+
+If migration restores the old driver after a failed connection check, the old
+driver controls the switch again. Any programs you moved still point to the new
+driver. Keep it in place to retry, or restore the project backup to return to
+the original programming.
+
+### Manual migration for button switches
+
+1. Save a project backup. In Composer, record the original driver's name, room,
+   selected wall control, controlled device, button behavior, indicator settings
+   and connections. Use **Tools → Detective Suite → Programming** to find
+   scripts that the driver triggers or that use it.
+1. Add a **Home Assistant Switch** to the same room with a temporary name. Keep
+   its device selection empty while preparing it. In **Device Setup**, plan to
+   choose the same wall control and linked load. If the original used
+   **Programming Events Only**, choose **Buttons only** on the replacement.
+1. Disconnect the original driver's Home Assistant link in **Connections**.
+   Configure the replacement in **Device Setup**, then move its relay and button
+   connections. Recreate the original gestures, actions and conditions on the
+   replacement. Check that indicator settings and any programmed indicator
+   actions address the same buttons.
+1. Test the switch, each gesture you use and any changed programming or scenes.
+   Rename the original to distinguish it, then give the replacement the original
+   name. Keep the original until the replacement passes these tests. Restore the
+   saved project backup if you need to undo the cutover.
 
 ## Run a Home Assistant action from Programming
 

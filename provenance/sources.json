@@ -179,7 +179,7 @@
     {
       "id": "finitelabs/template",
       "repository": "https://github.com/finitelabs/control4-driver-template",
-      "revision": "61cfcb7671ee4ec76976170f64ea4c1810aa2b30",
+      "revision": "cdbfbfef4aaa0c171247e41c4ec8539538bd75f3",
       "credit": "Finite Labs / Derek Miller and template contributors",
       "terms": "AGPL-3.0",
       "permission": "established",
@@ -197,8 +197,8 @@
         {
           "path": ".copier-answers.yml",
           "source_path": "template/{{ _copier_conf.answers_file }}.jinja",
-          "sha256": "7cf6a9183571e8696fc0f958f9c34aa0a2737c35e2f6b44ee7efd9d25e92f605",
-          "changes": "Copier 9.19.1 render at v0.9.112 using the suite answers"
+          "sha256": "4d4c57390017df011f8a9f2b3d868f64be05ed528f775291d2cd18c047f27389",
+          "changes": "Copier 9.19.1 render at v0.9.116 using the suite answers"
         },
         {
           "path": "LICENSE",
@@ -215,7 +215,7 @@
         {
           "path": "CONTRIBUTING.md",
           "source_path": "template/CONTRIBUTING.md.jinja",
-          "sha256": "04ab886a5f13666588a9ddb2b0ef2b4a3327bda049e7ec59dd2a518ad89cd4b2",
+          "sha256": "4b76b23b74ace75af84ee3b48d239a66cafdbd98fbff3ab560204df4f56b88af",
           "changes": "Copier-rendered configuration, suite release guidance and the mandatory example-driver update process"
         },
         {
@@ -527,7 +527,7 @@
         {
           "path": "test/c4_fixtures.lua",
           "source_path": "template/test/c4_fixtures.lua",
-          "sha256": "c921509c9a75b0c5ec1897cb7e48c53e54dad852edf54a87a317e20205222d5a",
+          "sha256": "59e32fd3f7c876876cb4295bdd5df27a0ea15d9ca43d3a372278576779100a02",
           "changes": "Simulate Director returning a persisted JSON object as a Lua table after a cold reload."
         },
         {
@@ -641,7 +641,7 @@
         {
           "path": "test/light_drivers.lua",
           "source_path": "template/test/light_drivers.lua",
-          "sha256": "eb5d773cdb1741e466f95698dbe4dccf13fd12db2959a4b90bfb79b38bd66e1e",
+          "sha256": "676ff0e8493fa6ec853da24c28922ccb07748abd436b7e86e4a2151c1682943e",
           "changes": "Unmodified copy"
         },
         {
@@ -653,7 +653,7 @@
         {
           "path": "test/light_proxy_fake.lua",
           "source_path": "template/test/light_proxy_fake.lua",
-          "sha256": "0c995d0e95889fc598da39a4aca1da80955b700dccc08aabfe96650acd7b17c7",
+          "sha256": "cbd2ad056a01e25aac912cf590c4bcc6cb1ac256508863c654ce9906eda47d5e",
           "changes": "Unmodified copy"
         },
         {
@@ -701,7 +701,7 @@
         {
           "path": "src/lib/values.lua",
           "source_path": "template/src/lib/values.lua",
-          "sha256": "f40e174e0a8eedcce4d70b123f31d9560ffb50cc0b8e9894da86c59deb8e6c6c",
+          "sha256": "3430a8cc2497da054ad09f821b2c640e0b8abc67a61a82e199faeeb61dc269c1",
           "changes": "Unmodified copy"
         },
         {
@@ -719,7 +719,7 @@
         {
           "path": "src/lib/bindings.lua",
           "source_path": "template/src/lib/bindings.lua",
-          "sha256": "8b62f4677c8fd1b874acd7078451a20cd42630fe5dcbbf66a1efdd48ae7d23f8",
+          "sha256": "00f23658a534520a93ed342adc854f1fd255e9e1afe123a93e12d54b489c2d2e",
           "changes": "Unmodified copy"
         },
         {
@@ -731,7 +731,7 @@
         {
           "path": "src/lib/events.lua",
           "source_path": "template/src/lib/events.lua",
-          "sha256": "5f16eb1c971097cc3cee161ac51840a2ebe04b2e6c3b15f6e262136ebd395442",
+          "sha256": "83dd8b13b28ec18629299cc1f63ff0ad3d0ad4a6cdab6b5b2228f26f18f1b025",
           "changes": "Unmodified copy"
         },
         {
@@ -767,7 +767,7 @@
         {
           "path": "src/lib/utils.lua",
           "source_path": "template/src/lib/utils.lua",
-          "sha256": "623846c96c6775315201021c097c77ce5929a3c9c68868c382298ba04e154876",
+          "sha256": "787ef593e7e957e7338cb81f7e9df54af0ed48964f8e56a62da2b43b869780ba",
           "changes": "Unmodified copy"
         },
         {
@@ -911,20 +911,20 @@
         {
           "path": "src/lib/light/settings.lua",
           "source_path": "template/src/lib/light/settings.lua",
-          "sha256": "d396a1583d19a250b7e3535d5c1680a0e911b7f39af64a40db5e526e36b4f698",
-          "changes": "Retain the upstream optional keypad color policy and expose the current On preset identity for a delegated target"
+          "sha256": "d0268c7779bd4b0bcbe790e6db27c883bd4174f08bee8123fe3840aee8758e78",
+          "changes": "Expose delegated On preset identity and keep Default On synchronized with its native preset; include upstream preset removal, startup cleanup and color-origin resolution"
         },
         {
           "path": "src/lib/light/group.lua",
           "source_path": "template/src/lib/light/group.lua",
-          "sha256": "39c8fe75103c02fe5d9135927e30f699c6829bde7bca32818bbd6ab6c528857b",
+          "sha256": "c0eab3abd4fdbae1ae496ab071b3c0c9fc0bc2c259169d0dc806cf1c9910dd0f",
           "changes": "Unmodified copy"
         },
         {
           "path": "src/lib/light/scenes.lua",
           "source_path": "template/src/lib/light/scenes.lua",
-          "sha256": "c87c711ea97b85a9b1ebdb4013c25a0c95b56b5b31d145405d422df16b5a43f9",
-          "changes": "Bound scene XML and flash timing, support legacy read-through, preserve separate rates for linked loads and apply interruptible software fades"
+          "sha256": "3f5b02e02c1eff15d811a067803e9e75ff956db4a83f9608f48407954f9bed69",
+          "changes": "Bound scene IDs, XML and flash timing, support legacy read-through, preserve separate rates for linked loads and apply interruptible software fades"
         },
         {
           "path": "src/lib/light/picks.lua",
@@ -947,8 +947,8 @@
         {
           "path": "src/lib/light/proxy.lua",
           "source_path": "template/src/lib/light/proxy.lua",
-          "sha256": "bdb2eaf7f4e13a6fc61b600be71f0e00eff01cd804c46cc885977dba8b2e89ee",
-          "changes": "Retain upstream optional keypad notifications, report native target percentages and support explicit feedback synchronization"
+          "sha256": "25923f29320ba7d2b839af1707c034a5ca6a3baeb127b8c747c3cf3cacfa5304",
+          "changes": "Retain optional keypad notifications, report native target percentages and support feedback synchronization"
         },
         {
           "path": "src/lib/light/motion.lua",
@@ -965,8 +965,8 @@
         {
           "path": "src/lib/light/types.lua",
           "source_path": "template/src/lib/light/types.lua",
-          "sha256": "ce939fa1df88950d538cff6c9290f756c2307ba6fc1447f434f52ca6e776ce2d",
-          "changes": "Document supported suite extensions for lifecycle, power intent, native capabilities, group and scene delegation, transport adapters and deadline-only feedback reads"
+          "sha256": "f05bc9027a8c35ca18455700c4ed1a114dd91603d2d3831f688b8775262f7566",
+          "changes": "Pin the Light API documentation and its optional deadline-only suite feedback extension"
         },
         {
           "path": "src/lib/light/range.lua",
@@ -989,8 +989,8 @@
         {
           "path": "src/lib/light/handlers.lua",
           "source_path": "template/src/lib/light/handlers.lua",
-          "sha256": "a7821ece72bcc96afb9386b095e9f76eae69b491f60fd495dd2dd91eae0ba8c9",
-          "changes": "Keep native command dispatch and group precedence, suppress adapter button echoes, delegate target commands and retire owned callbacks"
+          "sha256": "f4103407dc554ebea883bf6bcec5096b45a8d907737ba4a28a246485e4096077",
+          "changes": "Keep native command dispatch and expose origin-aware native color target resolution for App Control Links"
         },
         {
           "path": "src/lib/light/groups.lua",
@@ -1133,8 +1133,20 @@
         {
           "path": "test/test_light_api_contract.lua",
           "source_path": "tests/light/test_contract.lua",
-          "sha256": "9859c752ca40f495df1c7323b4389a72d462a24569aaa0a861663428a4d7316c",
-          "changes": "Pin the v0.9.112 Light API documentation and its optional deadline-only suite feedback extension"
+          "sha256": "bc99a619a2b915fc3d933b6f06d7a36c50152ebd868464f7a69f46e8245eccb3",
+          "changes": "Pin the v0.9.114 Light API documentation and its optional deadline-only suite feedback extension"
+        },
+        {
+          "path": "test/driver_restores_probe.lua",
+          "source_path": "template/test/driver_restores_probe.lua",
+          "sha256": "1a0a1e21ef03d2a3d3a0ef520b3bf2832699e44f80256ae9ddd619048213a544",
+          "changes": "Unmodified copy"
+        },
+        {
+          "path": "test/test_driver_restores.lua",
+          "source_path": "template/test/test_driver_restores.lua",
+          "sha256": "f9041c694382c45d619ae4e96faf8b25fca250aa01a20600616fb8150160526f",
+          "changes": "Require each startup callback to complete as well as call the expected restores"
         }
       ]
     },

@@ -61,7 +61,7 @@ function Picker:render()
   end
 end
 
-function Picker:load(done)
+function Picker:load(done, refresh)
   local owner = self.current()
   if not owner then
     send(done, false)
@@ -76,7 +76,7 @@ function Picker:load(done)
   local serial, collected = self.serial, {}
   self.waiting = done and { done } or {}
   local function fetch(cursor, revision)
-    owner:browse({ cursor = cursor, revision = revision }, function(page)
+    owner:browse({ cursor = cursor, revision = revision, refresh = not cursor and refresh or nil }, function(page)
       if self.current() ~= owner or serial ~= self.serial then
         return
       end
@@ -205,7 +205,7 @@ function M.install(current)
       owner.adapter:refresh(true)
       owner.consumer:refreshSelected()
     end
-    self:load()
+    self:load(nil, true)
   end
   EC.SelectDevice = function(params)
     self:select(params and params.Device)

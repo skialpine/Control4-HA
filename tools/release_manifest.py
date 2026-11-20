@@ -12,6 +12,7 @@ from check_packages import PACKAGE_MODELS
 from release_version import validate
 
 NAME = "ha-suite-release.json"
+DRIVER_BUNDLE = "control4-ha-drivers.zip"
 PROXIES = {
     "HA.Coordinator.c4z": {},
     "HA.Light.c4z": {"5001": "light_v2"},
@@ -89,6 +90,16 @@ def main():
     if args.verify:
         if json.loads(path.read_text()) != expected:
             parser.error("The release manifest does not describe the selected archives")
+        assets = expected["assets"]
+        with ZipFile(args.directory / DRIVER_BUNDLE) as bundle:
+            if sorted(bundle.namelist()) != sorted(assets) or any(
+                bundle.getinfo(name).file_size != asset["size"]
+                or hashlib.sha256(bundle.read(name)).hexdigest() != asset["sha256"]
+                for name, asset in assets.items()
+            ):
+                parser.error(
+                    "The driver bundle must contain the exact release packages"
+                )
     else:
         path.write_text(json.dumps(expected, indent=2, sort_keys=True) + "\n")
 

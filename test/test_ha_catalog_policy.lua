@@ -15,9 +15,9 @@ local catalog = Catalog.new(request, function()
 end, function(rows, active)
   return Choices.enrich(rows, request, active)
 end)
-local function open()
+local function open(force)
   local result = {}
-  catalog:refresh():next(function(value)
+  catalog:refresh(force):next(function(value)
     result.metadata = value
   end, function(error)
     result.failure = error.kind
@@ -155,6 +155,10 @@ T.eq("next page requests the same upstream revision", requests[10].message.servi
 answer(10, helperPage(2, nil, { helperPhysical }))
 T.eq("mixed eligibility guarantees reject the transfer", mixed.failure, "invalid_catalog")
 T.eq("failed transfer kept prior dataset", catalog.snapshot.revision, revision)
+T.eq("partially replaced metadata cannot authorize a previous selection", catalog.verified, nil)
+local staleChoice, staleReason = catalog:choice("switch.a", "switch", revision)
+T.eq("old descriptor is retired for setup", staleChoice, nil)
+T.eq("old chooser can ask for a new list", staleReason, "catalog_unverified")
 local projected = open()
 answer(11, helperPage(1, 1, { helperGroup }))
 answer(12, helperPage(2, 1, { helperPhysical }))
@@ -220,4 +224,92 @@ T.eq(
 answer(21, metadata(true))
 T.eq("native fallback excludes the hidden endpoint", catalog:read(native.metadata.revision, nil, "light").total, 1)
 T.eq("native discovery remains identified in metadata", native.metadata.source, "native")
+
+T.section("companion choices join native helpers and proven aliases in the same list")
+local helperId, wrapperId = "input_boolean.lamp", "light.decorative"
+local nativeRows = wire(codec.array({
+  { entity_id = helperId, name = "Lamp helper", domain = "input_boolean", attributes = codec.object() },
+  { entity_id = wrapperId, name = "Decorative lights", domain = "light", attributes = codec.object() },
+  { entity_id = "switch.a", name = "Raw relay", domain = "switch", attributes = codec.object() },
+}))
+catalog = Catalog.new(request, function()
+  local work = deferred.new()
+  work:resolve(nativeRows)
+  return work
+end, function(rows, active, isNative)
+  return Choices.enrich(rows, request, active, isNative)
+end, true)
+local combined = open()
+local nextMessage = #requests
+local physical = helperPage(1, 1, { helperPhysical })
+physical.response.total, physical.response.pages = 1, 1
+answer(nextMessage, physical)
+T.eq(
+  "supplement inspects only native load IDs",
+  requests[#requests].message.entity_ids,
+  { helperId, wrapperId, "switch.a" }
+)
+local entries = metadata(false)
+entries[helperId] = codec.null
+entries[wrapperId] = wire({
+  entity_id = wrapperId,
+  id = string.rep("f", 32),
+  platform = "switch_as_x",
+  disabled_by = codec.null,
+  hidden_by = codec.null,
+  entity_category = codec.null,
+  options = { switch_as_x = { entity_id = "switch.a", invert = false } },
+})
+entries["light.b"] = nil
+answer(#requests, entries)
+local combinedRevision = combined.metadata.revision
+local list = catalog:read(combinedRevision, nil, "light")
+T.eq("only the most capable physical row and the independent native helper remain", list.total, 2)
+local enhanced = catalog:choice(helperPhysical.entity_id, "light", combinedRevision)
+T.eq("wrapper entity ID follows the richer row", enhanced.entity_aliases, { wrapperId })
+T.eq(
+  "native helper is eligible in both families",
+  catalog:choice(helperId, "switch", combinedRevision).domain,
+  "input_boolean"
+)
+T.eq(
+  "unknown IDs are not eligible",
+  { catalog:choice("light.badid", "light", combinedRevision) },
+  { [2] = "unsupported_endpoint" }
+)
+local known = #requests
+local same = open()
+local function unchangedCombined()
+  local response = helperPage(1, 1)
+  response.response.total, response.response.pages = 1, 1
+  return response
+end
+answer(known + 1, unchangedCombined())
+T.eq("an unchanged companion only confirms the revision", #requests, known + 1)
+T.eq("warm open reuses the complete merged list", same.metadata.revision, combinedRevision)
+local forced = open(true)
+answer(known + 2, unchangedCombined())
+T.eq(
+  "explicit refresh queries the exact native registry again",
+  requests[known + 3].message.entity_ids,
+  { helperId, wrapperId, "switch.a" }
+)
+answer(known + 3, entries)
+T.eq("unchanged refreshed catalog keeps its revision", forced.metadata.revision, combinedRevision)
+
+local wrapped = wire(helperPhysical)
+wrapped.entity_id = "device:" .. device .. ":" .. entries[wrapperId].id
+wrapped.domain = "light"
+wrapped.attributes.device_choice.choice_id = wrapped.entity_id
+wrapped.attributes.device_choice.source_load =
+  { entity_id = wrapperId, registry_id = entries[wrapperId].id, domain = "light" }
+local owner = open()
+local response = helperPage(1, 1, { wrapped }, string.rep("e", 64))
+response.response.total, response.response.pages = 1, 1
+answer(#requests, response)
+answer(#requests, entries)
+local opts = catalog:read(owner.metadata.revision, 1, "light")
+T.eq("when the companion picks the wrapper the native raw relay is still deduplicated", opts.total, 2)
+local winner = catalog:choice(wrapped.entity_id, "light", owner.metadata.revision)
+T.eq("source relay ID finds the companion wrapper", winner.entity_aliases, { "switch.a" })
 T.finish()

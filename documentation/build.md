@@ -57,18 +57,23 @@ the library-level results already exercised.
 CI uses the same suite build and inspection commands and the commit timestamp.
 `suite-verify` runs the Coordinator's release qualification against the built
 archives and verifies the manifest against the exact version and file digests.
-CI checks provenance before uploading artifacts. The source inventory records
-the applicable notices and permissions. Development builds still require the
-release-readiness checks before a qualified feedback handoff.
+It verifies that `control4-ha-drivers.zip` contains the same three C4Z packages
+GitHub publishes individually and that `control4-ha-setup.zip` contains the
+skill, version and canonical manuals from the same build. CI checks provenance
+before uploading artifacts. The source inventory records the applicable notices
+and permissions. Development builds still require the release-readiness checks
+before a qualified feedback handoff.
 
 ## Check for a driver release
 
 In Composer, open the Coordinator's **Properties** to choose an **Update
 channel**. Production selects stable releases and Pre-release includes previews.
 In **Actions**, run **Check for driver updates** and read **Driver update
-status** in Properties. The check compares the exact installed suite packages
-with the GitHub release and verifies the required downloads. It preserves the
-running driver versions and Home Assistant connections.
+status** in Properties. **Driver Version** shows the installed revision. The
+update status shows the newest eligible release or explains why the check could
+not finish. The check compares the exact installed suite packages with the
+GitHub release and verifies the required downloads. It preserves the running
+driver versions and Home Assistant connections.
 
 The configured GitHub repository is `skialpine/Control4-HA`. When a compatible
 release is available, the status reports its revision. A partial release or
@@ -76,3 +81,10 @@ failed integrity check should be corrected in the release before installing. The
 current payload check is separate from automatic installation. To update a lab
 manually, use exact matching packages, update installed children first and
 Coordinator last, then verify each original selection and binding.
+
+If an installation stops partway through, read each installed driver version in
+Composer before retrying. Use the same complete package set to finish the
+update. Recheck selection, connections, control and feedback on each affected
+driver. If the update changed project settings or links and recovery cannot be
+verified, use the saved Control4 project backup and the corresponding driver
+packages to restore the working setup.

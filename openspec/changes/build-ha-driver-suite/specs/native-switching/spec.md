@@ -18,6 +18,11 @@ Switch SHALL expose native state commands, events, conditions and useful variabl
 - **WHEN** its initial snapshot arrives
 - **THEN** state conditions reflect On without firing a new physical press or turn-on occurrence
 
+#### Scenario: An installer adds a switch power action in Composer
+- **WHEN** the installer chooses Turn On, Turn Off or Toggle for a named Switch in Programming
+- **THEN** the command picker uses plain labels and the script identifies the target switch
+- **AND** saved Turn On and Turn Off actions from earlier suite revisions still control their selected switch
+
 ### Requirement: Explicit load and gesture ownership
 App and relay commands SHALL operate only the selected resolved HA load. Explicit linked-load overrides MUST take precedence until changed or cleared. Gesture-only mode MUST NOT command a load, and unsupported connected-C4 lighting use MUST direct the installer to Light rather than silently selecting another mode.
 
@@ -40,7 +45,7 @@ Switch SHALL expose declared button identities and supported LED configuration w
 - **THEN** the available choices reflect that palette and selecting a color preserves behavior
 
 ### Requirement: Legacy Switch functionality
-The new Switch SHALL provide equivalent manual helper control, button packets, multi-press events, indicator programming and useful diagnostics. The migration plan SHALL map every supported prior control and flag manual references.
+The new Switch SHALL provide equivalent manual helper control, button packets, single through triple taps, supported hold and release events, indicator programming and useful diagnostics. The migration plan SHALL map every supported prior control and flag manual references.
 
 #### Scenario: A configured Switch is migrated
 - **WHEN** the user verifies a pre-existing automation or keypad operation

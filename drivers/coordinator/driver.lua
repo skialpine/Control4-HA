@@ -13,6 +13,9 @@ local legacy
 commissionPage.install(function()
   return hub
 end)
+require("ha.switch-upgrade-page").install(function()
+  return hub
+end)
 local ready = false
 local resetReleaseCheck = require("ha.release-check").installActions(function()
   return ready
@@ -114,6 +117,10 @@ local function updatePropertyVisibility()
   local legacySecure = legacy and legacyTLS() == true
   local _, scheme = Connection.authority(Properties["HA URL"])
   SetPropertyVisible("Status", false)
+  -- Director can retain this status from the retired migration action after an update.
+  if Properties["Switch driver migration"] ~= nil then
+    SetPropertyVisible("Switch driver migration", false)
+  end
   SetPropertyVisible("HA Version", (Properties["HA Version"] or "") ~= "")
   for _, name in ipairs({ "HA URL", "HA Token" }) do
     SetPropertyVisible(name, not legacy or conflictingSettings())
@@ -208,6 +215,17 @@ RFP.HA_GET_STATE = function(binding, _, params)
     pcall(legacy.request, legacy, binding, params)
   end
 end
+RFP.suppressDebug[1].HA_RELEASE_STATES = true
+RFP.HA_RELEASE_STATES = function(binding, _, params)
+  if ready and legacy then
+    pcall(legacy.release, legacy, binding, params)
+  end
+end
+RFP.HA_GET_CONNECTION_STATUS = function(binding)
+  if ready and legacy then
+    pcall(legacy.connectionStatus, legacy, binding, true)
+  end
+end
 RFP.suppressDebug[1].HA_CALL_SERVICE = true
 RFP.HA_CALL_SERVICE = function(binding, _, params)
   if ready and legacy then
@@ -289,7 +307,6 @@ end
 OBC[1] = function()
   if legacy then
     legacy:bindingChanged()
-    pcall(legacy.refresh, legacy)
   end
   if hub then
     hub:prune()
@@ -308,9 +325,6 @@ function OnDriverInit()
   pcall(CancelTimer, DEBUG_TIMER_NAME)
   if connection then
     if hub then
-      if hub.commissioning then
-        hub.commissioning:destroy()
-      end
       hub:destroy()
     else
       connection:destroy()
@@ -333,9 +347,6 @@ function OnDriverLateInit()
     end
     if connection then
       if hub then
-        if hub.commissioning then
-          hub.commissioning:destroy()
-        end
         hub:destroy()
       else
         connection:destroy()
@@ -378,6 +389,7 @@ function OnDriverLateInit()
         else
           legacy:bindingChanged()
         end
+        pcall(legacy.connectionStatus, legacy, 1)
       end
       if ready and hub == currentHub and Properties["Debug Print"] == "On" then
         print("Home Assistant connection | " .. state)
@@ -413,9 +425,6 @@ function OnDriverDestroyed()
   pcall(CancelTimer, DEBUG_TIMER_NAME)
   if connection then
     if hub then
-      if hub.commissioning then
-        hub.commissioning:destroy()
-      end
       hub:destroy()
     else
       connection:destroy()

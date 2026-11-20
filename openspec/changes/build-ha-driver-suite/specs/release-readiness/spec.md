@@ -5,7 +5,7 @@ Make pilot and GA readiness explicit through scoped feature evidence, independen
 ## ADDED Requirements
 
 ### Requirement: Initial working-driver feedback milestone
-This change SHALL end with Coordinator, Light and Switch packages, lab/proxy test evidence, setup instructions and a user feedback handoff. Further device families are deferred. Legacy migration MUST start only from an explicit user action.
+This change SHALL end with Coordinator, Light and Switch packages at one revision, verified whole-suite update and recovery, verified Switch migration from both starting versions, lab/proxy test evidence, setup instructions and a user feedback handoff. Further device families are deferred. Legacy migration MUST start only from an explicit user action.
 
 #### Scenario: Initial three drivers are ready
 - **WHEN** the current release candidate passes the documented release, upgrade, installation and predecessor task checks

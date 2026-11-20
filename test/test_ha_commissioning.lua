@@ -18,7 +18,8 @@ local selected, addCount, configuration, failConfiguration, changeRevision, refu
 local legacy, suiteVariableType
 local revision, rows = firstRevision, {}
 local catalog = {}
-function catalog:refresh()
+function catalog:refresh(force)
+  assert(force, "Quick Setup must recheck native eligibility before adding or binding devices")
   local work = deferred.new()
   work:resolve({ revision = revision })
   return work
@@ -225,11 +226,44 @@ operation = await(commissioning:execute(preview.id))
 T.eq("rerun adds nothing", addCount, 2)
 T.eq("completed matches remain untouched", operation.value.items[2].status, "kept")
 
+local aliased = {
+  entity_id = "light.wrapper",
+  attributes = codec.object({}),
+  entity_aliases = { A.choice_id },
+}
+local inventoryPage =
+  { cursor = 1, revision = secondRevision, entities = { rows[A.choice_id], rows[B.choice_id], aliased } }
+T.eq("browse identifies existing drivers and catalog aliases without changing the project", {
+  commissioning:existingChoices(inventoryPage),
+  addCount,
+}, { { [A.choice_id] = true, [B.choice_id] = true, [aliased.entity_id] = true }, 2 })
+
+ShimSetDeviceHidden(configuration[2].id, true)
+preview = await(commissioning:preview(request(B))).value
+T.eq("a completed driver still bound to the Coordinator cannot be recreated", preview.items[1].decision, "review")
+T.eq(
+  "confirming a hidden existing driver adds nothing",
+  await(commissioning:execute(preview.id)).error,
+  "review_required"
+)
+ShimSetDeviceHidden(configuration[2].id, false)
+local completedSwitch = configuration[2].id
+C4:Unbind(completedSwitch, ids.coordinatorBinding)
+C4:Bind(867, ids.coordinatorBinding, completedSwitch, ids.coordinatorBinding, class)
+ShimSetDeviceHidden(completedSwitch, true)
+preview = await(commissioning:preview(request(B))).value
+T.eq("a driver hidden from inventory remains reserved even on another Coordinator", preview.items[1].decision, "review")
+ShimSetDeviceHidden(completedSwitch, false)
 local existing = C4:GetDevices()
+C4:Unbind(configuration[2].id, ids.coordinatorBinding)
 existing[configuration[2].id] = nil
 existing[10] = { deviceName = "Kitchen", driverFileName = "roomdevice.c4i" }
 existing[11] = { deviceName = "Office", driverFileName = "roomdevice.c4i" }
 setProjectDevices(existing)
+T.eq("a fresh browse shows the device whose driver was deleted", commissioning:existingChoices(inventoryPage), {
+  [A.choice_id] = true,
+  [aliased.entity_id] = true,
+})
 preview = await(commissioning:preview(request(B))).value
 T.eq("deleted completed Switch may be explicitly recreated", preview.items[1].decision, "add")
 T.eq("preview alone does not recreate a deleted Switch", addCount, 2)
@@ -281,19 +315,36 @@ end
 
 T.section("Unknown adds cannot be repeated and late callbacks only save receipts")
 commissioning = start()
-preview = await(commissioning:preview(request(A))).value
+local stagedChoice = { choice_id = A.choice_id, family = A.family, room_id = 11, name = "Hall Pendant" }
+preview = await(commissioning:preview(request(stagedChoice))).value
 operation = await(commissioning:execute(preview.id))
 clock.run(30000)
 T.eq("no Director callback is unresolved", operation.value.items[1].reason, "add_unconfirmed")
 commissioning:destroy()
 commissioning = Commissioning.new(catalog, configure)
-preview = await(commissioning:preview(request(A))).value
+preview = await(commissioning:preview(request(stagedChoice))).value
 T.eq("a fresh instance refuses an unidentified add", preview.items[1].decision, "review")
 T.eq("review plan cannot repeat AddDevice", await(commissioning:execute(preview.id)).error, "review_required")
 ShimAnswerAdds()
 T.eq("late callback does not configure a device", #configuration, 0)
 T.eq("late callback leaves shared binding untouched", next(C4:GetBoundConsumerDevices(me, 1) or {}), nil)
-preview = await(commissioning:preview(request(A))).value
+local completed, staged = commissioning:existingChoices({
+  cursor = 1,
+  revision = revision,
+  entities = { rows[A.choice_id] },
+})
+T.eq("a staged driver stays visible in the default list", completed, {})
+T.eq("a reopened picker recovers the exact staged fields", staged[A.choice_id], {
+  name = stagedChoice.name,
+  room_id = stagedChoice.room_id,
+  family = stagedChoice.family,
+})
+preview = await(commissioning:preview(request({
+  choice_id = A.choice_id,
+  name = staged[A.choice_id].name,
+  room_id = staged[A.choice_id].room_id,
+  family = staged[A.choice_id].family,
+}))).value
 T.eq("late native receipt is reusable", preview.items[1].decision, "resume")
 operation = await(commissioning:execute(preview.id))
 T.eq("resumes exact prior add", operation.value.items[1].status, "resumed")
@@ -301,7 +352,7 @@ T.eq("late completion only added one driver", addCount, 1)
 
 T.section("Ambiguous SDK receipts are never treated as a definite rejection")
 commissioning = start()
-preview = await(commissioning:preview(request(A))).value
+preview = await(commissioning:preview(request(stagedChoice))).value
 local realAdd = C4.AddDevice
 C4.AddDevice = function(_, _, _, _, callback)
   addCount = addCount + 1
@@ -316,11 +367,19 @@ T.eq(
   "pending"
 )
 setProjectDevices({
-  [10] = { deviceName = "Kitchen", driverFileName = "roomdevice.c4i" },
-  [20] = { deviceName = "Pendant", driverFileName = "Control4.HA.Light.c4z", roomId = 10 },
+  [11] = { deviceName = "Office", driverFileName = "roomdevice.c4i" },
+  [20] = { deviceName = "Hall Pendant", driverFileName = "Control4.HA.Light.c4z", roomId = 11 },
 })
+fixtures.coldStoredObject("HA.Commissioning")
 commissioning = Commissioning.new(catalog, configure)
-preview = await(commissioning:preview(request(A))).value
+completed, staged = commissioning:existingChoices({ cursor = 1, revision = revision, entities = { rows[A.choice_id] } })
+T.eq("lost callbacks still show the unfinished row", completed, {})
+T.eq("a unique candidate restores its saved details after reopening", staged[A.choice_id], {
+  name = stagedChoice.name,
+  room_id = stagedChoice.room_id,
+  family = stagedChoice.family,
+})
+preview = await(commissioning:preview(request(stagedChoice))).value
 T.eq("preview discloses exact recovery candidate", {
   preview.items[1].decision,
   preview.items[1].device_id,
@@ -406,6 +465,16 @@ for _, version in ipairs({ "106", "107" }) do
   }
   preview = await(commissioning:preview(request(B))).value
   T.eq("recognizes the original without offering a duplicate", preview.items[1].reason, "legacy_switch_match")
+  local page = { cursor = 1, revision = firstRevision, entities = { rows[A.choice_id], rows[B.choice_id] } }
+  T.eq("browse identifies the exact device on the legacy Coordinator binding", commissioning:existingChoices(page), {
+    [B.choice_id] = true,
+  })
+  legacy[20].provider = me + 1
+  page.cursor = 2
+  T.eq("continuation uses the browse snapshot", commissioning:existingChoices(page), { [B.choice_id] = true })
+  page.cursor = 1
+  T.eq("same entity ID on another connection stays visible on fresh browse", commissioning:existingChoices(page), {})
+  legacy[20].provider = me
   T.eq("requires review without making changes", await(commissioning:execute(preview.id)).error, "review_required")
   T.eq("did not add a second Switch", addCount, 0)
 end

@@ -2,6 +2,7 @@
 require("lib.utils")
 local log = require("lib.logging")
 local identities = require("ha.identities")
+local bindings = require("lib.bindings")
 local values = require("lib.values")
 local codec = require("ha.codec")
 local metrics = require("ha.performance").shared
@@ -68,6 +69,7 @@ function M.init(family, address)
   applyLogMode(Properties["Log Mode"])
   metrics:reset()
   metrics:setEnabled(Properties["Latency Diagnostics"] == "On")
+  bindings:restoreBindings()
   if family == "light" then
     for _, name in ipairs({
       "Entity ID",

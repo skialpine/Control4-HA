@@ -187,8 +187,10 @@ end
 --- @param light Light
 --- @param tParams table<string, string>
 --- @param presetId integer|nil
+--- @param presetOrigin integer|nil
 --- @return LightColor|nil
-local function targetColor(light, tParams, presetId)
+--- @return boolean|nil fromPreset
+function Handlers.targetColor(light, tParams, presetId, presetOrigin)
   local kelvin = tonumber(Select(tParams, "LIGHT_COLOR_TARGET_COLOR_CORRELATED_TEMPERATURE"))
   if kelvin and kelvin > 0 then
     local x, y = Color.kelvinToXY(kelvin)
@@ -206,7 +208,7 @@ local function targetColor(light, tParams, presetId)
     return color
   end
   if presetId ~= nil then
-    return light.settings:colorPreset(presetId)
+    return light.settings:colorPreset(presetId, presetOrigin), true
   end
   return nil
 end
@@ -246,7 +248,8 @@ local function intent(light, strCommand, tParams)
     }
   elseif strCommand == "SET_COLOR_TARGET" then
     local presetId = tointeger(Select(tParams, "LIGHT_COLOR_TARGET_PRESET_ID"))
-    local color = targetColor(light, tParams, presetId)
+    local presetOrigin = tointeger(Select(tParams, "LIGHT_COLOR_TARGET_PRESET_ORIGIN"))
+    local color = Handlers.targetColor(light, tParams, presetId, presetOrigin)
     if not color then
       log:warn("SET_COLOR_TARGET names no color: %s", tParams)
       return nil
@@ -260,7 +263,7 @@ local function intent(light, strCommand, tParams)
           or Select(tParams, "RATE")
       ),
       presetId = presetId,
-      presetOrigin = tointeger(Select(tParams, "LIGHT_COLOR_TARGET_PRESET_ORIGIN")),
+      presetOrigin = presetOrigin,
       source = "proxy",
     }
   elseif strCommand == "SET_BRIGHTNESS_STOP" or strCommand == "GROUP_STOP_RAMP" then

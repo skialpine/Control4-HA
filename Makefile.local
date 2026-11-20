@@ -16,6 +16,7 @@ suite-verify:
 	python3 tools/check_packages.py
 	python3 tools/package.py check-version oss "$(DRIVER_VERSION)"
 	python3 tools/release_manifest.py --verify --revision "$(DRIVER_VERSION)"
+	python3 tools/setup_skill.py --verify --revision "$(DRIVER_VERSION)"
 	LUA_PATH="test/?.lua;src/?.lua;src/?/init.lua;vendor/?.lua;vendor/?/init.lua;;" \
 		luajit test/test_ha_release_check.lua dist/oss
 

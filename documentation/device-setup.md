@@ -10,13 +10,13 @@ the Home Assistant selection. **Controls** appears when a wall control operates
 another named light or switch.
 
 1. Open **Device Setup** and choose **Choose device**.
-1. Search by device name or room. Use **Light** for a dimmer, a color light or a
-   group of lights. Use **Switch** for an on/off device such as a relay. A
-   compatible button device can appear in either list.
+1. Search by name, room or exact Home Assistant entity ID. The Light list
+   includes lights, compatible switches and toggle helpers. Related entity IDs
+   find the same result when they control the same load. Choose **Reload
+   devices** if the list is out of date.
 1. Select a result and choose **Use selected device**. Searching, highlighting a
-   result or closing the list leaves the current selection in place. When you
-   choose a replacement, the current device stays connected until the new device
-   passes its check.
+   result or closing the list leaves the current selection in place. The driver
+   prepares buttons and indicators when the chosen device supports them.
 1. Check **Controls** for the selected load or connected Control4 light. In
    **Buttons only** mode, **App control** shows **Off**. The status updates when
    Home Assistant reports the selected device's current state.
@@ -26,6 +26,10 @@ is. The optional **HA Gesture Bridge** helper adds named physical devices and
 remotes. When you choose a compatible device, the helper finds its buttons, any
 configured indicator lights and its linked load. Devices with several
 independent outputs can have more than one choice. Select the output you want.
+
+New drivers cover lighting, switches and compatible button devices. Existing BP
+sensor drivers have their own connection and upgrade rules.
+[Compatibility](compatibility.md)
 
 ### When the wall control and the light have different names
 
@@ -53,18 +57,18 @@ not appear.
 
 ### When setup needs attention
 
-| What you see                                | What to do                                                                                                                                                                                        |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Not configured                              | Choose a device. If the button is unavailable, connect this driver to the Home Assistant Connection.                                                                                              |
-| Driver did not respond                      | Check **Driver Status** and **Next step** in Properties, then select **Retry loading setup**.                                                                                                     |
-| Waiting for device                          | Allow Home Assistant to report the device's current state. Check the device in Home Assistant if the message persists.                                                                            |
-| Device unavailable                          | Check the device and its linked target in Home Assistant.                                                                                                                                         |
-| Home Assistant disconnected                 | Check the address and account on the Coordinator.                                                                                                                                                 |
-| Home Assistant denied access                | Check the Coordinator account's permissions. The helper's device list and button setup require a Home Assistant administrator. Reopen the list or choose **Retry setup** after correcting access. |
-| The device list changed                     | Open the list again and choose the device from the current results.                                                                                                                               |
-| Driver and helper versions are incompatible | Install a compatible driver and HA Gesture Bridge version, then reopen the list.                                                                                                                  |
-| Setup needs attention after a restart       | Choose **Retry setup** to finish a previously requested choice, or open the list to choose again.                                                                                                 |
-| Waiting for buttons                         | Check the device and its input sources in HA Gesture Bridge.                                                                                                                                      |
+| What you see                                | What to do                                                                                                                                                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Not configured                              | Choose a device. If the button is unavailable, connect this driver to the Home Assistant Connection.                                                                                                                                          |
+| Driver did not respond                      | Check **Driver Status** and **Next step** in Properties, then select **Retry loading setup**.                                                                                                                                                 |
+| Waiting for device                          | Allow Home Assistant to report the device's current state. Check the device in Home Assistant if the message persists.                                                                                                                        |
+| Device unavailable                          | Select **Refresh device state** when it appears. If the device stays unavailable, check the device and its linked target in Home Assistant.                                                                                                   |
+| Home Assistant disconnected                 | Check the address and account on the Coordinator.                                                                                                                                                                                             |
+| Home Assistant denied access                | Check the Coordinator account's permissions. The helper's device list and button setup require a Home Assistant administrator. After correcting access, reopen the chooser if listing failed or choose **Retry setup** if preparation failed. |
+| The device list changed                     | Open the list again and choose the device from the current results.                                                                                                                                                                           |
+| Driver and helper versions are incompatible | Install a compatible driver and HA Gesture Bridge version, then reopen the list.                                                                                                                                                              |
+| Setup needs attention after a restart       | Choose **Retry setup** to finish a previously requested choice, or open the list to choose again.                                                                                                                                             |
+| Waiting for buttons                         | Check the device and its input sources in HA Gesture Bridge.                                                                                                                                                                                  |
 
 For a Light, Composer’s native **Properties** shows the settings supported by
 its selected light, including brightness presets and transition rates for
@@ -94,14 +98,6 @@ If a linked Control4 light keeps dimming after a button release, choose **Print
 device diagnostics to Lua** in **Actions**. If all release attempts fail, the
 last command result in the **Lua** tab explains what to check.
 
-- In **Choose device** or **Change device**, expand **Enter a Home Assistant
-  device ID** and select **Save device ID** after entering the ID. This field
-  accepts the exact Home Assistant entity ID for a light, switch, or toggle
-  helper (`input_boolean`). Use it to select a toggle helper or a device outside
-  the picker. If Home Assistant cannot verify the new ID, the driver keeps the
-  current selection. Correct the problem and enter the ID again. Clearing a
-  saved manual ID removes that selection. Choosing by name clears the manual
-  entry when setup succeeds.
 - **Button behavior** appears for devices with buttons, Control4 lighting
   connections or an existing override. Leave it on **Automatic** to follow the
   device and connections. App commands go to the Home Assistant target or, for a

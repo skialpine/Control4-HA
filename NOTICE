@@ -1,12 +1,39 @@
 Control4-HA
 
+A special thank-you to BP (bphillips09)
+https://github.com/bphillips09
+
+Thank you for building the original Home Assistant drivers for Control4 and
+sharing them with the community. Your work gave this suite a working foundation
+and a clear reference for preserving the features and project connections that
+existing installations rely on. We will draw on the full driver family as the
+suite adds support for more devices.
+
+Original drivers
+
+  HA Alarm Panel — https://github.com/bphillips09/Control4-HA-Alarm-Panel
+  HA Binary Sensor — https://github.com/bphillips09/Control4-HA-Binary-Sensor
+  HA Blinds — https://github.com/bphillips09/Control4-HA-Blinds
+  HA Coordinator — https://github.com/bphillips09/Control4-HA-Coordinator
+  HA Fan — https://github.com/bphillips09/Control4-HA-Fan
+  HA Garage Door — https://github.com/bphillips09/Control4-HA-Garage-Door
+  HA Generic Sensor — https://github.com/bphillips09/Control4-HA-Generic-Sensor
+  HA Light — https://github.com/bphillips09/Control4-HA-Light
+  HA Lock — https://github.com/bphillips09/Control4-HA-Lock
+  HA Media Player — https://github.com/bphillips09/Control4-HA-Media-Player
+  HA Switch — https://github.com/bphillips09/Control4-HA-Switch
+  HA Thermostat — https://github.com/bphillips09/Control4-HA-Thermostat
+
+Original shared driver foundation
+
+  HA Base — https://github.com/bphillips09/Control4-HA-Base
+
 Portions copyright Snap One, LLC or its licensors. All rights reserved.
 The Control4 shared libraries come from drivers-common-public through the
 Finite Labs Control4 Driver Template. Their source files retain copyright and
 adaptation notices.
 
-The project uses the Finite Labs Control4 Driver Template under AGPL-3.0.
-It builds on the original Home Assistant driver family by BP / bphillips09.
+This project uses the Finite Labs Control4 Driver Template under AGPL-3.0.
 See documentation/provenance.md for source revisions, changes and notices.
 
 This project is independent of Control4, Home Assistant and Finite Labs.

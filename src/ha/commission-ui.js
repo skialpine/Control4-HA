@@ -12,19 +12,20 @@
   var canBrowse = false;
   var draft = [];
   var selectedOnly = false;
+  var showExisting = false;
   var draftRevision;
   var catalog;
   var browseRequest;
   var pending;
   var plan;
   var finished;
-  var decisions = { add: "Create in Control4", resume: "Finish adding this device", keep: "Keep existing Control4 device", review: "Needs attention" };
+  var decisions = { add: "Create in Control4", resume: "Finish setup", keep: "Keep existing Control4 device", review: "Needs attention" };
   var outcomes = { added: "Added to Control4", resumed: "Setup finished", kept: "Already set up", not_started: "Still to add", needs_attention: "Needs attention" };
   var reasons = {
     multiple_matches: "More than one project device matches.",
     unresolved_add: "An earlier attempt could not confirm this addition. Check the project and review again.",
     different_device_or_coordinator: "This device matches another setup in the project. Check its existing setup.",
-    legacy_switch_match: "An existing switch already controls this device. To move it, start an older-switch review in Device Setup.",
+    legacy_switch_match: "An older switch driver already controls this device. Check Migrate switch drivers in Quick Setup.",
     legacy_switch_unconfirmed: "Check the existing switch’s Home Assistant device before adding another control.",
     legacy_light_match: "Check this Light’s Properties. If it already controls the Home Assistant device you selected, go back and uncheck that device.",
     legacy_light_unconfirmed: "Check which Home Assistant device this Light controls in Properties. To continue adding other devices, go back and uncheck this device.",
@@ -100,6 +101,7 @@
     var args = { request: active.id, setup: setup };
     if (cursor) args.cursor = cursor;
     if (cursor || reused) args.revision = catalog.revision;
+    if (!cursor && !reused && catalog.refresh) args.refresh = true;
     active.timer = setTimeout(function () {
       if (browseRequest !== active) return;
       browseFailed("The device list took too long to load. Refresh to try again.");
@@ -132,11 +134,15 @@
         (next == null ? end !== data.total + 1 : data.choices.length === 0 || next !== end || next > data.total) ||
         data.choices.some(function (item) {
           if (!item || typeof item.id !== "string" || !item.id || typeof item.name !== "string" ||
-              !item.name || catalog.seen[item.id] || !Array.isArray(item.families) ||
+              !item.name || catalog.seen[item.id] || (item.existing !== undefined && typeof item.existing !== "boolean") ||
+              !Array.isArray(item.families) ||
               !item.families.length || !item.families.includes(item.family) ||
               item.families.some(function (family, index) {
                 return (family !== "light" && family !== "switch") || item.families.indexOf(family) !== index;
-              })) return true;
+              }) || (item.resume !== undefined && (!item.resume || item.existing ||
+                typeof item.resume.name !== "string" || nameError(item.resume.name) ||
+                !Number.isInteger(item.resume.room_id) || item.resume.room_id <= 0 ||
+                !item.families.includes(item.resume.family)))) return true;
           catalog.seen[item.id] = item;
           return false;
         })) {
@@ -159,11 +165,11 @@
     }
   }
 
-  function findDevices(useCurrentRevision) {
+  function findDevices(useCurrentRevision, refresh) {
     if (!canBrowse || pending) return;
     var revision = useCurrentRevision === true && catalog && catalog.ready ? catalog.revision : null;
     cancelBrowse();
-    catalog = { choices: [], seen: Object.create(null), cursor: 1, loading: true, revision: revision };
+    catalog = { choices: [], seen: Object.create(null), cursor: 1, loading: true, revision: revision, refresh: refresh };
     renderPicker();
     requestPage(undefined, !!revision);
   }
@@ -243,54 +249,67 @@
     var active = rows.contains(document.activeElement) ? document.activeElement : null;
     var focus = active && { id: active.closest("tr").dataset.choice, field: active.dataset.field };
     var roomHTML = roomOptions();
-    var matching = selectedOnly ? draft.map(function (item) { return item.source; }) : data.choices.filter(function (item) {
-      return [item.name, item.area, item.description].join(" ").toLowerCase().includes(search);
+    var visible = showExisting ? data.choices : data.choices.filter(function (item) { return !item.existing; });
+    var matching = selectedOnly ? draft.map(function (item) { return item.source; }) : visible.filter(function (item) {
+      var savedRoom = item.resume && roomIndex[item.resume.room_id];
+      return [item.name, item.area, item.description, item.resume && item.resume.name, savedRoom && savedRoom.name]
+        .join(" ").toLowerCase().includes(search);
     });
     rows.innerHTML = matching.map(function (item) {
       var selection = picked(item.id);
-      var room = roomIndex[selection ? selection.room_id : matchingRoom(item.area)];
-      var detail = [item.area, item.description].filter(Boolean).join(" · ");
+      var resume = item.resume;
+      var room = roomIndex[selection ? selection.room_id : resume ? resume.room_id : matchingRoom(item.area)];
+      var detail = [item.area, item.description, item.existing && "Already in Control4"].filter(Boolean).join(" · ");
       var escapeName = Kit.esc(item.name);
       var checkboxId = "pick-" + Kit.esc(item.id);
       var nameId = "name-" + Kit.esc(item.id);
+      var resumeId = "resume-" + Kit.esc(item.id);
       var disabled = !data.ready || stale || (!selection && draft.length >= batchLimit);
       return '<tr data-choice="' + Kit.esc(item.id) + '"' + (selection ? ' class="is-picked"' : '') + '>' +
         '<td class="quick-select-cell"><input id="' + checkboxId + '" type="checkbox" data-field="checked" aria-label="Select ' + escapeName + '"' +
+        (resume ? ' aria-describedby="' + resumeId + '"' : '') +
         (selection ? ' checked' : '') + (disabled ? ' disabled' : '') + '></td>' +
         '<td><label class="quick-row-name" for="' + checkboxId + '">' + escapeName + '</label>' +
         (detail ? '<div class="quick-row-detail">' + Kit.esc(detail) + '</div>' : '') +
-        (selection ? '<div class="quick-name-field"><label for="' + nameId + '">Control4 name</label>' +
+        (resume ? '<div class="quick-row-detail" id="' + resumeId + '">Finish setting up ' + Kit.esc(resume.name) + '</div>' : '') +
+        (selection && !resume ? '<div class="quick-name-field"><label for="' + nameId + '">Control4 name</label>' +
           '<input id="' + nameId + '" type="text" data-field="name" aria-label="Control4 name for ' + escapeName +
           '" aria-invalid="' + nameError(selection.name.trim()) + '" maxlength="128" required value="' +
           Kit.esc(selection.name) + '"' + (stale ? ' disabled' : '') + '></div>' : '') +
         '</td><td>' +
-        (selection ? '<select data-field="room_id" required aria-label="Control4 room for ' + escapeName +
+        (selection && !resume ? '<select data-field="room_id" required aria-label="Control4 room for ' + escapeName +
           '" aria-invalid="' + !room + '"' +
           (stale ? ' disabled' : '') + '>' + roomHTML + '</select>' :
           '<span class="quick-row-detail">' + Kit.esc(room ? roomLabel(room) : "—") + '</span>') +
-        '</td><td>' + (selection && item.families.length > 1 ?
+        '</td><td>' + (selection && !resume && item.families.length > 1 ?
           '<select data-field="family" aria-label="Add ' + escapeName + ' as"' + (stale ? ' disabled' : '') + '>' +
           item.families.map(function (family) {
             return '<option value="' + family + '">' + familyName(family) + '</option>';
           }).join("") + '</select>' :
-          familyName(selection ? selection.family : item.family)) + '</td></tr>';
+          familyName(selection ? selection.family : resume ? resume.family : item.family)) + '</td></tr>';
     }).join("");
     Array.prototype.forEach.call(rows.querySelectorAll("tr.is-picked"), function (row) {
       var item = picked(row.dataset.choice);
-      row.querySelector('[data-field="room_id"]').value = item.room_id || "";
+      var room = row.querySelector('[data-field="room_id"]');
+      if (room) room.value = item.room_id || "";
       var family = row.querySelector('[data-field="family"]');
       if (family) family.value = item.family;
     });
     el("filters").hidden = selectedOnly;
+    el("device-scope").hidden = selectedOnly;
+    el("toggle-existing").disabled = !data.ready || !!pending;
+    text("toggle-existing", showExisting ? "Show devices to add" : "Show all devices");
+    text("review-hint", showExisting ? "Showing all supported Home Assistant devices." : "Showing devices to add or finish setting up.");
     el("selected-view").hidden = !selectedOnly;
     el("choices").hidden = !matching.length;
     el("helper").hidden = selectedOnly || data.helper !== false;
-    el("browse").disabled = data.loading === true || !!pending;
+    el("browse").setAttribute("aria-disabled", String(data.loading === true || !!pending));
     text("catalog-status", data.error ||
       (stale ? "The device list changed. Clear your selection and choose devices again." :
         data.loading ? "Loading devices…" :
-          data.ready && !selectedOnly && !matching.length ? (search ? "No matching devices." : "No compatible devices found.") :
-            data.ready && !selectedOnly && search ? matching.length + " of " + data.total + " devices shown" : ""));
+          data.ready && !selectedOnly && !matching.length ? (search ? (showExisting ? "No matching devices." : "No matching devices to add.") :
+            data.choices.length ? "All devices in this category already have a Control4 driver." : "No compatible devices found.") :
+            data.ready && !selectedOnly && search ? matching.length + " of " + visible.length + " devices shown" : ""));
     updateBatch();
     if (focus) {
       var field = choiceField(focus.id, focus.field);
@@ -308,6 +327,10 @@
     var issues = draft.filter(function (item) { return !roomIndex[item.room_id] || nameError(item.name.trim()); });
     if (!issues.length) return null;
     var first = issues[0];
+    if (first.source.resume) return {
+      message: "Check the driver’s room in Composer, then refresh rooms.",
+      label: "Refresh rooms", action: readState,
+    };
     var field = roomIndex[first.room_id] ? "name" : "room_id";
     return {
       message: (field === "name" ? "Check the Control4 name for " : "Choose a room for ") + first.source.name +
@@ -319,7 +342,7 @@
 
   function updateBatch() {
     var checking = pending && pending.command === "HA_ADD_PREVIEW";
-    var unassigned = draft.filter(function (item) { return !roomIndex[item.room_id]; });
+    var unassigned = draft.filter(function (item) { return !item.source.resume && !roomIndex[item.room_id]; });
     var showBatch = unassigned.length && rooms.length && !staleDraft();
     var roomSelected = !!roomIndex[el("bulk-room").value];
     var includesHidden = unassigned.some(function (item) { return !choiceField(item.choice_id, "room_id"); });
@@ -349,9 +372,10 @@
     if (selected && draft.length < batchLimit && !picked(id)) {
       var row = catalog.seen[id];
       if (!row) return;
+      var resume = row.resume || { family: row.family, room_id: matchingRoom(row.area), name: defaultName(row.name) };
       draftRevision = catalog.revision;
       draft.push({
-        choice_id: id, source: row, family: row.family, room_id: matchingRoom(row.area), name: defaultName(row.name),
+        choice_id: id, source: row, family: resume.family, room_id: resume.room_id, name: resume.name,
       });
     } else if (!selected) {
       draft = draft.filter(function (item) { return item.choice_id !== id; });
@@ -523,7 +547,13 @@
   }
 
   el("reload-state").addEventListener("click", readState);
-  el("browse").addEventListener("click", findDevices);
+  el("browse").addEventListener("click", function (event) {
+    if (event.currentTarget.getAttribute("aria-disabled") !== "true") findDevices(false, true);
+  });
+  el("toggle-existing").addEventListener("click", function () {
+    showExisting = !showExisting;
+    renderPicker();
+  });
   el("setup-kind").addEventListener("change", function () {
     setup = el("setup-kind").value;
     findDevices(true);
@@ -562,7 +592,7 @@
     var room = roomIndex[el("bulk-room").value];
     if (!room || pending || staleDraft()) return;
     draft.forEach(function (item) {
-      if (!roomIndex[item.room_id]) item.room_id = room.id;
+      if (!item.source.resume && !roomIndex[item.room_id]) item.room_id = room.id;
     });
     el("bulk-room").value = "";
     renderPicker();
@@ -593,8 +623,8 @@
   el("back").addEventListener("click", function () {
     finished = false;
     text("addition-status", "");
+    if (canBrowse) findDevices(true);
     render();
-    if (canBrowse && (!catalog || !catalog.ready)) findDevices();
     if (canBrowse) focusReview();
     else el("reload-state").focus();
   });
@@ -608,6 +638,9 @@
       HA_ADD_PREVIEWED: receive,
       HA_ADD_RESULT: receive,
     },
-    onConnect: readState,
+    onConnect: function () {
+      readState();
+      SwitchUpgradePage.connect();
+    },
   });
 })();

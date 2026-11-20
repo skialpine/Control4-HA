@@ -30,18 +30,18 @@ An update SHALL use versioned release assets matching the exact installed packag
 - **THEN** the update reports the incomplete release before installing any of that operation's packages
 
 ### Requirement: Ordered and observable installation
-All required assets SHALL be fetched and validated before installation begins. Package reloads MUST be sequenced with Director acknowledgment and the coordinating driver reloaded last. Partial failure MUST be visible, preserve a recoverable path and MUST NOT be reported as a fully successful update.
+One suite operation SHALL stage and verify all required assets before installing any package. It MUST persist the controller-wide target revision and progress across Director-acknowledged reloads. Success MUST require readback of the selected running revision on every affected instance. Partial failure MUST identify pending packages and retain both the qualified release and previous working set for recovery.
 
 #### Scenario: A child update fails
 - **WHEN** Director rejects a child package during the update sequence
-- **THEN** the suite reports which package failed and retains enough version information to retry or restore the prior qualified release
+- **THEN** the suite reports which packages completed and resumes the same qualified release or restores the previous working set, with success only after every affected instance runs one revision
 
 ### Requirement: Release and lifecycle recovery
 Update execution SHALL retire old owned callbacks, subscriptions, timers and held outputs without duplicate control. After reload, consumers MUST recover their selections/settings and reacquire fresh state. An interrupted update MUST NOT cause an uncontrolled repeated reload loop.
 
 #### Scenario: Coordinator reloads last
 - **WHEN** its own package is installed after child packages
-- **THEN** the old update lifetime cannot continue sending commands and the replacement reconnects using saved configuration
+- **THEN** the old update lifetime stops, the replacement reconnects using saved configuration and the operation verifies its running revision before reporting success
 
 ### Requirement: Diagnostic independence
 Automatic update operation SHALL expose concise current/available version, channel, outcome and actionable error information. It MUST NOT require verbose logging or include HA credentials in update requests or reports.

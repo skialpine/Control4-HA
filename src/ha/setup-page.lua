@@ -2,6 +2,7 @@
 local page = require("lib.ui.page")
 local pageParams = require("lib.ui.page-params")
 local choices = require("ha.choices")
+local contract = require("ha.contract")
 local M = {}
 
 function M.friendlyName(value)
@@ -45,6 +46,7 @@ local explanations = {
   saved_device_unverified = "Choose the device again in Device Setup. Home Assistant could not confirm the saved selection.",
   permission_denied = "Home Assistant denied access. Check the account used by the Home Assistant Connection.",
   revision_changed = "The device list changed. Open the list again and choose your device.",
+  catalog_unverified = "Open the device list again to get the current choices.",
   unsupported_endpoint = "This device is no longer available for this driver. Choose another device.",
   unsupported_preparation_version = "Update the driver and HA Gesture Bridge to compatible versions, then try again.",
   unsupported_catalog_version = "Update the driver and HA Gesture Bridge to compatible versions, then reopen the list.",
@@ -108,6 +110,22 @@ function M.choices(page, includeFamilies, nativePicker)
     local load = choice and choice.source_load
     local description = choice
       and ({ remote = "Button device", dimmer = "Dimmable light", switch = "On and off" })[choice.kind]
+    local entityIDs
+    if not includeFamilies and not nativePicker then
+      entityIDs = {}
+      local seen = { [row.entity_id] = true }
+      local function addId(id)
+        if contract.entity(id) and not seen[id] then
+          seen[id] = true
+          entityIDs[#entityIDs + 1] = id
+        end
+      end
+      addId(row.source_entity_id or (type(load) == "table" and load.entity_id))
+      addId(choice and choice.gesture_entity_id)
+      for _, alias in ipairs(row.entity_aliases or {}) do
+        addId(alias)
+      end
+    end
     local native
     if nativePicker then
       local dims = require("ha.light-capabilities").fromModes(row.attributes.supported_color_modes)
@@ -128,6 +146,7 @@ function M.choices(page, includeFamilies, nativePicker)
       families = includeFamilies and row.families or nil,
       family = includeFamilies and choices.suggestedFamily(row) or nil,
       id = row.entity_id,
+      entity_ids = entityIDs and #entityIDs > 0 and entityIDs or nil,
       name = row.picker_name or choice and choice.name or row.name,
       area = row.picker_area or choice and choice.area or (type(row.area_name) == "string" and row.area_name or nil),
       target = not includeFamilies

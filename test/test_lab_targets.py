@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lab"))
 from client import Lab, require_c4_target
@@ -14,6 +15,7 @@ from provision import (
     NoRedirect,
     assert_container,
     assert_owned,
+    provision,
     restored_archive,
     seed_archive,
 )
@@ -166,6 +168,36 @@ class LabTargets(unittest.TestCase):
             self.assertTrue(normalized)
             with self.assertRaises(ValueError):
                 restored_archive(path, {**self.inventory, "lab_id": "another-lab"})
+
+    def test_conflicting_seed_is_rejected_before_allocating_docker_resources(self):
+        inventory = {
+            **self.inventory,
+            "container": "qualification",
+            "volume": "qualification-config",
+            "network": "lab-net",
+            "ha_version": "2026.11.1",
+        }
+
+        def read_docker(method, path, **_):
+            self.assertEqual(method, "GET", f"Attempted to write {path}")
+            return {} if path == "/volumes" else []
+
+        client = Mock(call=Mock(side_effect=read_docker))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backup = (
+                root / ".cache/lab-backups/project-owned-lab-qualification-seed.tar"
+            )
+            backup.parent.mkdir(parents=True)
+            backup.write_bytes(b"previous seed")
+            with patch("provision.ROOT", root), patch(
+                "provision.seed_archive", return_value=b"modified seed"
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "Existing private seed archive differs"
+                ):
+                    provision(client, inventory, root / "inventory.json")
+            self.assertEqual(backup.read_bytes(), b"previous seed")
 
     def test_recovery_rejects_path_traversal_and_links_without_extracting(self):
         with tempfile.TemporaryDirectory() as directory:

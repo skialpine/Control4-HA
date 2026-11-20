@@ -111,6 +111,63 @@ function Commissioning:rooms()
   return project.rooms()
 end
 
+function Commissioning:existingChoices(page)
+  if #page.entities == 0 then
+    return {}, {}
+  end
+  local index = self.browseIndex
+  if page.cursor == 1 or not index or index.revision ~= page.revision then
+    local coordinator = tonumber(C4:GetDeviceID())
+    local devices = project.inventory()
+    local byId, named, endpoints = {}, {}, {}
+    for _, device in ipairs(devices) do
+      local key = project.roomAndName(device)
+      if key then
+        if named[key] == nil then
+          named[key] = device
+        else
+          named[key] = false
+        end
+      end
+      local provider = device.legacy and device.legacy_provider or device.provider
+      if provider == coordinator or provider == 0 then
+        byId[device.id] = device
+        if type(device.selected) == "string" and device.selected ~= "" then
+          endpoints[device.selected] = true
+        end
+      end
+    end
+    local staged = {}
+    for endpoint, saved in pairs(receipts()) do
+      local device = saved.phase == "added" and byId[saved.device_id]
+        or saved.phase == "pending" and named[project.roomAndName(saved)]
+      if project.unfinished(device, saved, coordinator) then
+        staged[endpoint] = { name = saved.name, room_id = saved.room_id, family = saved.family }
+      end
+    end
+    index = { revision = page.revision, endpoints = endpoints, staged = staged }
+    self.browseIndex = index
+  end
+  local existing, staged = {}, {}
+  for _, row in ipairs(page.entities) do
+    local _, keys = endpointKeys(row)
+    local pending, ambiguous
+    for key in pairs(keys) do
+      if index.endpoints[key] then
+        existing[row.entity_id] = true
+      end
+      if index.staged[key] then
+        ambiguous = pending ~= nil
+        pending = index.staged[key]
+      end
+    end
+    if pending and not ambiguous and not existing[row.entity_id] then
+      staged[row.entity_id] = pending
+    end
+  end
+  return existing, staged
+end
+
 function Commissioning:_item(choice, rooms, devices, saved)
   local row = self.catalog:choice(choice.choice_id, choice.family)
   if not row then
@@ -218,7 +275,7 @@ function Commissioning:preview(input)
   self.serial = self.serial + 1
   local sequence = self.serial
   local span = metrics:start("commissioning.preview")
-  local pending = self.catalog:refresh():next(function(metadata)
+  local pending = self.catalog:refresh(true):next(function(metadata)
     if self.destroyed or self.serial ~= sequence then
       return failure("retired")
     end
@@ -383,7 +440,7 @@ function Commissioning:_deploy(item, operation)
       return attention("retired")
     end
     return self.catalog
-      :refresh()
+      :refresh(true)
       :next(function(metadata)
         if item.decision == "add" and item.family == "light" then
           local added = project.device(deviceId)
@@ -449,7 +506,7 @@ function Commissioning:execute(id)
   end
   self.plan, self.running = nil, true
   local span = metrics:start("commissioning.execute")
-  local pending = self.catalog:refresh():next(function(metadata)
+  local pending = self.catalog:refresh(true):next(function(metadata)
     if self.destroyed then
       return failure("retired")
     end
@@ -478,7 +535,7 @@ function Commissioning:execute(id)
           verified = deferred.new()
           verified:resolve(actual[1])
         else
-          verified = self.catalog:refresh():next(function()
+          verified = self.catalog:refresh(true):next(function()
             return self:_item(approved.choice, self:rooms(), project.inventory(), receipts())
           end)
         end

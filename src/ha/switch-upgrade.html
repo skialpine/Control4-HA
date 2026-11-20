@@ -1,0 +1,24 @@
+  <section id="migration" class="card" aria-labelledby="migration-heading" hidden>
+    <h2 id="migration-heading" tabindex="-1">Migrate switch drivers</h2>
+    <p class="setup-detail" id="migration-summary" role="status">Checking this project for older switch drivers…</p>
+    <details id="migration-guide" hidden>
+      <summary>Find these events in Composer</summary>
+      <p class="setup-detail" id="migration-guide-timing"></p>
+      <ol>
+        <li>Open <strong>Programming</strong> and choose the listed device and event under <strong>Device Events</strong>. Change the indicated actions and keep the other actions in the script.</li>
+        <li>If you need to find a reference, open <strong>Tools → Detective Suite → Programming</strong>. Search for the old driver, right-click the match and choose <strong>Go To Device</strong>.</li>
+      </ol>
+    </details>
+    <ul class="upgrade-list" id="migration-switches"></ul>
+    <div class="quick-footer upgrade-footer">
+      <label class="upgrade-backup" id="migration-backup-label" hidden>
+        <input type="checkbox" id="migration-backup"> <span id="migration-confirmation">I saved a backup of this Control4 project.</span>
+      </label>
+      <div class="setup-actions">
+        <button class="btn btn-outline" id="migration-back" type="button" hidden>Back</button>
+        <button class="btn btn-outline" id="migration-refresh" type="button" hidden>Refresh list</button>
+        <button class="btn btn-primary" id="migration-next" type="button" hidden>Review drivers</button>
+        <button class="btn btn-outline" id="migration-cleanup" type="button" hidden>Review old drivers for removal</button>
+      </div>
+    </div>
+  </section>

@@ -12,14 +12,18 @@
 </head>
 <body>
 <main class="panel active setup quick-setup">
+<!-- #embed ../../../../src/ha/switch-upgrade.html -->
   <section class="quick-heading" aria-labelledby="add-title">
-    <h1 id="add-title">Home Assistant devices</h1>
+    <h1 id="add-title" tabindex="-1">Home Assistant devices</h1>
     <p class="setup-detail" id="connection" role="status">Checking connection…</p>
     <button class="btn btn-outline" id="reload-state" type="button" hidden>Check connection</button>
   </section>
   <section class="card quick-picker" id="picker" aria-labelledby="add-title" hidden>
     <div id="picker-inputs">
-      <p class="setup-detail" id="review-hint">Choose devices to add to your Control4 rooms.</p>
+      <div class="quick-list-scope" id="device-scope">
+        <p class="setup-detail" id="review-hint">Showing devices to add or finish setting up.</p>
+        <button class="btn btn-outline" id="toggle-existing" type="button">Show all devices</button>
+      </div>
       <div class="quick-filters" id="filters">
         <div class="quick-field">
           <label for="setup-kind">Device type</label>
@@ -84,6 +88,7 @@
 </main>
 <script>
 <!-- #embed ../../../../src/lib/ui/page.js -->
+<!-- #embed ../../../../src/ha/switch-upgrade-ui.js -->
 <!-- #embed ../../../../src/ha/commission-ui.js -->
 </script>
 </body>

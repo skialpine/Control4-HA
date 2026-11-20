@@ -1,6 +1,5 @@
 local T = require("testlib")
 local codec = require("ha.codec")
-local deferred = require("deferred")
 local Selection = require("ha.selection")
 local function wire(value)
   return codec.decode(codec.encode(value))
@@ -26,11 +25,12 @@ local function run(row, patch)
   local active, requests = true, {}
   local catalog = {}
   function catalog:refresh()
-    local p = deferred.new()
-    p:resolve({ revision = revision })
-    return p
+    error("choosing a cached row should never refresh the catalog")
   end
-  function catalog:choice(id, family)
+  function catalog:choice(id, family, expected)
+    if expected ~= revision then
+      return nil, "revision_changed"
+    end
     if id == row.entity_id and family == "light" then
       return row
     end

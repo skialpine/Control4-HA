@@ -198,7 +198,9 @@ def check(directory=ROOT / "dist/oss/c4z"):
                     "hide_proxy_properties": "false",
                     "dimmer": "true",
                     "has_leds": "true",
+                    "supports_default_on": "true",
                     "brightness_on_mode_preset": "true",
+                    "brightness_on_mode_previous": "true",
                     "click_rates": "true",
                     "hold_rates": "true",
                 }.items():
@@ -206,6 +208,23 @@ def check(directory=ROOT / "dist/oss/c4z"):
                         raise ValueError(
                             f"{name}: native light editor requires {key}={expected_value}"
                         )
+            if name == "Control4.HA.Switch.c4z":
+                power_names = {"Turn On", "Turn Off", "Toggle", "TurnOn", "TurnOff"}
+                power_commands = [
+                    (command.findtext("name"), command.findtext("description"))
+                    for command in xml.findall("config/commands/command")
+                    if command.findtext("name") in power_names
+                ]
+                if sorted(power_commands) != sorted(
+                    [
+                        ("Turn On", "Turn NAME On"),
+                        ("Turn Off", "Turn NAME Off"),
+                        ("Toggle", "Toggle NAME"),
+                    ]
+                ):
+                    raise ValueError(
+                        f"{name}: Composer power actions must show their target device"
+                    )
             for tab in tabs:
                 if "www/" + tab.get("file", "") not in names:
                     raise ValueError(f"{name}: missing packaged setup page")
@@ -253,6 +272,10 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--retire-interim"]:
         retire_interim_outputs(ROOT / "dist/oss/c4z", ROOT / ".cache/interim-packages")
     elif len(sys.argv) == 1:
-        check()
+        try:
+            check()
+        except subprocess.CalledProcessError as error:
+            detail = error.stderr or error.stdout or str(error)
+            raise SystemExit(detail.rstrip()) from None
     else:
         raise SystemExit("Usage: check_packages.py [--retire-interim]")

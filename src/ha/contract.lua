@@ -86,6 +86,15 @@ local function peerMatches(peer, device, binding, expectedClass)
   return false
 end
 
+local function declaresLegacyClass(binding)
+  for _, declared in pairs(Select(binding, "bindingclasses") or {}) do
+    if Select(declared, "class") == ids.legacyCoordinatorClass then
+      return true
+    end
+  end
+  return false
+end
+
 local function retainedPair(device, provider)
   local found = C4:GetDevices({ DeviceIds = device .. "," .. provider }) or {}
   local function matches(id, expected)
@@ -95,10 +104,7 @@ local function retainedPair(device, provider)
       and not (type(row.protocol) == "table" and next(row.protocol))
       and C4:GetDeviceData(id, "model") == expected.model
   end
-  return matches(device, ids.packages.light)
-    and matches(provider, ids.packages.coordinator)
-    and GetDeviceBindings(device, nil, false, nil, ids.legacyCoordinatorClass)[ids.lightCoordinatorBinding]
-    and GetDeviceBindings(provider, nil, true, nil, ids.legacyCoordinatorClass)[ids.coordinatorBinding]
+  return matches(device, ids.packages.light) and matches(provider, ids.packages.coordinator)
 end
 
 -- Both ends must declare the suite class and agree on the exact peer and edge.
@@ -123,6 +129,8 @@ local function provider(device)
     elseif
       legacy
       and peerMatches(peer, device, inputId, ids.legacyCoordinatorClass)
+      and declaresLegacyClass(input)
+      and declaresLegacyClass(binding)
       and retainedPair(device, provider)
     then
       return provider
@@ -148,9 +156,12 @@ function M.catalogQuery(value)
     return false
   end
   for key in pairs(value) do
-    if key ~= "revision" and key ~= "cursor" and key ~= "family" and key ~= "names_sensor" then
+    if key ~= "revision" and key ~= "cursor" and key ~= "family" and key ~= "names_sensor" and key ~= "refresh" then
       return false
     end
+  end
+  if value.refresh ~= nil and (type(value.refresh) ~= "boolean" or value.cursor ~= nil) then
+    return false
   end
   if
     value.names_sensor ~= nil
@@ -175,7 +186,8 @@ function M.catalogRow(value)
     or not codec.isObject(value.attributes)
     or type(value.name) ~= "string"
     or #value.name > 4096
-    or (value.domain ~= "light" and value.domain ~= "switch" and value.domain ~= "event")
+    or (value.available ~= nil and type(value.available) ~= "boolean")
+    or (not loadDomains[value.domain] and value.domain ~= "event")
   then
     return false
   end

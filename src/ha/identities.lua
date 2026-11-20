@@ -7,6 +7,10 @@ return {
     interimLight = { file = "Control4.HA.Light.c4z", model = "Control4.HA.Light" },
     switch = { file = "Control4.HA.Switch.c4z", model = "Control4.HA.Switch" },
   },
+  legacyPrototypes = {
+    ["HA.Light.c4z"] = { model = "HA Light", family = "light", version = "1" },
+    ["HA.Switch.c4z"] = { model = "HA Switch", family = "switch", version = "107" },
+  },
   minimumOS = "3.3.0",
   coordinatorClass = "SKIALPINE_HA_SUITE_V1",
   legacyCoordinatorClass = "HA_DEVICE",

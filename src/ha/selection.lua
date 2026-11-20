@@ -6,6 +6,24 @@ local operations = require("ha.operations")
 local deferred = require("deferred")
 local eventSelection = require("ha.event-selection")
 local M = {}
+
+function M.directLoad(family, entity, name)
+  local domain = contract.loadDomain(entity)
+  if not domain then
+    return nil
+  end
+  return codec.object({
+    version = 1,
+    family = family,
+    key = entity,
+    name = name or "",
+    input_ready = false,
+    preparation = "not_required",
+    controlled_load_origin = "selected_endpoint",
+    controlled_load = codec.object({ entity_id = entity, domain = domain }),
+  })
+end
+
 function M.query(value)
   if not codec.isObject(value) then
     return false
@@ -139,92 +157,86 @@ function M.resolve(catalog, request, arguments, active)
     fail("retired")
     return result
   end
-  catalog:refresh():next(function(metadata)
+  local row, failure = catalog:choice(arguments.choice_id, arguments.family, arguments.revision)
+  if not row then
+    fail(failure or "unsupported_endpoint")
+    return result
+  end
+  local config = codec.object({
+    version = 1,
+    key = row.entity_id,
+    name = row.name,
+    family = arguments.family,
+    preparation = "not_required",
+    input_ready = false,
+  })
+  local choice = row.attributes.device_choice
+  if not choice then
+    if row.domain == "event" then
+      config.gesture_entity_id = row.entity_id
+    else
+      config.controlled_load =
+        codec.object({ entity_id = row.entity_id, domain = row.domain, available = row.available })
+      config.controlled_load_origin = "selected_endpoint"
+    end
+    result:resolve(config)
+    return result
+  end
+  config.device_id = choice.device_id
+  config.source_load = choice.source_load
+  config.preparation = "required"
+  if not arguments.prepare then
+    result:resolve(config)
+    return result
+  end
+  if not active() then
+    fail("retired")
+    return result
+  end
+  local params = codec.object({
+    device_id = choice.device_id,
+    source_registry_id = choice.source_load and choice.source_load.registry_id or nil,
+  })
+  local rpc = operations.prepare(params)
+  if not rpc then
+    fail("invalid_request")
+    return result
+  end
+  local sent = pcall(request, rpc, function(ok, response)
     if not active() then
       fail("retired")
       return
     end
-    if metadata.revision ~= arguments.revision then
-      fail("revision_changed")
+    local current, failure = catalog:choice(arguments.choice_id, arguments.family, arguments.revision)
+    if not current then
+      fail(failure or "unsupported_endpoint")
       return
     end
-    local row = catalog:choice(arguments.choice_id, arguments.family)
-    if not row then
-      fail("unsupported_endpoint")
+    if not ok then
+      fail(response.kind or "rejected")
       return
     end
-    local config = codec.object({
-      version = 1,
-      key = row.entity_id,
-      name = row.name,
-      family = arguments.family,
-      preparation = "not_required",
-      input_ready = false,
-    })
-    local choice = row.attributes.device_choice
-    if not choice then
-      if row.domain == "event" then
-        config.gesture_entity_id = row.entity_id
-      else
-        config.controlled_load = codec.object({ entity_id = row.entity_id, domain = row.domain })
-        config.controlled_load_origin = "selected_endpoint"
-      end
-      result:resolve(config)
+    local prepared, invalid =
+      operations.prepared(response, choice.source_load and choice.source_load.entity_id or nil, params)
+    if not prepared then
+      fail(invalid or "invalid_response")
       return
     end
-    config.device_id = choice.device_id
-    config.source_load = choice.source_load
-    config.preparation = "required"
-    if not arguments.prepare then
-      result:resolve(config)
+    config.preparation = "prepared"
+    config.control_id = prepared.control_id
+    config.input_ready = prepared.input_ready
+    config.controlled_load = prepared.controlled_load
+    config.controlled_load_origin = prepared.controlled_load_origin
+    config.gesture_entity_id = prepared.gesture_entity_id
+    if not M.valid(codec.decode(codec.encode(config)), arguments) then
+      fail("invalid_response")
       return
     end
-    if not active() then
-      fail("retired")
-      return
-    end
-    local params = codec.object({
-      device_id = choice.device_id,
-      source_registry_id = choice.source_load and choice.source_load.registry_id or nil,
-    })
-    local rpc = operations.prepare(params)
-    if not rpc then
-      fail("invalid_request")
-      return
-    end
-    local sent = pcall(request, rpc, function(ok, response)
-      if not active() then
-        fail("retired")
-        return
-      end
-      if not ok then
-        fail(response.kind or "rejected")
-        return
-      end
-      local prepared, invalid =
-        operations.prepared(response, choice.source_load and choice.source_load.entity_id or nil, params)
-      if not prepared then
-        fail(invalid or "invalid_response")
-        return
-      end
-      config.preparation = "prepared"
-      config.control_id = prepared.control_id
-      config.input_ready = prepared.input_ready
-      config.controlled_load = prepared.controlled_load
-      config.controlled_load_origin = prepared.controlled_load_origin
-      config.gesture_entity_id = prepared.gesture_entity_id
-      if not M.valid(codec.decode(codec.encode(config)), arguments) then
-        fail("invalid_response")
-        return
-      end
-      result:resolve(config)
-    end, nil, 30000)
-    if not sent then
-      fail("disconnected")
-    end
-  end, function(failure)
-    fail(failure.kind or "rejected")
-  end)
+    result:resolve(config)
+  end, nil, 30000)
+  if not sent then
+    fail("disconnected")
+  end
   return result
 end
 return M

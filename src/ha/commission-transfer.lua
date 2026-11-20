@@ -38,14 +38,13 @@ function Transfer:offer(consumer)
   )
 end
 
-function Transfer:start(device, query)
+function Transfer:_start(device, query, verified)
   local promise = deferred.new()
   query = codec.object(query)
   if
     self.job
     or not contract.integer(device)
-    or not Selection.query(query)
-    or not query.prepare
+    or (not verified and (not Selection.query(query) or not query.prepare))
     or not self.hub.online
     or not self.hub:_owns(device)
   then
@@ -53,13 +52,25 @@ function Transfer:start(device, query)
     return promise
   end
   self.serial = self.serial + 1
-  local job = { ticket = self.serial, device = device, query = query, promise = promise, phase = "waiting" }
+  local job =
+    { ticket = self.serial, device = device, query = query, verified = verified, promise = promise, phase = "waiting" }
   self.job = job
   SetTimer(self.hub.prefix .. "commission", 45000, function()
     self:finish(job, "timeout")
   end)
   self:offer(self.hub.consumers[device])
   return promise
+end
+
+function Transfer:start(device, query)
+  return self:_start(device, query)
+end
+
+-- The upgrade operation reads this exact load from HA before releasing the
+-- source. Use the existing session-scoped child offer and acknowledgment.
+function Transfer:directSwitch(device, entity, name)
+  local config = Selection.directLoad("switch", entity, name)
+  return self:_start(device, { choice_id = entity, family = "switch" }, config)
 end
 
 function Transfer:receive(consumer, message)
@@ -87,6 +98,11 @@ function Transfer:receive(consumer, message)
     return true
   end
   job.phase = "resolving"
+  if job.verified then
+    job.phase = "applying"
+    self.hub:_emit(consumer, "commission_apply", { ticket = job.ticket, config = job.verified })
+    return true
+  end
   local function active()
     return self.job == job
       and self.hub.online

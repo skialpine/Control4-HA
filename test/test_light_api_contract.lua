@@ -2,7 +2,7 @@ local T = require("testlib")
 local Types = require("lib.light.types")
 
 -- Optional deadline feedback, Extras and adapter hooks preserve API 1 for existing drivers.
-local CONTRACT = { api = 1, hash = 291954359 }
+local CONTRACT = { api = 1, hash = 259604559 }
 
 --- @return string
 local function source()

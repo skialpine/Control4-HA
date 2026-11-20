@@ -2,50 +2,45 @@
 local assess = require("ha.migration-assessment")
 local contract = require("ha.contract")
 local codec = require("ha.codec")
+local installedSuite = require("ha.installed-suite")
+local relays = require("ha.migration-relays")
 local persist = require("lib.persist")
 local ids = require("ha.identities")
 require("lib.bindings")
 local KEY = "HA.SwitchMigration.v1"
+local ALIGN = "Update the installed Home Assistant drivers to the same release, then select Refresh review."
 local M = {}
-
-local function destinationName(id)
-  local rows = C4:GetDevices({ DeviceIds = tostring(id) }) or {}
-  local row = rows[id] or rows[tostring(id)] or {}
-  return string.format(
-    "%s · %s (device %d)",
-    row.deviceName or "Home Assistant Switch",
-    row.roomName or "Room unknown",
-    id
-  )
-end
+local SAME_COORDINATOR =
+  "Connect the original and replacement to the same Home Assistant Connection in Composer, then check again."
 
 local function lines(report, replacement)
   local text = {
-    string.format(
-      "%s · %s (device %d, %s version %s)",
-      report.name or report.model,
-      report.room or "Room unknown",
-      report.id,
+    ("%s (%s version %s)"):format(
+      assess.deviceLabel(report.name or report.model, report.room),
       report.origin,
       report.version
     ),
     "Home Assistant device: " .. (report.entity or "Selection could not be verified."),
   }
-  if report.candidate_entity then
+  local selectionIssue = assess.switchSelectionIssue(report)
+  if selectionIssue and report.family == "switch" then
+    text[#text + 1] = selectionIssue
+  elseif report.candidate_entity then
     text[#text + 1] = "One source reported "
       .. report.candidate_entity
       .. ". Check the old driver’s Entity ID before saving."
   end
   for _, p in ipairs(report.proxies) do
-    text[#text + 1] = "Control4 proxy " .. p.id .. " · " .. tostring(p.file)
+    local label = assess.deviceLocation(p.id, report.name or report.model, report.room)
+    text[#text + 1] = "Control4 proxy for " .. label .. " · " .. tostring(p.file)
   end
   if report.family == "light" then
     for _, edge in ipairs(report.edges) do
       text[#text + 1] = string.format(
-        "Current connection: device %d, connection %d to device %d, connection %d.",
-        edge.owner,
+        "Current connection from %s, connection %d to %s, connection %d.",
+        (assess.deviceLocation(edge.owner, report.name or report.model, report.room)),
         edge.binding,
-        edge.device,
+        (assess.deviceLocation(edge.device)),
         edge.port
       )
     end
@@ -53,15 +48,15 @@ local function lines(report, replacement)
       or "This Light has a different or unreadable interface. Check its project backup and proxy before planning an update."
   else
     if replacement then
-      text[#text + 1] = "Replacement: " .. destinationName(replacement) .. "."
+      text[#text + 1] = "Replacement is " .. assess.deviceLocation(replacement, "Home Assistant Switch") .. "."
     end
     for _, edge in ipairs(report.edges) do
       local role = assess.destination(edge.binding)
       text[#text + 1] = string.format(
-        "%s: old connection %d → device %d, connection %d%s.",
+        "%s uses old connection %d to %s, connection %d%s.",
         role and role.name or "Unknown connection",
         edge.binding,
-        edge.device,
+        (assess.deviceLocation(edge.device)),
         edge.port,
         role and ("; replacement connection " .. role.new) or ""
       )
@@ -74,7 +69,7 @@ local function lines(report, replacement)
         buttons = "Buttons only",
         connected = "Connected Control4 light",
       }
-      text[#text + 1] = "Saved button behavior: " .. names[report.mode] .. ". Check this setting on the replacement."
+      text[#text + 1] = "Saved button behavior: " .. names[report.mode] .. "."
     end
     if report.version == "107" then
       text[#text + 1] =
@@ -86,11 +81,12 @@ local function lines(report, replacement)
   end
   for _, key in ipairs({ "attached", "incoming" }) do
     for _, ref in ipairs(report.programs[key]) do
+      local location = assess.programReference(ref, key == "attached" and report or nil)
       text[#text + 1] = (key == "attached" and "Program on old device" or "Other program targeting old device")
-        .. ": device "
-        .. ref.device
-        .. ", event "
-        .. ref.event
+        .. " · "
+        .. location.location
+        .. " · "
+        .. (location.event or ("Event " .. location.eventId))
         .. "."
     end
   end
@@ -125,6 +121,7 @@ local function saved()
 end
 
 local function exclusive(source, me)
+  local owner = contract.provider(me)
   local rows = C4:GetDevices({ C4iNames = ids.packages.switch.file })
   if type(rows) ~= "table" then
     return false
@@ -132,9 +129,13 @@ local function exclusive(source, me)
   for raw, row in pairs(rows) do
     local id = tonumber(raw)
     if id ~= me and row.driverFileName == ids.packages.switch.file and not next(row.protocol or {}) then
+      local provider = contract.provider(id)
       if
-        SendUIRequest(id, "HA_MIGRATION_CLAIM", { SOURCE = source.id, ENTITY = source.entity })
-        ~= "<migration>available</migration>"
+        SendUIRequest(id, "HA_MIGRATION_CLAIM", {
+          SOURCE = source.id,
+          ENTITY = source.entity,
+          RESERVATION_ONLY = owner and provider and owner ~= provider and "true" or nil,
+        }) ~= "<migration>available</migration>"
       then
         return false
       end
@@ -153,21 +154,6 @@ local function sameOrigin(a, b)
     and a.interfaces
     and b.interfaces
 end
-local function relayProvider(device, port)
-  local row = GetDeviceBindings(device, nil, false, nil, "RELAY")[port]
-  if not row or tonumber(row.deviceid) ~= device then
-    return nil
-  end
-  local peer = Select(row, "boundprovider", "bound")
-  local id = tonumber(C4:GetBoundProviderDevice(device, port))
-  if id == 0 and not peer and not row.isbound then
-    return 0, 0
-  end
-  if peer and tonumber(peer.deviceid) == id then
-    return id, tonumber(peer.bindingid)
-  end
-end
-
 local function ready(owner, entity)
   local conf = owner.config
   if not conf or not conf.controlled_load or conf.controlled_load.entity_id ~= entity or owner.working then
@@ -177,15 +163,28 @@ local function ready(owner, entity)
   return facts.evidence_ready and facts.available and owner:mode() == "Home Assistant device"
 end
 
+local function checkOriginalProof(cp, current)
+  local source = cp.source
+  local link = tonumber(C4:GetBoundProviderDevice(source.id, ids.lightCoordinatorBinding))
+  local provider = assess.legacyCoordinator(current)
+  local changed = current and (not sameOrigin(source, current) or (current.entity and current.entity ~= source.entity))
+  if cp.checked and (changed or (provider and provider ~= cp.verified_provider)) then
+    cp.checked, cp.verified_provider, cp.completed_revision = nil, nil, nil
+    persist:set(KEY, codec.encode(cp), true)
+  end
+  return provider, link
+end
+
 local function progress(cp, owner)
   local source, me = cp.source, cp.replacement
   local now = assess.assess(source.id, { skipPrograms = true })
-  local oldInactive = sameOrigin(source, now) and now.empty and tonumber(C4:GetBoundProviderDevice(source.id, 999)) == 0
+  local currentProvider, oldLink = checkOriginalProof(cp, now)
+  local oldInactive = sameOrigin(source, now) and now.empty and oldLink == 0
   local blank = not owner.config and not owner.pending and not owner.working
   local oldCount, newCount, interrupted, unrelated = 0, 0, 0, 0
   for _, edge in ipairs(source.edges) do
     if edge.binding == 1 and edge.owner == source.id and edge.direction == "output" then
-      local id, port = relayProvider(edge.device, edge.port)
+      local id, port = relays.provider(edge.device, edge.port)
       if id == source.id and port == 1 then
         oldCount = oldCount + 1
       elseif id == me and port == ids.relay then
@@ -197,31 +196,69 @@ local function progress(cp, owner)
       end
     end
   end
-  local direct = contract.loadDomain(source.entity) ~= nil
+  local modeIssue = assess.switchMigrationModeIssue(source) or (now and assess.switchMigrationModeIssue(now))
+  local direct = sameOrigin(source, now) and contract.loadDomain(source.entity) ~= nil and not modeIssue
   local active = ready(owner, source.entity)
+  local provider = contract.provider(me)
+  local revision = provider and installedSuite.upgradeRevision(provider, me)
+  local linkedOrDisabling = now and now.entity == source.entity and (currentProvider == provider or oldLink == 0)
+  local checked = cp.checked == true
+    and provider ~= nil
+    and cp.verified_provider == provider
+    and (oldInactive or linkedOrDisabling)
+  local readyToComplete = direct and checked and oldInactive and active and oldCount + interrupted + unrelated == 0
+  local completed = revision ~= nil and readyToComplete and cp.completed_revision == revision
   local result = {
     phase = "staged",
     lines = lines(source, me),
-    source_name = (source.name or source.model) .. " (device " .. source.id .. ")",
-    replacement_name = destinationName(me),
+    source_name = assess.deviceLabel(source.name or source.model, source.room),
+    replacement_name = assess.deviceLocation(me, "Home Assistant Switch"),
     entity = source.entity,
     move_count = oldCount + interrupted,
     restore_count = newCount + interrupted,
-    can_check = direct and not cp.checked and now and now.entity == source.entity,
-    can_configure = cp.checked == true and oldInactive and blank,
-    can_transfer = cp.checked == true and oldInactive and active and oldCount + interrupted > 0 and unrelated == 0,
+    revision = revision,
+    can_check = revision ~= nil
+      and direct
+      and not checked
+      and currentProvider == provider
+      and now.entity == source.entity,
+    can_configure = revision ~= nil and direct and checked and oldInactive and blank,
+    can_transfer = revision ~= nil
+      and direct
+      and checked
+      and oldInactive
+      and active
+      and oldCount + interrupted > 0
+      and unrelated == 0,
+    can_complete = revision ~= nil and readyToComplete and not completed,
+    completed = completed,
     can_rollback = blank and newCount + interrupted > 0 and unrelated == 0,
   }
   if unrelated > 0 then
     result.message = "A saved relay now connects elsewhere. Check its current connection in Composer before continuing."
-  elseif not direct then
-    result.message =
-      "Keep the original switch active. Verify its saved button device, linked load and indicator settings manually in Home Assistant and Composer."
-  elseif not cp.checked then
-    result.message = "Check Home Assistant from this replacement while the original switch still controls its device."
   elseif result.can_rollback then
     result.message =
       "The replacement has no selected device. You can restore its saved relay connections to the original switch."
+  elseif not provider then
+    result.message = SAME_COORDINATOR
+  elseif not revision then
+    result.message = ALIGN
+  elseif completed then
+    result.message = "Migration verified for "
+      .. result.replacement_name
+      .. " on suite version "
+      .. revision
+      .. ". Keep the project backup for recovery."
+  elseif not direct then
+    result.message = modeIssue
+      or "Keep the original switch active. Verify its saved button device, linked load and indicator settings manually in Home Assistant and Composer."
+  elseif not checked then
+    result.message = now
+        and now.entity
+        and now.entity ~= source.entity
+        and "The original switch’s Home Assistant device changed. Restore the saved device in Composer, then refresh this review."
+      or currentProvider == provider and "Check Home Assistant from this replacement while the original switch still controls its device."
+      or SAME_COORDINATOR
   elseif not oldInactive then
     result.message =
       "Home Assistant responded. Disconnect the old switch’s Home Assistant link and clear its Entity ID in Composer, then refresh this review."
@@ -232,9 +269,9 @@ local function progress(cp, owner)
     result.message = "Verify the saved device in Device Setup, then refresh this review to check the connections."
   elseif result.can_transfer then
     result.message = "Verify the replacement’s on/off response. You can then move the listed relay connections."
-  else
+  elseif result.can_complete then
     result.message =
-      "Check scenes, button links and programming in Composer and test after reload. Keep the original switch and backup until these checks pass."
+      "Test the replacement after reload. Check its scenes, button links and programming, then mark the migration verified."
   end
   if newCount + interrupted > 0 and not blank then
     result.rollback_help =
@@ -244,67 +281,29 @@ local function progress(cp, owner)
 end
 
 local function moveRelays(cp, me, undo, owner)
-  local original = cp.source
-  local destination = GetDeviceBindings(me, nil, true, nil, "RELAY")[ids.relay]
-  if not destination or tonumber(destination.deviceid) ~= me or not destination.provider then
-    return { error = "The replacement relay could not be verified." }
-  end
-  local fromId, fromPort, toId, toPort = original.id, 1, me, ids.relay
-  if undo then
-    fromId, fromPort, toId, toPort = toId, toPort, fromId, fromPort
-  end
-  local function save()
+  local outcome = relays.move(cp, me, undo, function()
     persist:set(KEY, codec.encode(cp), true)
-  end
-  for _, edge in ipairs(original.edges) do
-    if edge.binding == 1 and edge.owner == original.id and edge.direction == "output" then
-      local device, port = edge.device, edge.port
-      local peer, pin = relayProvider(device, port)
-      cp.pending = cp.pending or codec.object({})
-      local edgeKey = tostring(device) .. "." .. tostring(port)
-      local prior = cp.pending[edgeKey]
-      if peer == toId and pin == toPort then
-      -- Already reached the requested topology before an interruption.
-      elseif (peer == fromId and pin == fromPort) or (peer == 0 and prior == true) then
-        cp.pending[edgeKey] = true
-        save()
-        if peer ~= 0 then
-          C4:Unbind(device, port)
-        end
-        if relayProvider(device, port) ~= 0 then
-          return { error = "A relay could not be disconnected. Inspect its current connection and resume." }
-        end
-        Bind(toId, toPort, device, port, "RELAY")
-        peer, pin = relayProvider(device, port)
-        if peer ~= toId or pin ~= toPort then
-          return {
-            error = "The new relay connection was not verified. Inspect the saved plan and resume or restore.",
-          }
-        end
-      else
-        return { error = "A relay now connects elsewhere. Review it in Composer before resuming." }
-      end
-      if cp.pending[edgeKey] then
-        cp.pending[edgeKey] = nil
-        save()
-      end
-    end
+  end)
+  if outcome.error then
+    return outcome
   end
   local result = progress(cp, owner)
-  result.message = undo
-      and "Original relay connections verified. Restore the old Entity ID and Home Assistant connection, then test it. Restore the project backup for private settings or programming."
-    or "Relay connections verified. Check scenes, buttons, both directions of programming and the replacement after reload before retiring the old switch."
+  if undo then
+    result.message =
+      "Original relay connections verified. Restore the old Entity ID and Home Assistant connection, then test it. Restore the project backup for private settings or programming."
+  end
   return result
 end
 
 local function changeOwner(owner, action, params, cp, me)
-  if action ~= "transfer" and action ~= "rollback" and action ~= "configure" then
+  if action ~= "transfer" and action ~= "rollback" and action ~= "configure" and action ~= "complete" then
     return { error = "Choose a migration action." }
   end
   if params.confirmed ~= true then
     return { error = "Review the connection changes and confirm to continue." }
   end
   local original, now = cp.source, assess.assess(cp.source.id, { skipPrograms = true })
+  checkOriginalProof(cp, now)
   if not sameOrigin(original, now) then
     return { error = "The old switch or its connections changed. Check the saved plan before continuing." }
   end
@@ -323,6 +322,17 @@ local function changeOwner(owner, action, params, cp, me)
   end
   local undo = action == "rollback"
   if not undo then
+    local modeIssue = assess.switchMigrationModeIssue(original) or assess.switchMigrationModeIssue(now)
+    if modeIssue then
+      return { error = modeIssue }
+    end
+    local provider = contract.provider(me)
+    if not provider or (cp.checked and cp.verified_provider ~= provider) then
+      return { error = SAME_COORDINATOR }
+    end
+    if not installedSuite.upgradeRevision(provider, me) then
+      return progress(cp, owner)
+    end
     if not exclusive(original, me) then
       return {
         error = "Another replacement may already control this device. Review existing switches before continuing.",
@@ -360,6 +370,20 @@ local function changeOwner(owner, action, params, cp, me)
         error = "Choose the saved device on this switch and verify that it is available before moving connections.",
       }
     end
+    if action == "complete" then
+      local view = progress(cp, owner)
+      if view.completed then
+        return view
+      end
+      if not view.can_complete then
+        return {
+          error = "Verify the replacement and finish the listed connection changes before marking migration complete.",
+        }
+      end
+      cp.completed_revision = view.revision
+      persist:set(KEY, codec.encode(cp), true)
+      return progress(cp, owner)
+    end
   elseif owner.config or owner.pending or owner.working then
     return { error = "Clear this replacement’s device selection before restoring the old relay connections." }
   end
@@ -367,6 +391,11 @@ local function changeOwner(owner, action, params, cp, me)
 end
 
 local function verifyAvailability(owner, cp, done)
+  local provider = contract.provider(cp.replacement)
+  local revision = provider and installedSuite.upgradeRevision(provider, cp.replacement)
+  if not revision then
+    return progress(cp, owner)
+  end
   local source = assess.assess(cp.source.id, { skipPrograms = true })
   if
     not sameOrigin(source, cp.source)
@@ -375,13 +404,37 @@ local function verifyAvailability(owner, cp, done)
   then
     return { error = "Keep the original switch connected. Check its selected device and review the plan again." }
   end
+  local modeIssue = assess.switchMigrationModeIssue(cp.source) or assess.switchMigrationModeIssue(source)
+  if modeIssue then
+    return { error = modeIssue }
+  end
+  if assess.legacyCoordinator(source) ~= provider then
+    return { error = SAME_COORDINATOR }
+  end
   owner.consumer:request("verify_target", source.entity, codec.object({})):next(function()
     local checkpoint = saved()
     if not checkpoint or checkpoint.source.id ~= source.id then
       done({ error = "Reopen the saved plan." })
       return
     end
-    checkpoint.checked = true
+    if
+      contract.provider(cp.replacement) ~= provider
+      or installedSuite.upgradeRevision(provider, cp.replacement) ~= revision
+    then
+      done(progress(checkpoint, owner))
+      return
+    end
+    local current = assess.assess(source.id, { skipPrograms = true })
+    if
+      not sameOrigin(source, current)
+      or current.entity ~= source.entity
+      or assess.switchMigrationModeIssue(current)
+      or assess.legacyCoordinator(current) ~= provider
+    then
+      done(progress(checkpoint, owner))
+      return
+    end
+    checkpoint.checked, checkpoint.verified_provider = true, provider
     persist:set(KEY, codec.encode(checkpoint), true)
     done(progress(checkpoint, owner))
   end, function()
@@ -395,6 +448,31 @@ end
 function M.install(register, family, current)
   local preview, ticket = nil, 0
   if family == "switch" then
+    UIR.suppressDebug.HA_SWITCH_UPGRADE_STATUS = true
+    UIR.HA_SWITCH_UPGRADE_STATUS = function(params)
+      local owner, cp = current(), saved()
+      local id, entity = params and tonumber(params.SOURCE), params and params.ENTITY
+      local function reply(state)
+        return "<upgrade>" .. state .. "</upgrade>"
+      end
+      if not owner or not contract.integer(id) or not contract.entity(entity) or owner.pending or owner.working then
+        return reply("unknown")
+      end
+      if params.RESERVATION_ONLY == "true" then
+        return reply(cp and cp.source.id == id and "reserved" or "occupied")
+      end
+      local cfg = owner.config
+      if cfg then
+        if cfg.controlled_load and cfg.controlled_load.entity_id == entity then
+          return reply(ready(owner, entity) and "ready" or "matching")
+        end
+        return reply("occupied")
+      end
+      if cp then
+        return reply(cp.source.id == id and cp.source.entity == entity and "reserved" or "occupied")
+      end
+      return reply("blank")
+    end
     UIR.suppressDebug.HA_MIGRATION_CLAIM = true
     UIR.HA_MIGRATION_CLAIM = function(params)
       local cp, owner = saved(), current()
@@ -412,7 +490,8 @@ function M.install(register, family, current)
       if
         (cp and cp.source.id == tonumber(params.SOURCE))
         or (
-          cfg
+          params.RESERVATION_ONLY ~= "true"
+          and cfg
           and (
             cfg.key == params.ENTITY
             or cfg.gesture_entity_id == params.ENTITY
@@ -446,8 +525,10 @@ function M.install(register, family, current)
         ticket = ticket + 1
         local token = tostring(params.request) .. "-" .. ticket
         preview = { source = source, token = token }
+        local modeIssue = source.family == "switch" and assess.switchMigrationModeIssue(source)
         local possible = family == "switch"
           and source.family == "switch"
+          and not modeIssue
           and source.entity
           and source.interfaces
           and source.room_id
@@ -460,6 +541,7 @@ function M.install(register, family, current)
           lines = lines(source, family == "switch" and me or nil),
           message = possible
               and "Saving this plan records the old switch and its connections on this replacement. The old switch keeps control."
+            or modeIssue
             or family ~= "switch" and source.family == "switch" and "Open this review on an unconfigured Home Assistant Switch to prepare a replacement."
             or source.family == "switch" and "Resolve the selection or connection details and start from an unconfigured replacement before saving."
             or nil,
@@ -485,6 +567,7 @@ function M.install(register, family, current)
           not sameOrigin(original, now)
           or not now.entity
           or now.family ~= "switch"
+          or assess.switchMigrationModeIssue(now)
           or owner.config
           or owner.pending
           or owner.working
@@ -515,7 +598,9 @@ function M.install(register, family, current)
     end
     local ok, response = pcall(run)
     if not ok then
-      done({ error = "The project could not be verified. Check the connections in Composer and reopen the saved plan." })
+      done({
+        error = "The project could not be verified. Check the connections in Composer and reopen the saved plan.",
+      })
     elseif response then
       done(response)
     end

@@ -91,7 +91,8 @@ end
 --- @return integer|nil
 local function sceneId(tParams)
   local id = tofinite(Select(tParams, "SCENE_ID"))
-  if id and id >= 1 and id <= 2147483647 and id == math.floor(id) then
+  -- Director assigns ID 0 to the first Advanced Lighting Scene.
+  if id and id >= 0 and id <= 2147483647 and id == math.floor(id) then
     return id
   end
 end

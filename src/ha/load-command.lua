@@ -3,6 +3,17 @@
 local codec = require("ha.codec")
 local metrics = require("ha.performance").shared
 local M = {}
+
+local uncertain = { timeout = true, disconnected = true, rejected = true, invalid_response = true, not_found = true }
+
+function M.uncertain(status)
+  return uncertain[status] == true
+end
+
+function M.read(consumer, entity)
+  return consumer:request("read_load", entity, codec.object({}))
+end
+
 function M.send(consumer, entity, action, parameters, onResult, isCurrent, metric)
   if not consumer or not entity or not consumer.readiness:view(entity).evidence_ready then
     return false

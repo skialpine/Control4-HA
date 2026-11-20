@@ -3,8 +3,8 @@
 Connect the Light driver's **App Control Link** to a Control4 light or lighting
 group. In Automatic mode the app uses that light. If there is no App Control
 Link connection, Automatic uses a single shared paddle target. When the paddles
-control different lights, connect a dedicated App Control Link or use the **App
-Control Link** setting in **Properties** to choose Top, Bottom or Toggle. The
+control different lights, connect a dedicated **App Control Link** or use
+**Button used by the app** in Device Setup to choose Top, Bottom or Toggle. The
 dedicated connection takes precedence. Device Setup shows the name of the
 connected target and whether its state is available.
 

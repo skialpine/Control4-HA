@@ -50,9 +50,9 @@ Tokens SHALL be stored in password-protected configuration, excluded from routin
 - **WHEN** an installer exports diagnostics
 - **THEN** the report identifies the failed authentication boundary without including the token or raw private device payloads
 
-### Requirement: Upgraded Coordinator with existing children
-An updated Coordinator SHALL serve existing BP and prototype children through the original provider and retain TLS settings, events, variables, scoped state, service, catalog and preparation behavior.
+### Requirement: Coordinated upgrade retains connection and programming behavior
+The suite SHALL preserve the Coordinator's connection settings, TLS configuration, provider binding, events, variables and saved service programming during upgrade from either supported baseline. The updated and migrated children MUST reconnect to the Coordinator on the same suite revision and provide scoped state, service, catalog and preparation behavior.
 
-#### Scenario: Only the Coordinator has been updated
-- **WHEN** an existing bound child requests state or controls its selected load
-- **THEN** the child receives its original wire format through the retained binding and the load feedback confirms the command
+#### Scenario: The suite cutover finishes
+- **WHEN** the complete suite has reloaded at the selected revision and any required migration has been verified
+- **THEN** the preserved connection authenticates, existing bindings recover scoped subscriptions, and saved programming and migrated control produce confirmed feedback

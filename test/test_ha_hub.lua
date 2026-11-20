@@ -10,6 +10,7 @@ local Consumer = require("ha.consumer")
 local contract = require("ha.contract")
 local device, providers, peers = 10, {}, {}
 local inputIds, inputPeers, installed, legacyDeclarations, missingSuite = {}, {}, {}, {}, {}
+local bindingReads = {}
 function C4:GetDeviceID()
   return device
 end
@@ -23,17 +24,27 @@ function C4:GetDeviceData(id, tag)
   return installed[id] and installed[id][tag]
 end
 function GetDeviceBindings(id, _, role, _, class)
+  bindingReads[id] = (bindingReads[id] or 0) + 1
   if
     (class == ids.coordinatorClass and missingSuite[id])
     or (class == ids.legacyCoordinatorClass and not legacyDeclarations[id])
   then
     return {}
   end
+  local classes = { { class = ids.coordinatorClass } }
+  if legacyDeclarations[id] then
+    classes[#classes + 1] = { class = ids.legacyCoordinatorClass }
+  end
   if role == true then
-    return { [ids.coordinatorBinding] = { boundconsumers = peers[id] or {} } }
+    return { [ids.coordinatorBinding] = { boundconsumers = peers[id] or {}, bindingclasses = classes } }
   end
   if inputPeers[id] then
-    return { [inputIds[id] or ids.coordinatorBinding] = { boundprovider = { bound = inputPeers[id] } } }
+    return {
+      [inputIds[id] or ids.coordinatorBinding] = {
+        boundprovider = { bound = inputPeers[id] },
+        bindingclasses = classes,
+      },
+    }
   end
   return {}
 end
@@ -99,6 +110,7 @@ local function fixture()
   end)
   -- These tests isolate transport/catalog transfer from the separately tested
   -- scoped registry boundary and family policy.
+  hub.catalog.supplement = false
   hub.catalog.decorate = function(rows)
     for _, item in ipairs(rows) do
       item.families = codec.array({ "light", "switch" })
@@ -550,12 +562,28 @@ do
       c:select(codec.array({}))
     end)
   end
-  local refresh = deferred.new()
   f.hub.catalog.refresh = function()
-    return refresh
+    error("resolving a cached choice must not refresh HA")
   end
   local revision = string.rep("f", 64)
-  local query = { choice_id = "light.lab", revision = revision, family = "light", prepare = true }
+  local device, registry = string.rep("d", 32), string.rep("e", 32)
+  local choice = "device:" .. device .. ":" .. registry
+  local query = { choice_id = choice, revision = revision, family = "light", prepare = true }
+  f.hub.catalog.choice = function(_, key, family, expected)
+    assert(key == choice and family == "light" and expected == revision)
+    return {
+      entity_id = key,
+      name = "Wall load",
+      attributes = {
+        device_choice = { device_id = device, source_load = { entity_id = "light.lab", registry_id = registry } },
+      },
+    }
+  end
+  local replies = {}
+  f.hub._request = function(_, _, reply)
+    replies[#replies + 1] = reply
+    return true
+  end
   local first = operation(f, a, "resolve", nil, query)
   clock.run(5000)
   local second = operation(f, b, "resolve", nil, query)
@@ -567,15 +595,17 @@ do
   end)
   T.eq("only the current request is retired", second.failure, { kind = "retired" })
   at(10, function()
-    refresh:resolve({ revision = revision })
+    replies[1](true, codec.object({}))
+    replies[2](true, codec.object({}))
   end)
-  T.eq("late catalog cannot start preparation after timeout or release", #f.connection.sent, 0)
+  T.eq("late preparation cannot acquire scope after timeout or release", #f.connection.sent, 0)
   f.close()
 end
 
 T.section("confirmed commissioning transfers only to the approving current child")
 for _, scenario in ipairs({
   "apply",
+  "upgrade direct switch",
   "late registration",
   "decline",
   "changed during resolve",
@@ -584,14 +614,26 @@ for _, scenario in ipairs({
 }) do
   local f = fixture()
   local revision = string.rep("c", 64)
-  local query = { choice_id = "light.lab", revision = revision, family = "light", prepare = true }
-  local refresh = deferred.new()
+  local upgrade = scenario == "upgrade direct switch"
+  local waiting = scenario == "changed during resolve" or scenario == "timeout"
+  local prepareDevice = string.rep("d", 32)
+  local query = {
+    choice_id = upgrade and "switch.lab" or waiting and "device:" .. prepareDevice .. ":none" or "light.lab",
+    revision = revision,
+    family = upgrade and "switch" or "light",
+    prepare = true,
+  }
   f.hub.catalog.refresh = function()
-    return refresh
+    error("a revisioned transfer must resolve its choice from the already-loaded catalog")
   end
   f.hub.catalog.choice = function(_, key, family)
     assert(key == query.choice_id and family == query.family)
-    return { entity_id = key, name = "Test light", attributes = {}, domain = "light" }
+    return {
+      entity_id = key,
+      name = "Test light",
+      attributes = { device_choice = waiting and { device_id = prepareDevice } or nil },
+      domain = "light",
+    }
   end
   local child, applies, claims = nil, 0, 0
   child = f.consumer(21, {
@@ -621,7 +663,9 @@ for _, scenario in ipairs({
   end
   local outcome
   at(10, function()
-    f.hub.transfer:start(21, query):next(function(ok)
+    local transfer = upgrade and f.hub.transfer:directSwitch(21, query.choice_id, "Test switch")
+      or f.hub.transfer:start(21, query)
+    transfer:next(function(ok)
       outcome = ok
     end, function(err)
       outcome = err.kind
@@ -635,9 +679,12 @@ for _, scenario in ipairs({
   elseif scenario == "timeout" then
     clock.run(45000)
   end
-  at(10, function()
-    refresh:resolve({ revision = revision })
-  end)
+  if waiting then
+    local preparation = f.connection.sent[1]
+    if scenario == "changed during resolve" then
+      f.ack(preparation.id, true, { response = { version = 1, device_id = prepareDevice, input_ready = false } })
+    end
+  end
   local expected = ({
     ["decline"] = "target_changed",
     ["changed during resolve"] = "retired",
@@ -1095,7 +1142,23 @@ do
   f.connection.reads[1].promise:resolve(state("light.lab", "on"))
   local oldMessage = wire(f.deliveries[#f.deliveries - 1].message)
   local oldBoot, oldSelection = f.hub.boot, a.selection
+  local retired = {}
+  f.hub.switchUpgrade = {
+    destroy = function()
+      retired.upgrade = true
+    end,
+  }
+  f.hub.commissioning = {
+    destroy = function()
+      retired.commissioning = true
+    end,
+  }
   local oldHub, oldReceive = f.reload()
+  T.eq(
+    "the old Coordinator retires its setup and migration lifetimes",
+    retired,
+    { upgrade = true, commissioning = true }
+  )
   T.truthy("replacement has a later persisted lifetime", f.hub.boot > oldBoot)
   T.truthy("announcement advances consumer selection", a.selection > oldSelection)
   T.eq("replacement recovers exact endpoint", f.connection.sent[1].trigger.entity_id, "light.lab")
@@ -1329,6 +1392,10 @@ do
     rooms = function()
       return { { id = 41, name = "Office" } }
     end,
+    existingChoices = function()
+      return { ["switch.outlet"] = true }, { ["light.bulb"] = { family = "light", room_id = 41, name = "Side lamp" } }
+    end,
+    destroy = function() end,
   }
   local api = require("ha.commission-page")
   local page = require("lib.ui.page")
@@ -1362,6 +1429,12 @@ do
     { answer.choices[1].family, answer.choices[2].family },
     { "light", "switch" }
   )
+  T.eq("Quick Setup reports which rows already have a driver", answer.choices[2].existing, true)
+  T.eq("Quick Setup supplies the saved fields to finish an earlier add", answer.choices[1].resume, {
+    family = "light",
+    room_id = 41,
+    name = "Side lamp",
+  })
   local revision = answer.revision
   for _, family in ipairs({ "light", "switch" }) do
     local filtered = tab("HA_ADD_BROWSE", { setup = family, revision = revision })
@@ -1454,7 +1527,9 @@ do
   f.connection.catalogReads[1]:resolve(codec.array({ catalogRow("switch.native") }))
   T.eq("native endpoint remains selectable", result.data.entities[1].entity_id, "switch.native")
   T.eq("native source reported", result.data.source, "native")
-  local failure = browse(a, 21)
+  T.eq("repeat browse reuses native data", browse(a, 21).data.revision, result.data.revision)
+  T.eq("no extra HA requests until explicit refresh", { #f.connection.sent, #f.connection.catalogReads }, { 2, 1 })
+  local failure = browse(a, 21, { refresh = true })
   at(10, function()
     f.connection.onMessage(wire({ type = "result", id = 3, success = false, error = { code = "not_found" } }))
   end)
@@ -1763,7 +1838,9 @@ do
     contract.provider(22),
   }, { 10, 10 })
   bind(21, 10, ids.legacyCoordinatorClass)
+  bindingReads = {}
   T.eq("canonical upgraded pair can retain the existing legacy wire", contract.provider(21), 10)
+  T.eq("retained edge uses one fresh binding read per endpoint", bindingReads, { [21] = 1, [10] = 1 })
   at(21, function()
     light:select(codec.array({ "light.lab" }))
   end)
@@ -1783,6 +1860,12 @@ do
   missingSuite[10] = true
   T.eq("unupgraded Coordinator cannot enter the suite", contract.provider(21), nil)
   missingSuite[10] = nil
+  legacyDeclarations[21] = nil
+  T.eq("retained wire requires the Light to declare its legacy class", contract.provider(21), nil)
+  legacyDeclarations[21] = true
+  legacyDeclarations[10] = nil
+  T.eq("retained wire requires the Coordinator to declare its legacy class", contract.provider(21), nil)
+  legacyDeclarations[10] = true
   inputPeers[21].boundclasses = { ids.coordinatorClass }
   T.eq("both ends must agree on a bound class", contract.provider(21), nil)
   inputPeers[21].boundclasses = { ids.legacyCoordinatorClass }

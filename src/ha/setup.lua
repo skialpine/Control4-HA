@@ -7,6 +7,7 @@ local Prototype = require("ha.prototype-selection")
 local EventSelection = require("ha.event-selection")
 local codec = require("ha.codec")
 local contract = require("ha.contract")
+local loadCommand = require("ha.load-command")
 local operations = require("ha.operations")
 local ids = require("ha.identities")
 local initialCoordinator = require("ha.initial-coordinator")
@@ -30,23 +31,6 @@ end
 local AUTO, NATIVE, LOCAL, BUTTONS = "Automatic", "Home Assistant device", "Connected Control4 light", "Buttons only"
 local LOAD_ONLY, LOAD_BUTTONS = "Control linked device only", "Control device and report presses"
 Setup.explain = setupPage.explain
-
-local function manualConfig(family, id)
-  local domain = contract.loadDomain(id)
-  if not domain then
-    return nil
-  end
-  return codec.object({
-    version = 1,
-    family = family,
-    key = id,
-    name = "",
-    input_ready = false,
-    preparation = "not_required",
-    controlled_load_origin = "selected_endpoint",
-    controlled_load = codec.object({ entity_id = id, domain = domain }),
-  })
-end
 
 local function clearSavedSelection(family)
   if
@@ -339,7 +323,7 @@ function Setup:start()
     self.manual = record.manual and record.key or ""
     UpdateProperty("Manual entity ID", self.manual)
   elseif legacyManual ~= "" then
-    local config = manualConfig(self.family, legacyManual)
+    local config = Selection.directLoad(self.family, legacyManual)
     if config then
       self:commit(config, legacyManual)
       return
@@ -379,7 +363,7 @@ function Setup:start()
     end
     local target = self:legacyDirect()
     if target then
-      self:commit(manualConfig(self.family, target), target)
+      self:commit(Selection.directLoad(self.family, target), target)
       return
     end
   else
@@ -500,7 +484,7 @@ function Setup:propertyChanged(original)
     self:activate()
   end
   self.manualAttempt = #manual <= 255 and manual or nil
-  local config = manualConfig(self.family, manual)
+  local config = Selection.directLoad(self.family, manual)
   if not config then
     self.manualStatus, self.manualFailed = Setup.explain("invalid_manual"), true
     self:render()
@@ -822,8 +806,8 @@ function Setup:deviceView()
           "Waiting for buttons", "Check the selected button device and HA Gesture Bridge in Home Assistant."
       elseif facts.evidence_ready and self.adapter and self.adapter.feedbackUnavailable then
         state.status = "Device unavailable"
-        state.detail =
-          "In Actions, select Refresh Home Assistant devices. If the device stays unavailable, check it in Home Assistant."
+        state.detail = "Home Assistant did not confirm the device’s state. Refresh to check the same device."
+        state.feedback_retry, state.retry = true, true
       elseif facts.evidence_ready then
         state.status, state.detail = "Device connected", "Home Assistant is reporting its state."
       elseif facts.transport == false then
@@ -871,7 +855,13 @@ function Setup:view()
       state.status, state.detail = "Setting up your device", "Waiting for Home Assistant to finish."
     end
   elseif self.pending or self.error then
-    state.retry = state.can_browse and self.pending ~= nil and self.error ~= "revision_changed"
+    state.retry = state.retry
+      or (
+        state.can_browse
+        and self.pending ~= nil
+        and self.error ~= "revision_changed"
+        and self.error ~= "catalog_unverified"
+      )
     local detail = self.error and Setup.explain(self.error) or "Choose Retry setup to finish setting up this device."
     if self.config and self.config.manual_event and self.error == "saved_device_unverified" and not self.pending then
       state.retry = state.can_browse
@@ -887,6 +877,34 @@ function Setup:view()
     end
   end
   return state
+end
+
+function Setup:refreshFeedback(done)
+  local generation = self.generation
+  local entity = self.config.controlled_load.entity_id
+  local feedbackError =
+    "Home Assistant could not confirm the current state. Check the device in Home Assistant and try again."
+  local function finish(data)
+    if generation ~= self.generation then
+      done({ error = "The selected device changed. Check its current state." })
+      return
+    end
+    if
+      self.adapter.feedbackUnavailable
+      and contract.state(data, entity)
+      and (data.state == "on" or data.state == "off")
+    then
+      self:message("snapshot", data)
+    end
+    if self.adapter.feedbackUnavailable then
+      done({ error = feedbackError })
+    else
+      done({ message = "Device state refreshed." })
+    end
+  end
+  loadCommand.read(self.consumer, entity):next(finish, function()
+    finish(nil)
+  end)
 end
 
 function Setup:indicatorLease()
@@ -963,7 +981,14 @@ function Setup:render()
   local state = self:view()
   UpdateProperty("Driver Status", state.status)
   local nextStep = state.manual_status or state.operation or state.detail
-  if state.status == "Device connected" and state.selected_id and not state.manual_status and not state.operation then
+  if state.feedback_retry then
+    nextStep = "Open Device Setup and select Refresh device state."
+  elseif
+    state.status == "Device connected"
+    and state.selected_id
+    and not state.manual_status
+    and not state.operation
+  then
     nextStep = "To change this device, open Device Setup."
   end
   UpdateProperty("Next step", nextStep)
@@ -984,6 +1009,7 @@ local function browseDevices(self, params, done, nativePicker)
     family = self.family,
     cursor = params.cursor,
     revision = params.revision,
+    refresh = params.refresh == true and true or nil,
     names_sensor = useSensor and not invalidSensor and sensor or nil,
   })
   self.consumer:request("catalog", nil, args):next(function(page)
@@ -1046,28 +1072,18 @@ function Setup:choose(params, done)
       failed({ kind = "retired" })
       return
     end
-    if not replacing then
-      apply(config)
-      return
-    end
     local mode = self:mode(config)
     local load = config.controlled_load
     local gesture = mode ~= NATIVE and config.gesture_entity_id
-    local entity = gesture or (mode ~= BUTTONS and load and load.entity_id)
-    local arguments = gesture and codec.object({ device = config.device_id, control = config.control_id })
-      or codec.object({})
-    if not operations.verifyTarget(entity, arguments) then
+    if replacing and not (gesture or (mode ~= BUTTONS and load)) then
       failed({ kind = mode == BUTTONS and "no_buttons" or "missing_load" })
       return
     end
-    self.consumer:request("verify_target", entity, arguments):next(function()
-      if load and load.entity_id == entity then
-        load.available = true
-      end
-      apply(config)
-    end, function(err)
-      failed(err.kind == "not_found" and { kind = "unavailable" } or err)
-    end)
+    if self.config and ((gesture and not config.input_ready) or (not gesture and load and load.available == false)) then
+      failed({ kind = "unavailable" })
+      return
+    end
+    apply(config)
   end, failed)
 end
 

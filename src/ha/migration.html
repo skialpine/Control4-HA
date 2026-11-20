@@ -7,18 +7,19 @@
     <button type="button" class="btn btn-primary" id="migration-preview">Preview plan</button>
   </div>
   <p id="migration-message" role="status" tabindex="-1" hidden></p>
-  <ul id="migration-report" hidden></ul>
-  <p id="migration-restore-help" hidden></p>
-  <div id="migration-save-panel" hidden>
-    <label><input type="checkbox" id="migration-backup"> I have a restorable backup of this Control4 project.</label>
-    <button type="button" class="btn btn-primary" id="migration-save" disabled>Save migration plan</button>
-  </div>
   <div id="migration-cutover" class="setup-actions" hidden>
     <button type="button" class="btn btn-outline" id="migration-refresh">Refresh review</button>
     <button type="button" class="btn btn-outline" id="migration-check">Check Home Assistant</button>
     <button type="button" class="btn btn-outline" id="migration-configure">Use saved Home Assistant device…</button>
     <button type="button" class="btn btn-outline" id="migration-transfer">Move relay connections…</button>
+    <button type="button" class="btn btn-primary" id="migration-complete">Mark migration verified…</button>
     <button type="button" class="btn btn-outline" id="migration-rollback">Restore relay connections…</button>
   </div>
+  <p id="migration-restore-help" hidden></p>
   <button type="button" class="btn btn-outline" id="migration-close" hidden>Close review</button>
+  <ul id="migration-report" hidden></ul>
+  <div id="migration-save-panel" hidden>
+    <label><input type="checkbox" id="migration-backup"> I have a restorable backup of this Control4 project.</label>
+    <button type="button" class="btn btn-primary" id="migration-save" disabled>Save migration plan</button>
+  </div>
 </section>

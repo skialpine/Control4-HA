@@ -80,16 +80,16 @@ do
   entries["light.c4"].platform = "control4"
   local result = assert(Choices.apply(rows, entries))
   T.eq(
-    "Light retains both independent switches and native group",
+    "Light retains independent switches, group and helper without a physical device",
     visible(result, "light"),
-    { "light.binary", "light.dimmer", "light.native_group", "switch.a", "switch.b" }
+    { "light.binary", "light.dimmer", "light.helper", "light.native_group", "switch.a", "switch.b" }
   )
   T.eq(
     "Switch omits dimming-only choice and keeps binary targets",
     visible(result, "switch"),
-    { "light.binary", "light.native_group", "switch.a", "switch.b" }
+    { "light.binary", "light.helper", "light.native_group", "switch.a", "switch.b" }
   )
-  T.eq("identical names/device IDs did not merge endpoints", #visible(result, "light"), 5)
+  T.eq("identical names/device IDs did not merge endpoints", #visible(result, "light"), 6)
   T.eq("input metadata not mutated", rows[1].families, nil)
 end
 T.section("only proven non-inverted endpoint aliases collapse, independently of groups")

@@ -3,6 +3,7 @@
 
   var rowsPerView = 10;
   var maxChoices = 5000;
+  var entityID = /^[a-z][a-z0-9_]*\.[a-z0-9_]+$/;
   // Composer broadcasts replies to all tabs on this driver. Correlate each request to its originating tab.
   var pageId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
   var sequence = 0;
@@ -11,6 +12,7 @@
   var readTimer;
   var browse;
   var pending;
+  var feedbackError = false;
   var previousIndicators;
   var migrationResult = typeof installSwitchMigration === "function" ? installSwitchMigration(requestId) : function () {};
 
@@ -65,12 +67,12 @@
     el("browse").textContent = state.selected_id ? "Change device" : "Choose device";
     el("browse").disabled = !state.can_browse || !!pending;
     el("browse").hidden = !!state.read_retry;
+    el("retry").textContent = state.feedback_retry ? "Refresh device state" : "Retry setup";
     el("retry").hidden = state.retry !== true;
     el("retry").disabled = !!pending;
     el("browse").className = state.retry ? "btn btn-outline" : "btn btn-primary";
     el("retry").className = "btn btn-primary";
     el("read-retry").hidden = !state.read_retry;
-    Kit.setPropertyFeedback("Manual entity ID", state.manual_status || "", state.manual_failed === true, state.rejected_manual);
     message("setup-operation", pending || state.operation === el("setup-message").textContent ? "" : state.operation);
     el("timing-report").disabled = el("timing-reset").disabled = !state.status || !!pending;
     if (browse) {
@@ -78,6 +80,7 @@
       else closePicker(el("picker").contains(focused));
     }
     if ((el("browse").disabled && focused === el("browse")) ||
+        (el("retry").hidden && focused === el("retry")) ||
         (el("read-retry").hidden && focused === el("read-retry"))) focusRecovery();
     renderIndicators();
     updateIndicatorSection();
@@ -175,14 +178,12 @@
     el("browse").setAttribute("aria-expanded", "false");
     el("search").value = "";
     el("choice-rows").textContent = "";
-    el("manual-settings").parentElement.open = false;
-    var manual = el("manual-settings").querySelector("input");
-    if (manual) manual.value = manual.defaultValue;
     if (restoreFocus) focusRecovery();
   }
 
   function renderChoices() {
     var query = el("search").value.trim().toLowerCase();
+    var exactID = entityID.test(query);
     var current = state.selected_id && browse.choices.find(function (choice) {
       return choice.id === state.selected_id;
     });
@@ -192,6 +193,7 @@
       target && (target === "Buttons only" ? "App control is off" : "Controls: " + target)
     ].filter(Boolean).join(" · "));
     var matches = browse.choices.filter(function (choice) {
+      if (exactID) return choice.id === query || (choice.entity_ids || []).includes(query);
       return [choice.name, choice.area, choice.description, choice.target].filter(Boolean).join(" ")
         .toLowerCase().indexOf(query) !== -1;
     });
@@ -216,12 +218,14 @@
     el("previous").hidden = browse.offset === 0;
     el("more").hidden = matches.length <= browse.offset + visible.length;
     message("picker-names", browse.namesWarning ? "Custom names and rooms are unavailable. Showing names from Home Assistant." : "");
-    el("picker-helper").hidden = browse.helper !== false || !!browse.error;
-    el("reload").hidden = !browse.error;
+    el("picker-helper").hidden = browse.helper !== false || !!browse.error || exactID;
+    el("reload").disabled = browse.loading;
+    el("apply").hidden = !visible.length || !!browse.error;
     el("apply").disabled = !browse.picked || !visible.some(function (choice) { return choice.id === browse.picked; }) ||
       !!browse.error;
     message("picker-status", browse.error || (browse.loading ? "Finding devices…" :
-      !matches.length ? (query ? "No matching devices." : "No supported devices found.") :
+      !matches.length ? (exactID ? "No device matches this entity ID. Check it in Home Assistant." :
+        query ? "No matching devices." : "No supported devices found.") :
         matches.length > visible.length ? "Showing " + (browse.offset + 1) + "–" + (browse.offset + visible.length) + " of " + matches.length + " results." : ""));
     if (restore !== null) {
       var inputs = existing.querySelectorAll("input");
@@ -250,14 +254,16 @@
       browse.request = null;
       browseFailed("The device list took too long to load. Reload devices to try again.");
     }, 20000);
-    Kit.sendCommand("HA_SETUP_BROWSE", cursor ? { request: request, cursor: cursor, revision: browse.revision } : { request: request });
+    Kit.sendCommand("HA_SETUP_BROWSE", cursor ? { request: request, cursor: cursor, revision: browse.revision } : { request: request, refresh: browse.refresh });
   }
 
-  function openPicker() {
+  function openPicker(refresh) {
     if (!state.can_browse || pending) return;
+    var query = refresh && browse ? el("search").value : "";
     closePicker(false);
     message("setup-message", "");
-    browse = { choices: [], loading: true, offset: 0, cursor: 1, seen: Object.create(null) };
+    browse = { choices: [], loading: true, refresh: refresh, offset: 0, cursor: 1, seen: Object.create(null) };
+    el("search").value = query;
     el("picker").hidden = false;
     el("browse").setAttribute("aria-expanded", "true");
     renderChoices();
@@ -284,7 +290,10 @@
         (next == null ? end !== data.total + 1 : !choices.length || next !== end || next > data.total) ||
         choices.some(function (choice) {
           if (!choice || typeof choice.id !== "string" || !choice.id || typeof choice.name !== "string" ||
-              !choice.name || browse.seen[choice.id]) return true;
+              !choice.name || browse.seen[choice.id] || (choice.entity_ids !== undefined &&
+                (!Array.isArray(choice.entity_ids) || choice.entity_ids.some(function (id) {
+                  return typeof id !== "string" || !entityID.test(id);
+                })))) return true;
           browse.seen[choice.id] = true;
           return false;
         })) {
@@ -329,16 +338,23 @@
     args.request = requestId();
     var request = args.request;
     var output = outputId || (isTiming ? "timing-status" : "setup-message");
-    pending = { request: request, timing: isTiming, output: output, action: args.action };
+    if (output === "setup-message") feedbackError = false;
+    pending = { request: request, timing: isTiming, output: output, action: args.action, feedback: args.feedback === true };
     if (command === "HA_SETUP_INDICATOR") pending.indicator = { id: args.id, field: args.field };
     var work = pending;
     pending.timer = setTimeout(function () {
       if (!pending || pending.request !== request) return;
       pending = null;
-      message(output, "The driver did not reply. Check its connection and try again.");
+      var restore = output === "setup-message" && document.activeElement === el(output);
+      if (output === "setup-message") feedbackError = work.feedback && state.feedback_retry === true;
+      message(output, work.feedback && state.status === "Device connected" ? "" :
+        "The driver did not reply. Check its connection and try again.");
       renderState();
       restoreIndicatorFocus(work);
-      if (output === "setup-message" && document.activeElement === el(output)) focusRecovery();
+      if (restore) {
+        if (state.retry) el("retry").focus();
+        else focusRecovery();
+      }
     }, 65000);
     message(output, progress);
     if (work.indicator) el(output).focus();
@@ -358,7 +374,7 @@
     }
   });
   window.addEventListener("pagehide", function () { closePicker(false); });
-  el("reload").addEventListener("click", openPicker);
+  el("reload").addEventListener("click", function () { openPicker(true); });
   el("search").addEventListener("input", function () {
     browse.offset = 0;
     renderChoices();
@@ -384,7 +400,9 @@
     el("setup-message").focus();
   });
   el("retry").addEventListener("click", function () {
-    run("HA_SETUP_RETRY", {}, false, "Retrying setup…");
+    var feedback = state.feedback_retry === true;
+    run("HA_SETUP_RETRY", feedback ? { feedback: true } : {}, false,
+      feedback ? "Checking the current device state…" : "Retrying setup…");
     el("setup-message").focus();
   });
   el("read-retry").addEventListener("click", function () {
@@ -416,14 +434,12 @@
   });
 
   Kit.initPropertiesCard(el("settings"), {
-    exclude: ["Driver Status"],
+    exclude: ["Driver Status", "Manual entity ID"],
     sections: [
-      { el: el("manual-settings"), names: ["Manual entity ID"], apply: "Save device ID" },
       { el: el("button-settings"), names: ["Button behavior", "App Control Link"] },
       { el: el("indicator-settings"), names: ["LED Behavior", "LED Feedback Source"] },
     ],
     labels: {
-      "Manual entity ID": "Home Assistant entity ID",
       "Discovery Catalog Entity ID": "Sensor for custom device names",
       "App Control Link": "Button used by the app",
       "LED Behavior": "Behavior for all indicators",
@@ -448,6 +464,10 @@
           message("indicator-status", "");
         }
         state = data.error ? { status: "Setup unavailable", detail: data.error, read_retry: true } : data;
+        if (feedbackError && state.status === "Device connected") {
+          feedbackError = false;
+          message("setup-message", "");
+        }
         renderState();
         if (restore) focusRecovery();
       },
@@ -457,7 +477,12 @@
         if (!pending || data.request !== pending.request) return;
         clearTimeout(pending.timer);
         var focus = pending.output === "setup-message" && document.activeElement === el(pending.output);
-        message(pending.output, data.error || data.message || (pending.action === "timing_reset" ? "Timing samples cleared." : ""));
+        var result = data.error || data.message || (pending.action === "timing_reset" ? "Timing samples cleared." : "");
+        if (pending.feedback && data.error) {
+          feedbackError = state.feedback_retry === true;
+          if (state.status === "Device connected") result = "";
+        }
+        message(pending.output, result);
         if (pending.timing) {
           var report = typeof data.report === "string" ? data.report : data.report && JSON.stringify(data.report, null, 2);
           message("timing-output", report);

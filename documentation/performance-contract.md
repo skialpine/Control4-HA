@@ -5,6 +5,116 @@ before the feedback handoff. A missing sample means unmeasured, not zero
 latency. The operation matrix below is a release obligation alongside functional
 tests; reserved metric names alone do not establish coverage.
 
+## Linked toggle comparison on 2026111921
+
+The pinned BP original, prototype and suite family archives each handled their
+native linked-button `DO_CLICK` on the same simulated HA load. The Light used
+the lab binary light and the Switch used the lab relay. All six cases used the
+exact 2026111921 Coordinator, HA 2026.11.1 and the same Director shim with a 1
+ms selector wait. The host monotonic clock measured dispatch, Coordinator
+delivery of confirmed HA state and family consumption separately. Log Mode and
+the legacy drivers' Debug Mode were off. Each case used four warmup clicks and
+ten measured clicks per direction. Both loads returned to their starting state.
+
+| Driver | Generation       | Coordinator median, off→on / on→off | Family feedback median, off→on / on→off | Slowest directional family p95 |
+| ------ | ---------------- | ----------------------------------- | --------------------------------------- | ------------------------------ |
+| Light  | BP 106           | 5.55 / 5.35 ms                      | 6.83 / 6.56 ms                          | 7.48 ms                        |
+| Light  | Prototype 1      | 5.03 / 4.97 ms                      | 6.25 / 6.20 ms                          | 8.76 ms                        |
+| Light  | Suite 2026111921 | 5.12 / 5.39 ms                      | 6.38 / 6.68 ms                          | 10.64 ms                       |
+| Switch | BP 106           | 4.39 / 4.48 ms                      | 5.54 / 5.63 ms                          | 9.09 ms                        |
+| Switch | Prototype 107    | 4.43 / 4.32 ms                      | 5.58 / 5.47 ms                          | 6.17 ms                        |
+| Switch | Suite 2026111921 | 4.36 / 4.51 ms                      | 5.59 / 5.76 ms                          | 6.59 ms                        |
+
+With ten samples per direction, the reported p95 is the largest observed sample
+in that direction. The comparison covers the family drivers sharing one
+Coordinator build. It includes the shim's process and network boundaries.
+
+The installed 2026111921 suite was timed separately on the CORE 1 lab
+controller. Native Light V2 Toggle reached the independent HA WebSocket state
+push in a median 79 ms from Off and 75 ms from On. The corresponding p95 samples
+were 84 and 86 ms. Native Switch Navigator Select took 35 ms from Off and 34 ms
+from On, with p95 samples of 38 and 36 ms. There were ten measurements per
+direction with Log Mode and Latency Diagnostics off and Log Level at Info. These
+times start at the proxy command request and end at confirmed software feedback
+from the simulated Home Assistant device.
+
+## CORE 1 toggle timing by phase
+
+To locate the delay in the native Light Toggle and Switch Select paths, a second
+run on 2026111921 observed the Home Assistant service event and state push for
+each command. It replayed the exact same service and parameters over a direct
+Home Assistant WebSocket for comparison, alternating the order of the two
+routes. Each route had ten measured commands per direction. The simulated dimmer
+used its saved 57% On preset and the simulated switch used native Toggle. Their
+initial state and brightness were restored.
+
+| Boundary                                             | Light median across directions | Switch median across directions |
+| ---------------------------------------------------- | ------------------------------ | ------------------------------- |
+| Native proxy request to confirmed HA feedback        | 58.43–58.87 ms                 | 34.04–34.38 ms                  |
+| Direct HA WebSocket request to confirmed HA feedback | 3.57–3.67 ms                   | 3.43–3.52 ms                    |
+| Native HA service event to HA state update           | 0.21–0.24 ms                   | 0.18 ms                         |
+
+The workstation measured request and receipt with its monotonic clock. The last
+row uses the difference between timestamps from HA itself. In a separate
+profiled run using `C4:GetTickCount`, the Light handler took a median 40 ms and
+each of its binding validations took 13 ms. Each Switch binding validation took
+2 ms. The Switch adapter's request-dispatch span took 5 ms. Switching the lab
+command endpoint to asynchronous acknowledgment produced similar feedback times,
+about 58–60 ms for Light and 35 ms for Switch. Neither run covers a physical
+device or the Navigator interface.
+
+Revision 2026111922 reuses the two fresh binding responses when validating a
+retained legacy Light connection. The regression test verifies one read per
+endpoint and checks that both legacy class declarations and the reciprocal peers
+still have to match. All three candidate archives contain this same runtime
+change.
+
+| Native request to confirmed HA feedback | 2026111921 median off→on / on→off | 2026111922 median off→on / on→off |
+| --------------------------------------- | --------------------------------- | --------------------------------- |
+| Light Toggle                            | 58.87 / 58.43 ms                  | 55.31 / 53.94 ms                  |
+| Switch Select                           | 34.04 / 34.38 ms                  | 34.86 / 34.45 ms                  |
+
+The quiet runs used ten samples per direction with Log Mode and Latency
+Diagnostics off. The maximum of the two observed directional p95s was
+72.01→65.65 ms for Light and 36.91→46.15 ms for Switch. Each directional p95
+represents the slowest sample at this sample count. The separate profiled runs
+used Info and Log Mode Off. The median Light handler time moved from 40 to 37 ms
+over 44 samples per revision. Its binding validation median moved from 13 to 11
+ms over 176 samples per revision. The Switch request and binding medians stayed
+at 5 and 2 ms. CORE 1 verified the upgrade across the suite and preserved
+selections, bindings and programming. Both simulated loads and the diagnostics
+settings returned to their initial values.
+
+### Revision 2026111923 feedback recovery
+
+The native CORE 1 toggle test used the same simulated dimmer and relay, with Log
+Mode and Latency Diagnostics off. The workstation monotonic clock ran from the
+native proxy request to the independent Home Assistant state push. Each
+direction had ten samples.
+
+| Native command | Median off→on / on→off | Directional p95 off→on / on→off |
+| -------------- | ---------------------- | ------------------------------- |
+| Light Toggle   | 55.42 / 53.55 ms       | 73.39 / 103.80 ms               |
+| Switch Select  | 34.33 / 33.96 ms       | 41.42 / 40.19 ms                |
+
+Each directional p95 is the slowest sample at this sample count. The relay
+medians remain close to the previous 2026111922 run. The test restored both
+loads and covers software feedback.
+
+The paired recovery qualification withheld the expected HA state push from one
+accepted command per family on each supported HA version. One exact read per
+command restored confirmed feedback. Times use the test host's monotonic clock
+from proxy dispatch through the packaged Coordinator and real isolated HA to the
+family's confirmed state. Log Mode was Off.
+
+| Home Assistant | Light, one sample | Switch, one sample |
+| -------------- | ----------------- | ------------------ |
+| 2026.11.1      | 3,181.59 ms       | 5,125.66 ms        |
+| 2026.11.2      | 3,130.26 ms       | 5,220.99 ms        |
+
+Each family has two recovery samples. These intervals include the confirmation
+deadline, the harness and the state read.
+
 ## Prior work across all three repositories
 
 The Light prototype is `light/` inside Control4-HA-Switch. Its history includes

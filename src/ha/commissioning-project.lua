@@ -97,6 +97,7 @@ end
 
 local function legacyDevice(id, row, origin)
   local binding = GetDeviceBindings(id, nil, false, nil, ids.legacyCoordinatorClass)[ids.lightCoordinatorBinding]
+  local provider = binding and tonumber(C4:GetBoundProviderDevice(id, ids.lightCoordinatorBinding))
   return {
     id = id,
     file = row.driverFileName,
@@ -105,6 +106,7 @@ local function legacyDevice(id, row, origin)
     name = row.deviceName,
     selected = binding and legacySelection(id) or nil,
     legacy = true,
+    legacy_provider = provider,
     -- A legacy binding describes the old project device. Only identified
     -- suite consumers can establish ownership or resume a previous add.
     provider = false,
@@ -149,19 +151,30 @@ function M.matches(device, item)
   return device.family == item.family and device.room_id == item.room_id and device.name == item.name
 end
 
+function M.roomAndName(device)
+  if contract.integer(device.room_id) and type(device.name) == "string" then
+    return device.room_id .. "\n" .. device.name:lower()
+  end
+end
+
+function M.unfinished(candidate, receipt, coordinator)
+  return candidate
+    and not candidate.legacy
+    and M.matches(candidate, receipt)
+    and candidate.selected == ""
+    and (candidate.provider == 0 or candidate.provider == coordinator)
+end
+
 function M.decide(item, devices, receipt, coordinator)
   local selected, named, unreadable, recorded = {}, {}, {}, nil
+  local roomAndName = M.roomAndName(item)
   for _, device in ipairs(devices) do
     if device.selected == nil then
       unreadable[#unreadable + 1] = device
     elseif item.keys[device.selected] or (device.legacy and device.selected == item.legacy_gesture) then
       selected[#selected + 1] = device
     end
-    if
-      device.room_id == item.room_id
-      and type(device.name) == "string"
-      and device.name:lower() == item.name:lower()
-    then
+    if M.roomAndName(device) == roomAndName then
       named[#named + 1] = device
     end
     if receipt and device.id == receipt.device_id then
@@ -189,23 +202,25 @@ function M.decide(item, devices, receipt, coordinator)
   elseif receipt then
     if receipt.phase == "complete" and not recorded and #named == 0 and #unreadable == 0 then
       -- A completed add can be requested again after the installer removes it.
-      -- A filtered inventory alone cannot establish that the original ID is gone.
+      -- Director can still report a live connection while the device is absent from inventory.
       local remaining = C4:GetDevices({ DeviceIds = tostring(receipt.device_id) })
-      if type(remaining) == "table" and next(remaining) == nil then
+      local bound = C4:GetBoundConsumerDevices(coordinator, ids.coordinatorBinding) or {}
+      if
+        type(remaining) == "table"
+        and next(remaining) == nil
+        and not bound[receipt.device_id]
+        and not bound[tostring(receipt.device_id)]
+        and tonumber(C4:GetBoundProviderDevice(receipt.device_id, ids.coordinatorBinding)) == 0
+        and (
+          receipt.family ~= "light"
+          or tonumber(C4:GetBoundProviderDevice(receipt.device_id, ids.lightCoordinatorBinding)) == 0
+        )
+      then
         return "add"
       end
     end
     local candidate = recorded or (receipt.phase == "pending" and #named == 1 and named[1])
-    if
-      receipt.phase ~= "complete"
-      and candidate
-      and M.matches(candidate, item)
-      and candidate.selected == ""
-      and (candidate.provider == 0 or candidate.provider == coordinator)
-      and receipt.name == item.name
-      and receipt.room_id == item.room_id
-      and receipt.family == item.family
-    then
+    if receipt.phase ~= "complete" and M.unfinished(candidate, receipt, coordinator) and M.matches(receipt, item) then
       return "resume", candidate.id, not recorded and "recovered_candidate" or nil
     end
     return "review", nil, "unresolved_add"

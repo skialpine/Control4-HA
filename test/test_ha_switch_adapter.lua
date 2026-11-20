@@ -1,5 +1,5 @@
 local T = require("testlib")
-require("c4_fixtures").virtualClock()
+local clock = require("c4_fixtures").virtualClock()
 local codec = require("ha.codec")
 local deferred = require("deferred")
 local ids = require("ha.identities")
@@ -11,6 +11,7 @@ local values = require("lib.values")
 local adapter = Adapter.new()
 local target, commands, notes, events, results = "switch.lab", {}, {}, {}, {}
 local ready, current = false, true
+local feedbackChanges = 0
 local consumer = { readiness = {} }
 function consumer.readiness:view(entity)
   return { evidence_ready = ready and entity == target }
@@ -28,7 +29,11 @@ function consumer:request(operation, entity, arguments)
     promise:reject({ kind = "retired" })
     return promise
   end
-  commands[#commands + 1] = { rpc = assert(operations.build(operation, entity, arguments)), promise = promise }
+  commands[#commands + 1] = {
+    rpc = operation == "read_load" and { entity = entity, operation = operation }
+      or assert(operations.build(operation, entity, arguments)),
+    promise = promise,
+  }
   return promise
 end
 function C4:SendToProxy(binding, command, params, direction)
@@ -38,9 +43,17 @@ function C4:FireEventByID(id)
   events[#events + 1] = id
 end
 local function bind(entity)
-  adapter:bind(consumer, entity, function(status)
-    results[#results + 1] = status
-  end)
+  adapter:bind(
+    consumer,
+    entity,
+    function(status)
+      results[#results + 1] = status
+    end,
+    false,
+    function()
+      feedbackChanges = feedbackChanges + 1
+    end
+  )
 end
 local function state(kind, value, entity)
   adapter:message(kind, { entity_id = entity or target, state = value, attributes = codec.object({}) })
@@ -168,6 +181,106 @@ for _, binding in ipairs({ ids.coordinatorBinding, ids.proxy, 200, 42 }) do
 end
 T.eq("invalid and unrelated packets send no service", #commands, beforeCommands + #packets)
 T.eq("legacy commands do not publish speculative feedback", #notes, beforeNotes)
+
+T.section("Composer power actions and saved command IDs dispatch the same way")
+local savedActions = {
+  { "Turn On", "turn_on" },
+  { "Turn Off", "turn_off" },
+  { "Toggle", "toggle" },
+  { "TurnOn", "turn_on" },
+  { "TurnOff", "turn_off" },
+}
+for _, action in ipairs(savedActions) do
+  local count = #commands
+  T.eq("Composer dispatch accepts " .. action[1], ExecuteCommand(action[1], {}), true)
+  T.eq("Composer dispatch targets the selected load", { #commands, commands[#commands].rpc.service }, {
+    count + 1,
+    action[2],
+  })
+end
+
+T.section("An accepted service with missing feedback gets one exact recovery read")
+bind(target)
+state("snapshot", "off")
+local start = #commands
+local eventCount = #events
+EC.TurnOn()
+commands[#commands].promise:resolve({})
+T.eq("service acceptance leaves confirmed power alone", TestCondition("IS_OFF"), true)
+clock.run(2999)
+T.eq("wait for normal push first", #commands, start + 1)
+clock.run(1)
+T.eq("read only the currently selected load", commands[#commands].rpc, { entity = target, operation = "read_load" })
+if #commands > start + 1 then
+  commands[#commands].promise:resolve(codec.object({ entity_id = target, state = "on", attributes = codec.object({}) }))
+end
+T.eq("an exact read restores relay feedback", TestCondition("IS_ON"), true)
+T.eq("an exact read does not replay a programming event", #events, eventCount)
+clock.run(10000)
+T.eq("no follow-up polling", #commands, start + 2)
+
+T.section("Matching pushes retire confirmation without a read")
+bind(target)
+state("snapshot", "off")
+local healthyStart = #commands
+EC.TurnOn()
+state("state", "on")
+commands[#commands].promise:resolve({})
+EC.TurnOff()
+commands[#commands].promise:resolve({})
+state("state", "off")
+EC.TurnOff()
+commands[#commands].promise:resolve({})
+clock.run(10000)
+T.eq("early, late and idempotent confirmation stay on the usual path", #commands, healthyStart + 3)
+
+T.section("Overlapping toggles wait for both results before one exact confirmation")
+EC.Toggle()
+local earlier = commands[#commands].promise
+EC.Toggle()
+local count = #commands
+commands[count].promise:resolve({})
+state("state", "on")
+clock.run(3000)
+T.eq("an earlier push does not finish the overlapping batch", #commands, count)
+earlier:resolve({})
+clock.run(3000)
+T.eq("overlap uses only one exact read", #commands, count + 1)
+local read = commands[#commands].promise
+state("state", "off")
+read:resolve(codec.object({ entity_id = target, state = "on", attributes = codec.object({}) }))
+T.eq("a newer push wins over the outstanding read", TestCondition("IS_OFF"), true)
+
+T.section("Failed feedback read retires control and clears on a fresh report")
+EC.TurnOn()
+commands[#commands].promise:reject({ kind = "timeout" })
+T.eq("uncertain command result starts an exact read", commands[#commands].rpc.operation, "read_load")
+commands[#commands].promise:reject({ kind = "timeout" })
+T.eq("feedback loss is unavailable, not Off", { TestCondition("IS_AVAILABLE"), TestCondition("IS_OFF") }, {
+  false,
+  false,
+})
+T.eq("existing setup status is refreshed once", feedbackChanges, 1)
+T.truthy("setup can distinguish a feedback failure", adapter.feedbackUnavailable)
+state("snapshot", "on")
+T.eq("fresh selected feedback restores control", TestCondition("IS_ON"), true)
+T.falsy("fresh selected feedback clears the status", adapter.feedbackUnavailable)
+EC.TurnOff()
+commands[#commands].promise:reject({ kind = "permission_denied" })
+clock.run(10000)
+T.eq("definite rejection sends no read", commands[#commands].rpc.service, "turn_off")
+T.eq("definite rejection retains confirmed state", TestCondition("IS_ON"), true)
+
+T.section("A replacement selection ignores a late recovery read")
+EC.TurnOff()
+commands[#commands].promise:resolve({})
+clock.run(3000)
+local retiredRead = commands[#commands].promise
+bind(target)
+state("snapshot", "on")
+retiredRead:resolve(codec.object({ entity_id = target, state = "off", attributes = codec.object({}) }))
+T.eq("late read cannot alter the replacement lifetime", TestCondition("IS_ON"), true)
+T.eq("no swallowed timer or deferred errors", clock.errors, {})
 
 T.section("Permanent destruction retires old callbacks and preserves replacement handlers")
 local old = RFP[ids.proxy]
