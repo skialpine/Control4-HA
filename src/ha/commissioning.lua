@@ -77,6 +77,14 @@ local function endpointKeys(row)
   return canonical, keys
 end
 
+local function legacyGesture(row)
+  local physical = row.attributes.device_choice
+  local gesture = physical and physical.gesture_entity_id
+  -- A prototype may store the gesture entity even when its load was selected.
+  -- Several loads can share that gesture entity, so it only flags legacy review.
+  return contract.entity(gesture) and gesture:match("^event%.") and gesture or nil
+end
+
 local function receipts()
   local raw = persist:get(KEY, nil, true)
   local saved = raw == nil and codec.object({}) or codec.storedObject(raw)
@@ -137,15 +145,15 @@ function Commissioning:existingChoices(page)
         end
       end
     end
-    local staged = {}
-    for endpoint, saved in pairs(receipts()) do
-      local device = saved.phase == "added" and byId[saved.device_id]
-        or saved.phase == "pending" and named[project.roomAndName(saved)]
-      if project.unfinished(device, saved, coordinator) then
-        staged[endpoint] = { name = saved.name, room_id = saved.room_id, family = saved.family }
-      end
-    end
-    index = { revision = page.revision, endpoints = endpoints, staged = staged }
+    index = {
+      revision = page.revision,
+      coordinator = coordinator,
+      devices = devices,
+      endpoints = endpoints,
+      byId = byId,
+      named = named,
+      saved = receipts(),
+    }
     self.browseIndex = index
   end
   local existing, staged = {}, {}
@@ -156,13 +164,33 @@ function Commissioning:existingChoices(page)
       if index.endpoints[key] then
         existing[row.entity_id] = true
       end
-      if index.staged[key] then
+      if index.saved[key] then
         ambiguous = pending ~= nil
-        pending = index.staged[key]
+        pending = index.saved[key]
       end
     end
-    if pending and not ambiguous and not existing[row.entity_id] then
-      staged[row.entity_id] = pending
+    if pending and not ambiguous then
+      local candidate = pending.phase == "added" and index.byId[pending.device_id]
+        or pending.phase == "pending" and index.named[project.roomAndName(pending)]
+      if project.unfinished(candidate, pending, index.coordinator, keys) then
+        for _, family in ipairs(row.families) do
+          if family == pending.family then
+            local item = {
+              family = family,
+              name = pending.name,
+              room_id = pending.room_id,
+              keys = keys,
+              legacy_gesture = legacyGesture(row),
+            }
+            local decision, id = project.decide(item, index.devices, pending, index.coordinator)
+            if decision == "resume" and id == candidate.id then
+              existing[row.entity_id] = nil
+              staged[row.entity_id] = { name = pending.name, room_id = pending.room_id, family = family }
+            end
+            break
+          end
+        end
+      end
     end
   end
   return existing, staged
@@ -183,15 +211,12 @@ function Commissioning:_item(choice, rooms, devices, saved)
     return nil, "name_required"
   end
   local canonical, keys = endpointKeys(row)
-  local gesture = physical and physical.gesture_entity_id
   local item = {
     choice = choice,
     domain = row.domain,
     endpoint = canonical,
     keys = keys,
-    -- A prototype may store the gesture entity even when its load was selected.
-    -- Several loads can share that gesture entity, so it only flags legacy review.
-    legacy_gesture = contract.entity(gesture) and gesture:match("^event%.") and gesture or nil,
+    legacy_gesture = legacyGesture(row),
     source_name = (physical and physical.name) or row.name,
     name = name,
     room_id = choice.room_id,

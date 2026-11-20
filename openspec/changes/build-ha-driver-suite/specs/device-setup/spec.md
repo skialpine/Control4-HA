@@ -79,6 +79,11 @@ The Coordinator SHALL offer an explicit preview for adding selected devices, inc
 - **WHEN** commissioning is restarted for previously selected devices
 - **THEN** it identifies completed additions and resumes without creating duplicates
 
+#### Scenario: The added driver configured its device before the acknowledgment was lost
+- **WHEN** the installer reopens Quick Setup and the saved incomplete receipt still identifies the only matching driver
+- **THEN** the default list offers to finish setup with the saved name, room and driver type
+- **AND** review and confirmation complete the existing receipt without adding a driver or repeating device configuration
+
 ### Requirement: Shared Quick Setup workflow
 Drivers SHALL declare Properties before custom tabs and keep connection settings there. Quick Setup SHALL list Home Assistant devices on entry or type changes and retain room assignments and selections across filters. Quick Setup SHALL hide confirmed existing Control4 drivers by default and provide **Show all devices** to reveal them. A conflicting or unconfirmed match SHALL remain subject to project verification at review. Adding drivers SHALL require a summary and separate confirmation.
 
@@ -90,6 +95,10 @@ Drivers SHALL declare Properties before custom tabs and keep connection settings
 #### Scenario: Choose devices in a constrained Composer pane
 - **WHEN** the installer selects devices across rooms and changes the type or search
 - **THEN** pending assignments survive, the next action stays accessible with one page scrollbar, and returning from review or cancelling makes no project changes
+
+#### Scenario: An unrelated device goes offline during Quick Setup
+- **WHEN** the Coordinator refreshes the device list before review or confirmation and only live availability has changed
+- **THEN** the draft remains valid and the fresh catalog still reports the latest availability
 
 ### Requirement: Built-in indicator configuration and native controls
 

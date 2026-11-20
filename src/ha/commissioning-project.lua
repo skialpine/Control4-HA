@@ -157,12 +157,18 @@ function M.roomAndName(device)
   end
 end
 
-function M.unfinished(candidate, receipt, coordinator)
+function M.unfinished(candidate, receipt, coordinator, selectedKeys)
   return candidate
     and not candidate.legacy
     and M.matches(candidate, receipt)
-    and candidate.selected == ""
     and (candidate.provider == 0 or candidate.provider == coordinator)
+    and (
+      candidate.selected == ""
+      or receipt.phase == "added"
+        and candidate.id == receipt.device_id
+        and selectedKeys
+        and selectedKeys[candidate.selected]
+    )
 end
 
 function M.decide(item, devices, receipt, coordinator)

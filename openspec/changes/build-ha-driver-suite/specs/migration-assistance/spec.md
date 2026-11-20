@@ -27,6 +27,11 @@ The Coordinator SHALL offer **Migrate switch drivers** in Quick Setup for both p
 - **AND** the list explains that the new driver type requires migration and tells the installer to test replacements before returning to review the originals for removal
 - **AND** when no such work remains, Quick Setup hides the section
 
+#### Scenario: The initial migration check fails
+- **WHEN** the Coordinator cannot report whether migration work exists
+- **THEN** Quick Setup shows a retry for the migration check
+- **AND** a successful retry shows the work or hides the section when there is none
+
 #### Scenario: Migrate several older switch drivers
 - **WHEN** the installer opens Migrate switch drivers and confirms a backed-up selection
 - **THEN** one operation prepares the replacements, moves supported connections, shows progress per switch and verifies the results

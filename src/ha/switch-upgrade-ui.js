@@ -23,6 +23,18 @@ var SwitchUpgradePage = (function () {
     next.disabled = (phase === "list" && !selection.size)
       || ((phase === "review" || phase === "cleanup-confirm") && !backup.checked);
     next.setAttribute("aria-disabled", pending ? "true" : "false");
+    refresh.setAttribute("aria-disabled", pending ? "true" : "false");
+  }
+
+  function requestFailed(action, message, timedOut) {
+    if (action === "availability" && phase === "loading") {
+      panel.hidden = false;
+      summary.textContent = "Couldn’t check for older switch drivers. Try again.";
+      button(refresh, true, "Retry migration check");
+    } else {
+      summary.textContent = message;
+      button(refresh, true, timedOut || phase === "result" ? "Check migration status" : "Refresh list");
+    }
   }
 
   function request(action, params, answer) {
@@ -31,11 +43,10 @@ var SwitchUpgradePage = (function () {
     var id = prefix + (++sequence);
     payload.action = action;
     payload.request = id;
-    pending = { id: id, answer: answer, timer: setTimeout(function () {
+    pending = { id: id, action: action, answer: answer, timer: setTimeout(function () {
       if (!pending || pending.id !== id) return;
       pending = null;
-      summary.textContent = "The Coordinator did not reply. Check the connection, then refresh.";
-      button(refresh, true, "Check migration status");
+      requestFailed(action, "The Coordinator did not reply. Check the connection, then refresh.", true);
       changed();
     }, 18000) };
     changed();
@@ -48,8 +59,7 @@ var SwitchUpgradePage = (function () {
     clearTimeout(task.timer);
     pending = null;
     if (data.error) {
-      summary.textContent = data.error;
-      button(refresh, true, phase === "result" ? "Check migration status" : "Refresh list");
+      requestFailed(task.action, data.error, false);
     } else {
       task.answer(data);
     }
@@ -285,6 +295,9 @@ var SwitchUpgradePage = (function () {
   }
 
   function checkAvailability(focus) {
+    if (!pending && phase === "loading" && !panel.hidden) {
+      summary.textContent = "Checking for older switch drivers…";
+    }
     request("availability", {}, function (data) {
       if (!data.pending && !data.count) {
         hide();

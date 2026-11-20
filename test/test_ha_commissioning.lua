@@ -34,6 +34,7 @@ local function endpoint(id, family, name)
     name = name,
     domain = family,
     family = family,
+    families = { family },
     attributes = codec.object({}),
     entity_aliases = {},
   }
@@ -416,6 +417,48 @@ T.eq("bound exact add can resume", preview.items[1].decision, "resume")
 failConfiguration = false
 T.eq("resume waits for exact configuration receipt", await(commissioning:execute(preview.id)).value.complete, true)
 T.eq("interruption still only added one driver", addCount, 1)
+
+T.section("Lost final acknowledgment keeps an already configured driver in the default setup list")
+commissioning = start()
+preview = await(commissioning:preview(request(stagedChoice))).value
+failConfiguration = true
+operation = await(commissioning:execute(preview.id))
+ShimAnswerAdds()
+local receipt = codec.decode(persist:get("HA.Commissioning", nil, true))["light.a"]
+T.eq("the timed-out configure keeps an incomplete receipt", { operation.value.items[1].reason, receipt.phase }, {
+  "timeout",
+  "added",
+})
+selected[receipt.device_id] = stagedChoice.choice_id
+fixtures.coldStoredObject("HA.Commissioning")
+commissioning = Commissioning.new(catalog, configure)
+local stagePage = { cursor = 1, revision = revision, entities = { rows[A.choice_id] } }
+completed, staged = commissioning:existingChoices(stagePage)
+T.eq("the exact incomplete driver stays visible in the default list", completed, {})
+T.eq("the saved room, name and type are supplied", staged[A.choice_id], {
+  name = stagedChoice.name,
+  room_id = stagedChoice.room_id,
+  family = stagedChoice.family,
+})
+selected[19] = "switch.b"
+rows[A.choice_id].entity_aliases = { "switch.b" }
+completed, staged = commissioning:existingChoices(stagePage)
+T.eq("another driver matching an alias prevents a resume hint", { completed[A.choice_id], next(staged) }, { true })
+rows[A.choice_id].entity_aliases, selected[19] = {}, nil
+preview = await(commissioning:preview(request(stagedChoice))).value
+T.eq("explicit review resumes the existing driver", { preview.items[1].decision, preview.items[1].device_id }, {
+  "resume",
+  receipt.device_id,
+})
+operation = await(commissioning:execute(preview.id))
+clock.run(5000)
+T.eq("finishing setup neither adds nor reconfigures a driver", { operation.value.complete, addCount, #configuration }, {
+  true,
+  1,
+  1,
+})
+completed, staged = commissioning:existingChoices(stagePage)
+T.eq("finished setup returns to the existing-device filter", { completed[A.choice_id], next(staged) }, { true })
 
 T.section("Preview rejects changed project, HA eligibility, duplicate intent and unrelated exact labels")
 commissioning = start()

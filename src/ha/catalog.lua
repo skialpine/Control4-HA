@@ -145,14 +145,27 @@ function Catalog:refresh(force)
       table.sort(values, function(a, b)
         return a.entity_id < b.entity_id
       end)
-      local bytes = 0
+      local bytes, revisionRows = 0, {}
       for index, item in ipairs(values) do
-        local size = #codec.encode(item)
+        local encoded = codec.encode(item)
+        local size = #encoded
         bytes = bytes + size
         if size > PAGE_BYTES - 512 or bytes > MAX_BYTES then
           fail("invalid_endpoint_metadata")
           return
         end
+        -- A native load can go offline without changing its identity or eligibility.
+        -- Keep the live availability for verification but leave it out of the draft revision.
+        if item.available ~= nil then
+          local stable = codec.object({})
+          for key, value in pairs(item) do
+            if key ~= "available" then
+              stable[key] = value
+            end
+          end
+          encoded = codec.encode(stable)
+        end
+        revisionRows[index] = encoded
         for _, family in ipairs(item.families) do
           indices[family][#indices[family] + 1] = index
         end
@@ -166,22 +179,19 @@ function Catalog:refresh(force)
           end
         end
       end
-      local fingerprint = C4:Hash(
-        "SHA256",
-        (upstreamRevision or "native") .. ":" .. tostring(eligibilityVersion or 0) .. codec.encode(values)
-      )
+      local prefix = (upstreamRevision or "native") .. ":" .. tostring(eligibilityVersion or 0)
+      local fingerprint = C4:Hash("SHA256", prefix .. "[" .. table.concat(revisionRows, ",") .. "]")
       if not self.snapshot or self.snapshot.revision ~= fingerprint then
         self.snapshot = {
           source = source,
           revision = fingerprint,
           upstreamRevision = upstreamRevision,
-          rows = values,
-          upstreamRows = upstreamRevision and rows or nil,
           indices = indices,
-          pages = pages,
           eligibilityVersion = eligibilityVersion,
         }
       end
+      self.snapshot.rows, self.snapshot.upstreamRows, self.snapshot.pages =
+        values, upstreamRevision and rows or nil, pages
       complete()
     end
     local function ready(values)

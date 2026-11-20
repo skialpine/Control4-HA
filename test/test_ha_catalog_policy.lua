@@ -1,6 +1,7 @@
 -- Actual catalog + eligibility pipeline. Only HA RPC responses are faked.
 local T = require("testlib")
 local codec = require("ha.codec")
+local deferred = require("deferred")
 local Catalog = require("ha.catalog")
 local Choices = require("ha.choices")
 local function wire(value)
@@ -203,7 +204,6 @@ T.eq(
 )
 
 T.section("absent helper still uses scoped native data and exact registry entries")
-local deferred = require("deferred")
 catalog = Catalog.new(request, function()
   local work = deferred.new()
   work:resolve(wire(codec.array({
@@ -228,7 +228,13 @@ T.eq("native discovery remains identified in metadata", native.metadata.source, 
 T.section("companion choices join native helpers and proven aliases in the same list")
 local helperId, wrapperId = "input_boolean.lamp", "light.decorative"
 local nativeRows = wire(codec.array({
-  { entity_id = helperId, name = "Lamp helper", domain = "input_boolean", attributes = codec.object() },
+  {
+    entity_id = helperId,
+    name = "Lamp helper",
+    domain = "input_boolean",
+    available = true,
+    attributes = codec.object(),
+  },
   { entity_id = wrapperId, name = "Decorative lights", domain = "light", attributes = codec.object() },
   { entity_id = "switch.a", name = "Raw relay", domain = "switch", attributes = codec.object() },
 }))
@@ -288,6 +294,7 @@ answer(known + 1, unchangedCombined())
 T.eq("an unchanged companion only confirms the revision", #requests, known + 1)
 T.eq("warm open reuses the complete merged list", same.metadata.revision, combinedRevision)
 local forced = open(true)
+nativeRows[1].available = false
 answer(known + 2, unchangedCombined())
 T.eq(
   "explicit refresh queries the exact native registry again",
@@ -295,7 +302,13 @@ T.eq(
   { helperId, wrapperId, "switch.a" }
 )
 answer(known + 3, entries)
-T.eq("unchanged refreshed catalog keeps its revision", forced.metadata.revision, combinedRevision)
+T.eq("an unrelated availability change preserves the merged list revision", forced.metadata.revision, combinedRevision)
+local refreshedHelper = catalog:choice(helperId, "light", combinedRevision)
+local refreshedChoice = catalog:choice(helperPhysical.entity_id, "light", combinedRevision)
+T.eq("the refreshed choice still carries the latest availability", {
+  refreshedHelper and refreshedHelper.available,
+  refreshedChoice and refreshedChoice.entity_id,
+}, { false, helperPhysical.entity_id })
 
 local wrapped = wire(helperPhysical)
 wrapped.entity_id = "device:" .. device .. ":" .. entries[wrapperId].id
@@ -312,4 +325,37 @@ local opts = catalog:read(owner.metadata.revision, 1, "light")
 T.eq("when the companion picks the wrapper the native raw relay is still deduplicated", opts.total, 2)
 local winner = catalog:choice(wrapped.entity_id, "light", owner.metadata.revision)
 T.eq("source relay ID finds the companion wrapper", winner.entity_aliases, { "switch.a" })
+
+T.section("Native availability changes preserve an open revision, while renames still invalidate it")
+local nativeAvailability = codec.array({
+  { entity_id = "switch.a", domain = "switch", name = "Selected", available = true, attributes = codec.object() },
+  { entity_id = "switch.b", domain = "switch", name = "Unrelated", available = true, attributes = codec.object() },
+})
+catalog = Catalog.new(function(_, callback)
+  callback(false, { kind = "not_found" })
+end, function()
+  local work = deferred.new()
+  work:resolve(wire(nativeAvailability))
+  return work
+end, function(values)
+  local work = deferred.new()
+  work:resolve(Choices.apply(values, { ["switch.a"] = codec.null, ["switch.b"] = codec.null }, true))
+  return work
+end)
+local nativeRevision = open().metadata.revision
+nativeAvailability[2].available = false
+T.eq(
+  "going offline keeps the revision available to an open Quick Setup draft",
+  open(true).metadata.revision,
+  nativeRevision
+)
+local updated = catalog:read(nativeRevision, nil, "switch")
+T.eq("the previous revision sees the fresh availability", updated and updated.entities[2].available, false)
+local selected = catalog:choice("switch.a", "switch", nativeRevision)
+T.eq("the selected switch remains unchanged", selected and selected.available, true)
+nativeAvailability[2].name = "Renamed"
+local renamedRevision = open(true).metadata.revision
+T.truthy("a real list change still needs a fresh review", renamedRevision ~= nativeRevision)
+nativeAvailability[2].attributes.supported_color_modes = codec.array({ "brightness" })
+T.truthy("nested capability changes still need a fresh review", open(true).metadata.revision ~= renamedRevision)
 T.finish()

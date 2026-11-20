@@ -1121,3 +1121,25 @@ Composer and Navigator screens, and physical indicators. The coordinated
 unattended installer also needs a supported Control4 installation interface. The
 [OpenSpec tasks](../openspec/changes/build-ha-driver-suite/tasks.md) track the
 handoff conditions.
+
+## Revision 2026111925 Quick Setup recovery
+
+An unrelated Home Assistant device going offline no longer invalidates an open
+draft. The Coordinator refreshes availability and still requires a fresh review
+when the eligible list or capability details change.
+
+When an added driver has already configured its device and its acknowledgment
+was lost, Quick Setup shows the saved name and room in the default list. The
+installer reviews and confirms finishing setup. The Coordinator completes the
+receipt without creating another driver or repeating configuration. A duplicate
+endpoint match still requires review.
+
+If the initial switch migration check fails or times out, the existing migration
+section offers a retry. A successful retry opens the driver list or hides the
+section when no work remains.
+
+The independent browser review exercised the packaged Coordinator at 320 × 300
+and 1000 × 550 pixels. All eight checks passed, including keyboard retry, focus
+after recovery, retained draft edits and the explicit setup confirmation. The
+catalog and commissioning tests exercised the backend with simulated Home
+Assistant and Director replies. Native Composer verification is pending.
