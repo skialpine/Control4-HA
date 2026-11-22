@@ -1,5 +1,5 @@
 // Uses the template's existing driver socket. Opening Device Setup performs no migration requests.
-function installSwitchMigration(nextId) {
+function installSwitchMigration(nextId, refreshSetup) {
   var panel = document.getElementById("switch-migration");
   if (!panel) return function () {};
   function field(id) { return document.getElementById("migration-" + id); }
@@ -54,6 +54,7 @@ function installSwitchMigration(nextId) {
     status(data.error || data.message);
     if (data.error) { field("message").focus(); return; }
     var choose = data.phase === "choose", preview = data.phase === "preview", staged = data.phase === "staged";
+    var finished = data.phase === "closed" && current.completed;
     token = data.token; current = data;
     field("open").hidden = choose || preview || staged;
     field("choices").hidden = !choose;
@@ -85,6 +86,8 @@ function installSwitchMigration(nextId) {
       (select.options.length ? select : field("close")).focus();
     } else if (preview || staged) {
       field("message").focus();
+    } else if (finished) {
+      refreshSetup();
     } else { field("open").focus(); }
   };
 }

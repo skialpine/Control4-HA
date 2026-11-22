@@ -27,10 +27,10 @@ changes all available indicators and saves both tracking colors for each. Each
 indicator must support changing color.
 
 To have the indicators follow a connected light, open Device Setup and choose
-**Follow Bound Device** under **Behavior for all indicators**. **Follow the
-light linked to** selects which connected paddle supplies the light's state.
-When several paddles control different lights, choose one here to start
-tracking. Use **Refresh LED Feedback** in Actions to ask that light for its
-current state. Black in a saved tracking color switches the indicator off. **Use
-Device Setting** stops following the light and leaves the indicator in its
-current setting.
+**Follow the linked light** in the indicator lights section. **Follow the light
+linked to** selects which connected paddle supplies the light's state. When
+several paddles control different lights, choose one here to start tracking. Use
+**Refresh LED Feedback** in Actions to ask that light for its current state.
+Black in a saved tracking color switches the indicator off. **Keep current LED
+setting** stops following the light and leaves the indicator in its current
+setting.

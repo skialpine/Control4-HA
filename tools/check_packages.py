@@ -87,7 +87,7 @@ if {json.dumps(version)} == '3.2.4' then
   assert(status:find('requires at least C4 OS 3.3.0', 1, true), status)
 else
   if config.model == 'HA Coordinator' then
-    assert(status == 'Enter your Home Assistant address in HA URL and your access token in HA Token.', status)
+    assert(status == 'Enter the Home Assistant hostname or IP address in HA Host.', status)
   else
     assert(status:find('Not configured', 1, true), status)
     UIRequest('_GET_PROPERTIES', {{}})

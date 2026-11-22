@@ -605,6 +605,7 @@ end
 T.section("confirmed commissioning transfers only to the approving current child")
 for _, scenario in ipairs({
   "apply",
+  "prepared switch",
   "upgrade direct switch",
   "late registration",
   "decline",
@@ -615,12 +616,18 @@ for _, scenario in ipairs({
   local f = fixture()
   local revision = string.rep("c", 64)
   local upgrade = scenario == "upgrade direct switch"
+  local preparing = scenario == "prepared switch"
   local waiting = scenario == "changed during resolve" or scenario == "timeout"
   local prepareDevice = string.rep("d", 32)
+  local registry = string.rep("e", 32)
+  local load = { entity_id = "light.lab", registry_id = registry, domain = "light" }
   local query = {
-    choice_id = upgrade and "switch.lab" or waiting and "device:" .. prepareDevice .. ":none" or "light.lab",
+    choice_id = upgrade and "switch.lab"
+      or preparing and "device:" .. prepareDevice .. ":" .. registry
+      or waiting and "device:" .. prepareDevice .. ":none"
+      or "light.lab",
     revision = revision,
-    family = upgrade and "switch" or "light",
+    family = (upgrade or preparing) and "switch" or "light",
     prepare = true,
   }
   f.hub.catalog.refresh = function()
@@ -631,7 +638,11 @@ for _, scenario in ipairs({
     return {
       entity_id = key,
       name = "Test light",
-      attributes = { device_choice = waiting and { device_id = prepareDevice } or nil },
+      attributes = {
+        device_choice = preparing and { device_id = prepareDevice, source_load = wire(load) } or waiting and {
+          device_id = prepareDevice,
+        } or nil,
+      },
       domain = "light",
     }
   end
@@ -646,7 +657,7 @@ for _, scenario in ipairs({
     end,
     applyCommission = function(config)
       applies = applies + 1
-      assert(config.controlled_load.entity_id == query.choice_id)
+      assert(config.controlled_load.entity_id == (preparing and load.entity_id or query.choice_id))
       -- Setup.activate publishes the selected variable and registers the new
       -- subscription before the child sends the final acknowledgement.
       child:select(codec.array({ config.controlled_load.entity_id }))
@@ -679,7 +690,25 @@ for _, scenario in ipairs({
   elseif scenario == "timeout" then
     clock.run(45000)
   end
-  if waiting then
+  if preparing then
+    local preparation = f.connection.sent[1]
+    T.eq(
+      "commissioning scopes preparation to the selected registry entry",
+      preparation.service_data.source_registry_id,
+      registry
+    )
+    f.ack(preparation.id, true, {
+      response = {
+        version = 1,
+        device_id = prepareDevice,
+        input_ready = true,
+        source_load = load,
+        controlled_load = load,
+        controlled_load_origin = "selected_endpoint",
+        gesture_entity_id = "event.wall_paddle",
+      },
+    })
+  elseif waiting then
     local preparation = f.connection.sent[1]
     if scenario == "changed during resolve" then
       f.ack(preparation.id, true, { response = { version = 1, device_id = prepareDevice, input_ready = false } })

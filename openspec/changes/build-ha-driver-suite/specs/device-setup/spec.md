@@ -54,6 +54,13 @@ Committed selections SHALL resolve their endpoint, optional gestures and support
 - **WHEN** its selection is committed with no explicit mode override
 - **THEN** the driver defaults to connected-C4 control and identifies the target light
 
+### Requirement: Named button behavior targets
+Button behavior options SHALL name their known control targets. The text below the selector SHALL identify the effective app destination, or explain when app control is off or a target still needs to be chosen. It SHALL identify the source of available Programming button presses when known, and update when the mode changes.
+
+#### Scenario: Return a button switch to Automatic
+- **WHEN** the installer selects Automatic on a switch with a known Home Assistant load and supported button presses
+- **THEN** the explanation below the selector names the load the app controls and the button source available in Control4 Programming
+
 ### Requirement: Shared responsive discovery
 Drivers SHALL share one Coordinator-owned selector dataset, verify its revision and avoid duplicate consumer caches. Ordinary setup SHALL work through scoped discovery without the optional companion. Selecting a current listed load SHALL use the verified revision without a separate Home Assistant confirmation.
 
@@ -75,9 +82,18 @@ An unconfigured driver SHALL say it is not configured rather than report an inva
 ### Requirement: Optional selected-device commissioning
 The Coordinator SHALL offer an explicit preview for adding selected devices, including proposed family, room, name and existing-match decisions. It MUST NOT automatically add every discovered entity, create duplicate instances on rerun or remove existing instances without explicit action.
 
+#### Scenario: Complete setup for a newly added driver
+- **WHEN** the installer confirms a Light or Switch addition
+- **THEN** Quick Setup creates the driver, links it to the Coordinator and saves the selected Home Assistant device before reporting success
+
 #### Scenario: Repeat an interrupted commissioning pass
 - **WHEN** commissioning is restarted for previously selected devices
 - **THEN** it identifies completed additions and resumes without creating duplicates
+
+#### Scenario: Recreate a driver deleted after interrupted setup
+- **WHEN** an earlier addition recorded a Control4 driver ID, the installer removed that driver, and Director confirms the driver and its Coordinator connection are gone
+- **THEN** Quick Setup offers to create one new driver after a fresh review and confirmation
+- **AND** Quick Setup refuses recreation if the driver reappears or still has a Coordinator connection
 
 #### Scenario: The added driver configured its device before the acknowledgment was lost
 - **WHEN** the installer reopens Quick Setup and the saved incomplete receipt still identifies the only matching driver
@@ -86,6 +102,12 @@ The Coordinator SHALL offer an explicit preview for adding selected devices, inc
 
 ### Requirement: Shared Quick Setup workflow
 Drivers SHALL declare Properties before custom tabs and keep connection settings there. Quick Setup SHALL list Home Assistant devices on entry or type changes and retain room assignments and selections across filters. Quick Setup SHALL hide confirmed existing Control4 drivers by default and provide **Show all devices** to reveal them. A conflicting or unconfirmed match SHALL remain subject to project verification at review. Adding drivers SHALL require a summary and separate confirmation.
+
+#### Scenario: An installed driver is configured by its button-event entity
+- **WHEN** a suite driver’s saved button event resolves to a unique physical choice in the verified Home Assistant catalog for that Coordinator
+- **THEN** Quick Setup hides that choice by default and protects it from a duplicate add even when its preferred driver type differs
+- **AND** review still verifies load ownership before offering to reuse or change the driver
+- **AND** a button event shared by several loads alone does not hide those loads
 
 #### Scenario: Open an installed driver in Composer
 - **WHEN** qualifying its landing screen

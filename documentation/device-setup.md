@@ -43,9 +43,10 @@ For a Light with a connected Control4 target, **Automatic** uses the explicit
 **Toggle Control Link** or **Bottom Control Link** to the light or group each
 paddle should operate. If all connected paddles share a target, the app uses it
 automatically. If they control different lights, choose the app's target by
-connecting **App Control Link** or choosing **Button used by the app** in Device
-Setup. The On, Off and Toggle **Button Links** let external keypads operate this
-driver. A remote with buttons and no load defaults to **Buttons only**.
+connecting **App Control Link** or choosing the device by name under **Light
+controlled by the app** in Device Setup. The On, Off and Toggle **Button Links**
+let external keypads operate this driver. A remote with buttons and no load
+defaults to **Buttons only**.
 
 ### Program button presses
 
@@ -99,20 +100,27 @@ device diagnostics to Lua** in **Actions**. If all release attempts fail, the
 last command result in the **Lua** tab explains what to check.
 
 - **Button behavior** appears for devices with buttons, Control4 lighting
-  connections or an existing override. Leave it on **Automatic** to follow the
-  device and connections. App commands go to the Home Assistant target or, for a
-  Light, the connected Control4 light. **Buttons only** turns off app control
-  and keeps button presses available for programming. An explicit choice
-  survives a restart. On a Switch with both a linked device and buttons, choose
-  **Control linked device only** for on/off control without button events or
-  indicator settings. **Control device and report presses** also makes button
-  events and supported indicators available.
-- **Button used by the app** lets a Light use the linked Top, Bottom or Toggle
-  button for app control. In **Automatic**, the app uses a shared destination.
-  This setting appears when a button link can provide the app target. A
-  dedicated **App Control Link** connection takes precedence.
+  connections or an existing override. In **Automatic**, the text below the
+  selector names what the app controls and tells you when button presses are
+  available in Control4 Programming. The other control options name their
+  targets too. For a Switch, the option ending in **only** keeps on/off control
+  and turns off button events and indicator settings. Choose the option ending
+  in **+ presses** to use button events and supported indicators too. **Button
+  presses only** turns off app control and keeps button presses available for
+  programming. An explicit choice survives a restart.
+- **Light controlled by the app** lists different linked lights and groups by
+  name. A shared target needs no selection. If a saved choice loses its link,
+  the selector offers the available destinations. A dedicated **App Control
+  Link** connection takes precedence.
 - **Selected device ID** and **Controlled device ID** help distinguish a wall
   control from its target when troubleshooting.
+- For a linked Control4 light, choose **Trace** under **Troubleshooting → Debug
+  Mode**, repeat the action, then open the **Lua** tab. The trace shows which
+  commands the driver forwarded or skipped and the power and brightness the
+  linked light reported. Director can deliver feedback while the driver is
+  sending a command, so a feedback line can appear before the send result. The
+  trace stops after 25 entries. Select **Off**, then **Trace** to capture
+  another set. **On** prints button-event summaries.
 - **Latency Diagnostics** records timing samples when enabled. Expand
   **Troubleshooting** and choose **Show timing report** to read them. Use
   **Clear timing samples** before measuring a new setup. Logging and timing can
@@ -121,16 +129,17 @@ last command result in the **Lua** tab explains what to check.
 ### Indicator lights
 
 With a supported HA Gesture Bridge device selected, find **Indicator lights on**
-followed by the device name in Device Setup. Change an available **Current
-color**, **Brightness (%)** or **Behavior**, then select **Apply** beside that
-setting. For example, choose **Blue** under **Current color**. This changes the
-stored color while keeping the indicator's behavior. To turn an indicator off,
-choose **Always off** under **Behavior** when the device offers it.
+followed by the device name in Device Setup. A dropdown applies when you select
+a choice. If **Brightness (%)** is a number field, enter the value and select
+**Apply**. The color selector shows the confirmed saved color even when the LED
+is off or follows the switch. Changing the color preserves the current behavior.
+To turn an indicator off, choose **Always off** when the device offers it.
 
-**Behavior for all indicators** appears when the available indicators share a
-behavior. Choosing a shared behavior submits that change to all of them. **Use
-Device Setting** leaves their current settings in place. To change just one
-indicator, use **Behavior** under its name and select **Apply**.
+A single indicator has one behavior selector. For multiple indicators, use
+**Behavior** under an indicator's name to change it individually, or **Indicator
+behavior** to apply a shared setting to every indicator. **Keep current LED
+setting** leaves the settings in place. **On when the device is on** and **On
+when the device is off** follow the wall device's own state.
 
 The color list and behavior choices come from the selected device. Brightness
 shows reported steps when available. Devices that accept a percentage can round

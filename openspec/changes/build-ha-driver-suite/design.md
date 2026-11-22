@@ -140,20 +140,23 @@ Prefer a separate C4 test controller where available. Do not represent another p
 
 ### 7. Automatic updates and deployment
 
-Use the template OSS GitHub updater and shared Production/Pre-release settings. Production is default, both enabled channels install eligible updates automatically without Composer or per-release approval. The Coordinator owns the only update setting, channel and status. Update the exact suite package files installed on the controller, including unbound instances, from one release. Elect one owner when multiple suite Coordinators exist because installed files are controller-wide. Do not include commercial licensing/cloud dependencies for this free release.
+The installer initially loads the suite packages from one release in the same Composer session using Add or Update Driver, verifies that all installed instances run that revision, and enables automatic updates once on the Coordinator. Use the template OSS GitHub updater's supported capabilities and shared Production/Pre-release settings. Production is the default. Both channels install eligible updates automatically after enablement. The Coordinator owns the only update setting, channel and status. Update the exact suite package files installed on the controller, including unbound instances, from one release. Elect one owner when multiple suite Coordinators exist because installed files are controller-wide. Keep the free release independent of commercial licensing and cloud services.
 
 Publish all suite packages with a coherent manifest. One operation stages and verifies the complete required set before the first installation write, then applies that set under a single controller-wide owner. Director may acknowledge reloads in sequence inside that operation, with Coordinator last if the installer needs it to maintain the operation. Persist the target and recovery record across its reload. Verify the running revision of every affected instance after reload. Close an interruption by finishing the same qualified release or restoring the previous working set. A failure must not create a rapid reload loop or report success while revisions differ.
 
-The template's OSS release lookup, bounded download support and suite package
-qualification can run with documented DriverWorks capabilities. The template's
-package writer depends on file access beyond the documented driver locations.
-Task 8.1 needs a supported installation endpoint that permits the Coordinator to
-apply the qualified batch and observe each reload. The documented Control4
-update agent configures updates per driver, so its availability alone does not
-establish suite ordering or GitHub release compatibility. Keep native install
-qualification open until that endpoint and its permissions are verified.
-[DriverWorks file API](https://control4.github.io/docs-driverworks-api/#filesetdir)
-[Control4 driver update agent](https://docs.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/manage_drivers.htm)
+Use Finite Labs’ pinned OSS archive writer and Director reload transport.
+The Coordinator supplies the exact verified archive bytes, elects its owner
+from the installed instances and saves the archive hashes and original files
+in the owner's sandbox before its first replacement. The template transport
+uses file access and a Director operation outside the published DriverWorks
+file and update contracts. Qualify its permissions, staged archive survival
+and running-version readback on the supported controller OS before handoff.
+Keep automatic updates off by default. If an update is incomplete after a
+restart, check the saved files first. The installer can retry the same batch
+with **Check for driver updates** while automatic updates are enabled. A
+Coordinator configured to use certificate files stored in its own package
+requires an installer-managed update that preserves those files.
+[Finite Labs template updater](https://github.com/finitelabs/control4-driver-template/blob/v0.9.117/template/src/lib/github-updater.lua)
 
 Use Group Lighting's committed YYYYMMDDRR revision for every package and release tag, with the template's numeric version comparison. Qualify channel changes, prerelease promotion and same-day version behavior; do not silently downgrade a newer prerelease when Production is selected. Only installed drivers update. User-initiated selective commissioning uses the template companion deployment library for room/name/binding work and rerun handling; device creation is not an unattended startup or upgrade side effect.
 
@@ -163,9 +166,11 @@ Rehearse same-instance Coordinator and Light updates from each baseline as part 
 
 Start migration from the expanded **Migrate switch drivers** section at the top of the Coordinator's Quick Setup page. It appears only when this Coordinator has older switch drivers to review or saved migration or removal work. The wizard identifies each older driver by name, room and Home Assistant device. Give blocked rows a specific reason and next step. Provide a single review with the selected rows, planned changes and backup confirmation. Put detailed connection and programming information behind a disclosure. Keep the Home Assistant device list and any in-progress selections available below the migration section.
 
+Before creating a replacement, ask the installer to acknowledge where to return if Composer selects the new driver. For migrations that need programming edits, verify the original and replacement identities and give them their final display names before showing the worklist. Name the old driver that still controls the load and give the exact command and room for the replacement. Persist intent before either rename so an interruption can resume without transferring control or repeating the add.
+
 After **Start migration**, use the existing template-based deployment path to add or reuse one replacement in each original room. Prepare its saved Home Assistant selection and verify its Coordinator and installed release. Check all conditions needed for single-owner cutover before changing the original. Transfer supported bindings by semantic role and verify them on both ends. Preserve the original settings and a recovery checkpoint. Show progress per switch with a specific manual step only where an API cannot safely complete it. Verify affected programming and scene references before retiring the original. A blocked row keeps its existing control while other eligible rows proceed.
 
-Migration starts only when the user requests it. Preview, confirm, stage, verify and cut over with one active owner. Support cancellation, interrupted resume and rollback from a restorable backup. Complete and verify required manual mappings with the installer before reporting success. Rehearse the cutover and rollback from each pinned Switch baseline. All suite destinations must run the selected release at successful cutover. Identify the temperature exception by exact original package and proxy before implementation. Default the remaining families to an in-place design and prove each independently when scheduled.
+Migration starts only when the user requests it. Preview, confirm, stage, verify and cut over with one active owner. Support cancellation, interrupted resume and rollback from a restorable backup. Complete and verify required manual mappings with the installer before reporting success. Rehearse the cutover and rollback from each pinned Switch baseline. All suite destinations must run the selected release at successful cutover. Use a user-requested migration for BP Home Assistant Thermostat when that family enters scope. The verified source is `HA.Thermostat.c4z` revision 108 from release v1.0.8, model `HA Thermostat`, with a `thermostatV2` proxy on binding 5001. Qualify any additional source revisions individually. Default the remaining families to an in-place design and prove each independently when scheduled.
 
 ### 9. Manuals, AI skill and public release gates
 
@@ -177,7 +182,7 @@ Marketplace acceptance is a later GA gate, not a prerequisite for the initial fe
 
 ### 10. Follow-up family roadmap after feedback
 
-Do not add these drivers in this change. Apply the same common setup and feature-matrix standards when their follow-up changes are approved:
+Use the corresponding BP `Control4-HA-*` repository and its released driver to identify installer and homeowner tasks for each follow-up family. The [provenance inventory](../../../provenance/sources.json) pins all 13 BP repositories, including the initial Coordinator, Light and Switch and the shared Base reference. Apply the same common setup and feature-matrix standards to the nine follow-up families after feedback on the initial drivers. Check reuse terms before taking any source code.
 
 | Family | Native C4 expansion to assess against supported HA behavior |
 | --- | --- |

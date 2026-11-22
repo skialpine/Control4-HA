@@ -1,6 +1,6 @@
 # Platform and identity contract
 
-The selected template is v0.9.116 at the full revision in
+The selected template is v0.9.117 at the full revision in
 `provenance/template-lock.json`. Its example-driver baseline is Control4 OS
 3.3.0. The suite checks the package's `minimum_os_version` using the template's
 `CheckMinimumVersion` before starting control. A rejected platform gets an
@@ -38,10 +38,11 @@ connections. See the
 [DriverWorks proxy lifecycle](https://snap-one.github.io/docs-driverworks-fundamentals/#driver-updates).
 
 Native qualification still requires running saved programs and scenes and
-checking their targets on the original Director device IDs. The temperature
-migration exception still needs an exact package/proxy match. Other families
-receive their own qualification when implemented. See the
-[first-demo package comparison](first-demo-packages.md).
+checking their targets on the original Director device IDs. When the thermostat
+family enters scope, BP `HA.Thermostat.c4z` revision 108 follows the
+user-requested migration path. Its released archive declares the `thermostatV2`
+proxy on binding 5001. Other families receive their own qualification when
+implemented. See the [first-demo package comparison](first-demo-packages.md).
 
 ## Existing BP children on the updated Coordinator
 

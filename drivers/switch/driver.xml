@@ -1,7 +1,7 @@
 <devicedata>
   <name>Home Assistant Switch</name>
   <version />
-  <manufacturer>skialpine</manufacturer>
+  <manufacturer>SkiAlpine Labs</manufacturer>
   <model>Control4.HA.Switch</model>
   <creator>skialpine</creator>
   <control>lua_gen</control>
@@ -9,6 +9,8 @@
   <copyright>Copyright 2026 skialpine; template components copyright Finite Labs and their respective authors.</copyright>
   <created>11/16/2026 12:00:00 PM</created>
   <modified />
+  <small image_source="c4z">icons/composer-switch-16.gif</small>
+  <large image_source="c4z">icons/composer-switch-32.gif</large>
   <minimum_os_version>3.3.0</minimum_os_version>
   <composer_categories>
     <category>Other</category>
@@ -298,8 +300,9 @@
       </display_icons>
     </navigator_display_option>
   </capabilities>
-  <proxies>
-    <proxy proxybindingid="5001" primary="True" name="Home Assistant Switch">uibutton</proxy>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" primary="True" name="Home Assistant Switch" image_source="c4z"
+      small_image="icons/composer-switch-16.gif" large_image="icons/composer-switch-32.gif">uibutton</proxy>
   </proxies>
   <connections>
     <connection>

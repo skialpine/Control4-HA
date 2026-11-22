@@ -73,6 +73,12 @@ function Transfer:directSwitch(device, entity, name)
   return self:_start(device, { choice_id = entity, family = "switch" }, config)
 end
 
+function Transfer:preparedSwitch(device, config)
+  local arguments = { choice_id = config.key, family = "switch" }
+  assert(Selection.valid(config, arguments), "Invalid prepared Switch selection")
+  return self:_start(device, arguments, config)
+end
+
 function Transfer:receive(consumer, message)
   local job = self.job
   if

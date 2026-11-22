@@ -8,6 +8,10 @@ permissions:
   contents: write
   actions: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-26.04
@@ -49,18 +53,109 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WAIT_MINUTES: 60
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          # A suffixed tag (v2026111801-rc1) publishes as a pre-release, which only
-          # drivers on the Prerelease update channel pick up. The updater orders by
-          # the numeric revision, so the final needs a higher revision than its prereleases.
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
+      - name: Verify draft assets and publish
+        shell: bash
+        run: |
+          read_release() {
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+              jq -sc --arg tag "$GITHUB_REF_NAME" '
+                [.[][] | select(.tag_name == $tag)] |
+                if length > 1 then error("More than one release for this tag") else .[0] end'
+          }
+
+          release=$(read_release)
+          shopt -s nullglob
+          assets=(
             dist/oss/c4z/*.c4z
-            dist/oss/docs/*.pdf
-            dist/oss/*.zip
-            dist/oss/inventory.json
-            dist/oss/inventory.sha256
-            dist/oss/ha-suite-release.json
+            dist/oss/{control4-ha-drivers.zip,control4-ha-setup.zip,inventory.json,inventory.sha256,ha-suite-release.json}
+          )
+          expected='{}'
+          for asset in "${assets[@]}"; do
+            if [ ! -s "$asset" ]; then
+              echo "::error::Required release asset is missing or empty: $asset"
+              exit 1
+            fi
+            checksum=$(sha256sum "$asset")
+            expected=$(jq -c --arg name "${asset##*/}" --arg digest "sha256:${checksum%% *}" \
+              '.[$name] = $digest' <<< "$expected")
+          done
+          revision=${GITHUB_REF_NAME#v}
+          revision=${revision%%-*}
+          if ! jq -e --arg revision "$revision" --slurpfile manifest dist/oss/ha-suite-release.json \
+            --slurpfile inventory dist/oss/inventory.json '
+            ($manifest[0].assets | map_values("sha256:" + .sha256)) as $declared |
+            ($inventory[0].packages | map({key: .name, value: ("sha256:" + .sha256)}) | from_entries) as $built |
+            $manifest[0].revision == $revision and $inventory[0].version == $revision and
+            ($declared | length) > 0 and $declared == $built and
+            with_entries(select(.key | endswith(".c4z"))) == $declared
+          ' <<< "$expected" > /dev/null; then
+            echo "::error::The downloaded driver packages do not match the build manifest and inventory."
+            exit 1
+          fi
+          (cd dist/oss && sha256sum --check inventory.sha256)
+
+          prerelease=false
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease=true; fi
+          if [ "$release" = 'null' ]; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --generate-notes --draft --prerelease="$prerelease"
+            release=$(read_release)
+          fi
+          release_id=$(jq -er '.id | numbers' <<< "$release")
+          release_url="repos/$GITHUB_REPOSITORY/releases/$release_id"
+          release=$(gh api "$release_url")
+
+          same_release() {
+            jq -e --arg tag "$GITHUB_REF_NAME" --argjson id "$release_id" --argjson preview "$prerelease" \
+              --argjson draft "$1" '.id == $id and .tag_name == $tag and .prerelease == $preview and .draft == $draft'
+          }
+          exact_assets() {
+            jq -e --argjson expected "$expected" '
+              (.assets | length) == ($expected | length) and
+              all(.assets[]; .state == "uploaded") and
+              (.assets | map({key: .name, value: .digest}) | from_entries) == $expected
+            '
+          }
+
+          if same_release false <<< "$release" > /dev/null; then
+            if ! exact_assets <<< "$release" > /dev/null; then
+              echo "::error::The public release assets differ from the build artifacts. The published release was left intact."
+              exit 1
+            fi
+            echo "Verified the existing public release against the build artifacts."
+            exit 0
+          fi
+          if ! same_release true <<< "$release" > /dev/null; then
+            echo "::error::The release ID, tag, or channel does not match this run."
+            exit 1
+          fi
+          starters=$(jq -r '[.assets[] | select(.state == "starter") | .name] | @json' <<< "$release")
+          if [ "$starters" != '[]' ]; then
+            echo "::error::GitHub retained an incomplete upload. Remove the incomplete asset from draft $release_id and rerun. Incomplete assets: $starters"
+            exit 1
+          fi
+          if ! jq -e --argjson expected "$expected" '
+            all(.assets[];
+              $expected[.name] as $digest | .state == "uploaded" and $digest != null and .digest == $digest)
+          ' <<< "$release" > /dev/null; then
+            echo "::error::Existing draft assets differ from the build artifacts. Review the draft before retrying."
+            exit 1
+          fi
+          missing=()
+          for asset in "${assets[@]}"; do
+            if ! jq -e --arg name "${asset##*/}" 'any(.assets[]; .name == $name)' <<< "$release" > /dev/null; then
+              missing+=("$asset")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" "${missing[@]}" --repo "$GITHUB_REPOSITORY"
+          fi
+
+          release=$(gh api "$release_url")
+          if ! same_release true <<< "$release" > /dev/null || ! exact_assets <<< "$release" > /dev/null; then
+            echo "::error::Draft release assets could not be verified against the build artifacts."
+            exit 1
+          fi
+          gh api --method PATCH "$release_url" -F draft=false --silent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

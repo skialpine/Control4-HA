@@ -14,7 +14,10 @@
   var pending;
   var feedbackError = false;
   var previousIndicators;
-  var migrationResult = typeof installSwitchMigration === "function" ? installSwitchMigration(requestId) : function () {};
+  var migrationResult = typeof installSwitchMigration === "function" ? installSwitchMigration(requestId, function () {
+    readState(true);
+    focusRecovery();
+  }) : function () {};
 
   function el(id) {
     return document.getElementById(id);
@@ -42,16 +45,42 @@
 
   function updateIndicatorSection() {
     var wrapper = el("indicator-section");
+    var settings = el("indicator-settings");
+    var source = el("indicator-source");
+    var active = document.activeElement;
+    settings.hidden = state.indicator_policy !== "all";
+    source.hidden = !state.indicator_policy || (state.indicator_policy === "single" && !state.indicator_following);
+    if ((settings.hidden && settings.contains(active)) || (source.hidden && source.contains(active))) {
+      var behavior = el("indicator-rows").querySelector('[data-field="behavior"] select');
+      if (behavior) behavior.focus();
+      else focusRecovery();
+    }
     el("indicator-title").textContent = state.title ? "Indicator lights on " + state.title : "Indicator lights";
     message("indicator-hint", state.indicator_hint);
     el("indicator-help").hidden = !state.selected_id || !!state.indicator_hint || !!state.indicator_lease;
-    var unavailable = el("indicators").hidden && el("indicator-settings").parentElement.hidden && !state.indicator_hint;
+    var unavailable = el("indicators").hidden && (settings.hidden || settings.parentElement.hidden) &&
+      (source.hidden || source.parentElement.hidden) && !state.indicator_hint;
     if (unavailable && wrapper.contains(document.activeElement)) focusRecovery();
     wrapper.hidden = unavailable;
   }
 
+  function updateButtonControls() {
+    var settings = el("button-settings");
+    var appLink = el("app-link-settings");
+    var behavior = settings.querySelector("select");
+    var hideLink = !state.app_link_available || appLink.parentElement.hidden;
+    if (hideLink && appLink.contains(document.activeElement)) {
+      if (behavior) behavior.focus();
+      else focusRecovery();
+    }
+    appLink.hidden = hideLink;
+    el("button-controls").hidden = settings.parentElement.hidden && hideLink && el("linked-settings-help").hidden;
+  }
+
   function renderState() {
     var focused = document.activeElement;
+    var summary = el("button-behavior-summary");
+    var summaryChanged = summary.textContent !== (state.button_behavior_summary || "");
     var capabilities = Array.isArray(state.capabilities) ? state.capabilities.join(", ") : "";
     el("device-title").textContent = state.title || "Device Setup";
     el("device-status").textContent = state.status || "Connecting";
@@ -74,6 +103,14 @@
     el("retry").className = "btn btn-primary";
     el("read-retry").hidden = !state.read_retry;
     message("setup-operation", pending || state.operation === el("setup-message").textContent ? "" : state.operation);
+    if (summaryChanged) message("button-behavior-summary", state.button_behavior_summary);
+    message("linked-settings-help", state.linked_settings_help);
+    updateButtonControls();
+    var migration = el("switch-migration");
+    if (migration) {
+      migration.hidden = !state.migration_available;
+      if (migration.hidden && migration.contains(focused)) focusRecovery();
+    }
     el("timing-report").disabled = el("timing-reset").disabled = !state.status || !!pending;
     if (browse) {
       if (state.can_browse) renderChoices();
@@ -84,6 +121,10 @@
         (el("read-retry").hidden && focused === el("read-retry"))) focusRecovery();
     renderIndicators();
     updateIndicatorSection();
+    if (summaryChanged && !summary.hidden && el("button-settings").contains(document.activeElement)) {
+      summary.parentElement.scrollIntoView({ block: "nearest" });
+      document.activeElement.scrollIntoView({ block: "nearest" });
+    }
   }
 
   function focusRecovery() {
@@ -115,35 +156,58 @@
     always_off: "Always off",
     follow_load: "On when the device is on",
     follow_load_inverted: "On when the device is off",
+    follow_bound: "Follow the linked light",
+    use_device_setting: "Keep current LED setting",
   };
   var colors = { FF0000: "Red", "00FF00": "Green", "0000FF": "Blue", FFFFFF: "White", FFFF00: "Yellow", FF00FF: "Magenta", "00FFFF": "Cyan" };
 
-  function indicatorField(field, label, control) {
-    var action = field === "on_color" || field === "off_color" ? "Save" : "Apply";
+  function indicatorField(field, label, control, apply) {
     return '<form class="indicator-field" data-field="' + field + '"><label>' +
-      label + control + '</label><button class="btn btn-outline" type="submit">' + action + '</button></form>';
+      label + control + '</label>' + (apply ? '<button class="btn btn-outline" type="submit">Apply</button>' : '') + '</form>';
   }
 
   function indicatorOptions(items, current, label) {
-    return '<select name="value" required><option value="">Choose…</option>' +
+    return '<select name="value" required><option value="" disabled' +
+      (items.indexOf(current) === -1 ? ' selected' : '') + '>Choose…</option>' +
       items.map(function (value) {
         return '<option value="' + Kit.esc(value) + '"' + (value === current ? " selected" : "") +
           '>' + Kit.esc(label(value)) + '</option>';
       }).join("") + '</select>';
   }
 
+  function indicatorForm(id, field) {
+    return Array.from(el("indicator-rows").querySelectorAll("form")).find(function (form) {
+      return form.dataset.field === field && form.closest(".indicator-item").dataset.id === id;
+    });
+  }
+
+  function indicatorDraft(form) {
+    var input = form.elements.value;
+    var initial = input.defaultValue;
+    if (input.options) {
+      var selected = Array.from(input.options).find(function (option) { return option.defaultSelected; });
+      initial = (selected || input.options[0]).value;
+    }
+    return input.value !== initial ? input.value : undefined;
+  }
+
   function renderIndicators() {
     var rows = Array.isArray(state.indicators) ? state.indicators : [];
-    var signature = JSON.stringify([state.indicator_lease, rows]);
+    var signature = JSON.stringify([state.indicator_lease, state.indicator_policy, state.indicator_following, rows]);
     var element = el("indicator-rows");
     el("indicators").hidden = (!state.indicator_lease || rows.length === 0) && el("indicator-status").hidden;
     element.inert = !!pending;
     if (signature === previousIndicators) return;
     previousIndicators = signature;
+    var active = document.activeElement;
+    var editing = element.contains(active) && active.closest("form");
+    var lease = state.indicator_lease || "";
+    var draft = editing && element.dataset.lease === lease ? indicatorDraft(editing) : undefined;
+    element.dataset.lease = lease;
     element.innerHTML = rows.map(function (row) {
       var inputs = [];
       if (Array.isArray(row.colors) && row.colors.length) {
-        inputs.push(indicatorField("color", "Current color", indicatorOptions(row.colors, row.color, function (value) {
+        inputs.push(indicatorField("color", "Indicator color", indicatorOptions(row.colors, row.configured_color || row.color, function (value) {
           return colors[value] || "#" + value;
         })));
       }
@@ -156,19 +220,43 @@
         });
       }
       if (row.brightness_supported) {
-        var level = Array.isArray(row.levels) && row.levels.length ?
+        var discrete = Array.isArray(row.levels) && row.levels.length > 0;
+        var level = discrete ?
           indicatorOptions(row.levels, row.brightness, function (value) { return value + "%"; }) :
           '<input type="number" name="value" min="0" max="100" step="1" required value="' + Kit.esc(row.brightness) + '">';
-        inputs.push(indicatorField("brightness", "Brightness (%)", level));
+        inputs.push(indicatorField("brightness", "Brightness (%)", level, !discrete));
       }
       if (Array.isArray(row.behaviors) && row.behaviors.length) {
-        inputs.push(indicatorField("behavior", "Behavior", indicatorOptions(row.behaviors, row.behavior, function (value) {
+        var options = row.behaviors;
+        var behavior = row.behavior;
+        if (state.indicator_policy === "single") {
+          options = options.concat("follow_bound");
+          if (state.indicator_following) {
+            options = options.concat("use_device_setting");
+            behavior = "follow_bound";
+          }
+        }
+        inputs.push(indicatorField("behavior", "Behavior", indicatorOptions(options, behavior, function (value) {
           return behaviors[value];
         })));
       }
       return '<div class="indicator-item" data-id="' + Kit.esc(row.id) + '"><strong>' + Kit.esc(row.label) +
         '</strong><div class="indicator-controls">' + inputs.join("") + '</div></div>';
     }).join("");
+    if (editing) {
+      var form = indicatorForm(editing.closest(".indicator-item").dataset.id, editing.dataset.field);
+      if (!form) {
+        focusRecovery();
+        return;
+      }
+      var input = form.elements.value;
+      if (draft !== undefined) {
+        var confirmed = input.value;
+        input.value = draft;
+        if (input.value !== draft || !input.checkValidity()) input.value = confirmed;
+      }
+      ((active.type === "submit" && form.querySelector("button")) || input).focus();
+    }
   }
 
   function closePicker(restoreFocus) {
@@ -323,13 +411,8 @@
 
   function restoreIndicatorFocus(work) {
     if (!work.indicator || document.activeElement !== el("indicator-status")) return;
-    var forms = el("indicator-rows").querySelectorAll("form");
-    for (var i = 0; i < forms.length; i++) {
-      if (forms[i].dataset.field === work.indicator.field && forms[i].closest(".indicator-item").dataset.id === work.indicator.id) {
-        forms[i].querySelector("button").focus();
-        return;
-      }
-    }
+    var form = indicatorForm(work.indicator.id, work.indicator.field);
+    if (form) (form.querySelector("button") || form.elements.value).focus();
   }
 
   function run(command, args, isTiming, progress, outputId) {
@@ -345,6 +428,7 @@
     pending.timer = setTimeout(function () {
       if (!pending || pending.request !== request) return;
       pending = null;
+      if (work.indicator) previousIndicators = null;
       var restore = output === "setup-message" && document.activeElement === el(output);
       if (output === "setup-message") feedbackError = work.feedback && state.feedback_retry === true;
       message(output, work.feedback && state.status === "Device connected" ? "" :
@@ -409,20 +493,24 @@
     readState(true);
     el("device-detail").focus();
   });
-  el("indicator-rows").addEventListener("submit", function (event) {
-    event.preventDefault();
-    var form = event.target;
+  function changeIndicator(form) {
     var item = form.closest(".indicator-item");
     if (pending || !item || !state.indicator_lease || !form.checkValidity()) return;
     var field = form.dataset.field;
     var value = form.elements.value.value;
-    previousIndicators = null;
     run("HA_SETUP_INDICATOR", {
       lease: state.indicator_lease,
       id: item.dataset.id,
       field: field,
       value: field === "brightness" ? Number(value) : value,
     }, false, field === "on_color" || field === "off_color" ? "Saving indicator preference…" : "Sending indicator change…", "indicator-status");
+  }
+  el("indicator-rows").addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (!event.target.elements.value.options) changeIndicator(event.target);
+  });
+  el("indicator-rows").addEventListener("change", function (event) {
+    if (event.target.tagName === "SELECT") changeIndicator(event.target.form);
   });
   el("timing-report").addEventListener("click", function () {
     run("HA_SETUP_ACTION", { action: "timing_report" }, true, "Reading timing samples…");
@@ -436,17 +524,25 @@
   Kit.initPropertiesCard(el("settings"), {
     exclude: ["Driver Status", "Manual entity ID"],
     sections: [
-      { el: el("button-settings"), names: ["Button behavior", "App Control Link"] },
-      { el: el("indicator-settings"), names: ["LED Behavior", "LED Feedback Source"] },
+      { el: el("button-settings"), names: ["Button behavior"] },
+      { el: el("app-link-settings"), names: ["App Control Link"] },
+      { el: el("indicator-settings"), names: ["LED Behavior"] },
+      { el: el("indicator-source"), names: ["LED Feedback Source"] },
     ],
     labels: {
       "Discovery Catalog Entity ID": "Sensor for custom device names",
-      "App Control Link": "Button used by the app",
-      "LED Behavior": "Behavior for all indicators",
+      "App Control Link": "Light controlled by the app",
+      "LED Behavior": "Indicator behavior",
       "LED Feedback Source": "Follow the light linked to",
     },
     readouts: true,
-    afterRender: updateIndicatorSection,
+    afterRender: function () {
+      updateIndicatorSection();
+      var settings = el("button-settings");
+      var behavior = settings.querySelector("select");
+      if (behavior) behavior.setAttribute("aria-describedby", behavior.getAttribute("aria-describedby") + " button-behavior-summary");
+      updateButtonControls();
+    },
   });
   readState(false);
   Kit.connectDriver({
@@ -489,6 +585,7 @@
         }
         var finished = pending;
         pending = null;
+        if (finished.indicator) previousIndicators = null;
         renderState();
         restoreIndicatorFocus(finished);
         if (focus) {

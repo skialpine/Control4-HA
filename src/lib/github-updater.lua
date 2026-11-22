@@ -120,6 +120,79 @@ function GitHubUpdater:getOutdatedDriverAssets(repo, driverFilenames, includePre
   end)
 end
 
+local function selectArchiveDirectory(dir)
+  -- Only the template's archive location needs the C4Z root alias.
+  if dir == "C4Z_ROOT" then
+    UnlockC4ZRoot()
+  end
+  return C4:FileSetDir(dir) ~= false
+end
+
+--- Read an archive from the selected DriverWorks file directory.
+function GitHubUpdater:readArchive(dir, name)
+  if selectArchiveDirectory(dir) and C4:FileExists(name) then
+    return FileRead(name)
+  end
+end
+
+--- Write caller-qualified bytes and confirm every byte before requesting a reload.
+function GitHubUpdater:writeArchive(dir, name, body)
+  if not selectArchiveDirectory(dir) then
+    return false
+  end
+  FileWrite(name, body, true)
+  return FileRead(name) == body
+end
+
+--- Request one Director reload. A self reload is submitted before this driver exits.
+--- The caller verifies the running revision separately.
+function GitHubUpdater:reloadArchive(name, selfReload)
+  local promise = deferred.new()
+  local client, closed = C4:CreateTCPClient(), false
+  local function close()
+    if not closed then
+      closed = true
+      client:Close()
+    end
+  end
+  local request = XMLTag(
+    "c4soap",
+    XMLTag("param", name, nil, nil, { name = "name", type = "string" }),
+    false,
+    false,
+    { name = "UpdateProjectC4i", session = "0", operation = "RWX", category = "composer", async = "0" }
+  ) .. "\0"
+  client
+    :OnConnect(function(client)
+      if closed then
+        return
+      end
+      client:Write(request)
+      client:ReadUntil("\0")
+      if selfReload then
+        promise:resolve("submitted")
+      end
+    end)
+    :OnRead(function()
+      if closed then
+        return
+      end
+      close()
+      if not selfReload then
+        promise:resolve("replied")
+      end
+    end)
+    :OnError(function(_, code, message)
+      if closed then
+        return
+      end
+      close()
+      promise:reject("Error " .. code .. ": " .. message)
+    end)
+    :Connect("127.0.0.1", 5020)
+  return promise, close
+end
+
 --- Download outdated driver assets from GitHub and write them to the specified directory.
 --- @param dir string Target directory to save downloaded driver assets.
 --- @param repo string The GitHub repository, in the format "owner/repo".
@@ -164,17 +237,10 @@ function GitHubUpdater:downloadOutdatedDrivers(dir, repo, driverFilenames, inclu
       --- @type string[]
       local written = {}
       for _, download in ipairs(downloaded) do
-        -- GetDriverVersion only unlocks C4Z_ROOT for companion drivers, so a project running
-        -- one driver from this repo reaches the write with the alias still locked.
-        UnlockC4ZRoot()
-        C4:FileSetDir(dir)
-        local currentContents = C4:FileExists(download.name) and FileRead(download.name) or nil
-        FileWrite(download.name, download.body, true)
-        -- The vendored FileWrite returns nothing, so only reading the file back shows a failed write.
-        if FileRead(download.name) ~= download.body then
-          -- Restore the previous contents if the write failed
+        local currentContents = self:readArchive(dir, download.name)
+        if not self:writeArchive(dir, download.name, download.body) then
           if currentContents ~= nil then
-            FileWrite(download.name, currentContents, true)
+            self:writeArchive(dir, download.name, currentContents)
           end
           return reject(string.format("failed to write asset %s", download.name))
         end
@@ -235,42 +301,11 @@ function GitHubUpdater:updateAll(repo, driverFilenames, includePrereleases, forc
         if driverFilename == nil then
           return d:resolve(downloadedDriverFilenames)
         end
-        local c4soap = XMLTag(
-          "c4soap",
-          XMLTag("param", driverFilename, nil, nil, {
-            name = "name",
-            type = "string",
-          }),
-          false,
-          false,
-          {
-            name = "UpdateProjectC4i",
-            session = "0",
-            operation = "RWX",
-            category = "composer",
-            async = "0",
-          }
-        ) .. "\0"
-        C4:CreateTCPClient()
-          :OnConnect(function(client)
-            client:Write(c4soap)
-            client:ReadUntil("\0")
-            if driverFilename == ownFilenameToUpdate then
-              -- Its update reloads this driver, usually before Director replies.
-              d:resolve(downloadedDriverFilenames)
-            end
-          end)
-          :OnRead(function(client)
-            client:Close()
-            if driverFilename ~= ownFilenameToUpdate then
-              sendUpdate(index + 1)
-            end
-          end)
-          :OnError(function(client, errCode, errMsg)
-            client:Close()
-            d:reject("Error " .. errCode .. ": " .. errMsg)
-          end)
-          :Connect("127.0.0.1", 5020)
+        self:reloadArchive(driverFilename, driverFilename == ownFilenameToUpdate):next(function()
+          sendUpdate(index + 1)
+        end, function(error)
+          d:reject(error)
+        end)
       end
       sendUpdate(1)
       return d

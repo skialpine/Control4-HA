@@ -3,6 +3,7 @@ local T = require("testlib")
 local fixtures = require("c4_fixtures")
 local clock = fixtures.virtualClock()
 local Commissioning = require("ha.commissioning")
+local Transfer = require("ha.commission-transfer")
 local codec = require("ha.codec")
 local ids = require("ha.identities")
 local deferred = require("deferred")
@@ -17,6 +18,7 @@ local class = ids.coordinatorClass
 local selected, addCount, configuration, failConfiguration, changeRevision, refuseBind
 local legacy, suiteVariableType
 local revision, rows = firstRevision, {}
+local gestureChoices
 local catalog = {}
 function catalog:refresh(force)
   assert(force, "Quick Setup must recheck native eligibility before adding or binding devices")
@@ -27,6 +29,9 @@ end
 function catalog:choice(id, family)
   local row = rows[id]
   return row and row.family == family and row or nil
+end
+function catalog:gestureChoice(gesture)
+  return gestureChoices[gesture]
 end
 local function endpoint(id, family, name)
   rows[id] = {
@@ -151,6 +156,7 @@ local function start(existing, withoutLight)
   selected, addCount, configuration = {}, 0, {}
   failConfiguration, changeRevision, refuseBind = false, false, false
   revision, rows = firstRevision, {}
+  gestureChoices = {}
   endpoint("light.a", "light", "Pendant")
   endpoint("switch.b", "switch", "Fan")
   return Commissioning.new(catalog, configure)
@@ -418,6 +424,48 @@ failConfiguration = false
 T.eq("resume waits for exact configuration receipt", await(commissioning:execute(preview.id)).value.complete, true)
 T.eq("interruption still only added one driver", addCount, 1)
 
+T.section("A deleted driver from an interrupted add can be recreated without duplicating a hidden driver")
+for _, choice in ipairs({ A, B }) do
+  local family = choice.family
+  commissioning = start()
+  failConfiguration = true
+  preview = await(commissioning:preview(request(choice))).value
+  operation = await(commissioning:execute(preview.id))
+  ShimAnswerAdds()
+  T.eq(family .. " setup was interrupted after the add", operation.value.items[1].reason, "timeout")
+  local receipt = codec.decode(persist:get("HA.Commissioning", nil, true))[choice.choice_id]
+  T.eq(family .. " receipt retains the added device ID", receipt.phase, "added")
+  local original = receipt.device_id
+  local input = consumerInput(original)
+  local devices = C4:GetDevices()
+  devices[10] = { deviceName = "Kitchen", driverFileName = "roomdevice.c4i" }
+  devices[11] = { deviceName = "Office", driverFileName = "roomdevice.c4i" }
+  local originalDevice = devices[original]
+  ShimSetDeviceHidden(original, true)
+  preview = await(commissioning:preview(request(choice))).value
+  T.eq(family .. " with an active link remains blocked when hidden", preview.items[1].reason, "unresolved_add")
+  ShimSetDeviceHidden(original, false)
+  C4:Unbind(original, input)
+  devices[original] = nil
+  setProjectDevices(devices)
+  failConfiguration = false
+  preview = await(commissioning:preview(request(choice))).value
+  T.eq(family .. " can be recreated once the abandoned driver is gone", preview.items[1].decision, "add")
+  T.eq(family .. " preview alone never adds a driver", addCount, 1)
+  devices[original] = originalDevice
+  setProjectDevices(devices)
+  T.eq(family .. " rechecks absence on confirmation", await(commissioning:execute(preview.id)).error, "preview_changed")
+  T.eq(family .. " never duplicates the reappeared driver", addCount, 1)
+  devices[original] = nil
+  setProjectDevices(devices)
+  preview = await(commissioning:preview(request(choice))).value
+  operation = await(commissioning:execute(preview.id))
+  ShimAnswerAdds()
+  clock.run(5000)
+  T.eq(family .. " addition completes on explicit retry", operation.value and operation.value.complete, true)
+  T.eq(family .. " adds exactly one new driver", addCount, 2)
+end
+
 T.section("Lost final acknowledgment keeps an already configured driver in the default setup list")
 commissioning = start()
 preview = await(commissioning:preview(request(stagedChoice))).value
@@ -633,6 +681,34 @@ T.eq("legacy inventory leaves state and the suite link untouched", {
   next(C4:GetBoundConsumerDevices(me, 1) or {}),
 }, { 0, 0 })
 
+T.section("A configured suite driver using a unique button event owns the matching Quick Setup choice")
+commissioning = start({ [20] = { deviceName = "Primary Toilet", driverFileName = interimFile, roomId = 11 } })
+selected[20] = gesture
+C4:Bind(me, 1, 20, 1, class)
+main = physicalChoice("b", "light.a", "Primary Toilet control")
+gestureChoices[gesture] = main.choice_id
+local gesturePage = { cursor = 1, revision = revision, entities = { rows[main.choice_id] } }
+T.eq(
+  "same-device button selection is shown as already in Control4",
+  commissioning:existingChoices(gesturePage),
+  { [main.choice_id] = true }
+)
+preview = await(commissioning:preview(request(main))).value
+T.eq(
+  "preview shows the existing button driver without assuming it controls the load",
+  { preview.items[1].decision, preview.items[1].device_id, preview.items[1].reason },
+  { "review", 20, "button_device_match" }
+)
+T.eq(
+  "explicit preview cannot add a duplicate physical control",
+  await(commissioning:execute(preview.id)).error,
+  "review_required"
+)
+accent = physicalChoice("c", "light.accent", "Independent load")
+gesturePage.entities[2] = rows[accent.choice_id]
+gestureChoices[gesture] = nil
+T.eq("an ambiguous shared gesture alone does not hide separate loads", commissioning:existingChoices(gesturePage), {})
+
 T.section("Light adds validate the canonical identity using the project inventory")
 commissioning = start(nil, true)
 preview = await(commissioning:preview(request(A))).value
@@ -698,4 +774,44 @@ T.eq("restored eligibility can reuse the confirmed add", preview.items[1].decisi
 T.eq("recovery completes without a duplicate", await(commissioning:execute(preview.id)).value.complete, true)
 T.eq("exactly one device was added", addCount, 1)
 T.eq("no hidden timer errors", #clock.errors, 0)
+T.section("Quick Setup configures the created drivers over the real selection transfer")
+start()
+local hub = { online = true, catalog = catalog, prefix = "TestCommission.", consumers = {} }
+function hub:_owns(id)
+  return C4:GetBoundProviderDevice(id, consumerInput(id)) == me
+end
+local transfer = Transfer.new(hub)
+function hub:_emit(consumer, kind, data)
+  local op, arguments
+  if kind == "commission_offer" then
+    op, arguments = "commission_claim", { accept = true }
+  else
+    assert(kind == "commission_apply")
+    T.eq(
+      "the new driver receives the verified Home Assistant load",
+      data.config.controlled_load.entity_id,
+      data.config.key
+    )
+    selected[consumer.device] = data.config.key
+    op, arguments = "commission_ack", { applied = true }
+  end
+  transfer:receive(consumer, { op = op, request_id = data.ticket, arguments = codec.object(arguments) })
+end
+commissioning = Commissioning.new(catalog, function(id, query)
+  hub.consumers[id] = { device = id, session = "new-device" }
+  return transfer:start(id, query)
+end)
+local transferPlan = await(commissioning:preview(request(B, A))).value
+T.eq("the review shows the source name", transferPlan.items[1].source_name, "Fan")
+local transferRun = await(commissioning:execute(transferPlan.id))
+ShimAnswerAdds()
+clock.run(5000)
+ShimAnswerAdds()
+clock.run(5000)
+local transferResult = transferRun.value
+T.eq("adding and binding also configures both new drivers", transferResult.complete, true)
+T.eq("the drivers store the selected catalog identities", {
+  selected[transferResult.items[1].device_id],
+  selected[transferResult.items[2].device_id],
+}, { "switch.b", "light.a" })
 T.finish()

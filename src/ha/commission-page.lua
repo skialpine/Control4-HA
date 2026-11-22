@@ -3,9 +3,14 @@
 local codec = require("ha.codec")
 local contract = require("ha.contract")
 local page = require("ha.setup-page")
+local view = require("lib.ui.page")
 local Choices = require("ha.choices")
 local metrics = require("ha.performance").shared
 local M = {}
+function M.connected()
+  view.send("HA_ADD_CONNECTED", {})
+end
+
 local errors = {
   preview_required = "Review your selection again before adding devices.",
   preview_changed = "The project changed. Review your selection again.",

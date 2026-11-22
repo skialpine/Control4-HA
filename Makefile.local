@@ -1,13 +1,16 @@
 # This suite builds only the free distribution. Never compile a licensing client.
 override DISTRIBUTIONS := oss
 
-.PHONY: check-provenance test-project suite-build suite-verify suite-verify-first-demo
+.PHONY: check-provenance test-project test-setup-ui suite-build suite-verify suite-verify-first-demo
 check-provenance:
 	python3 tools/check_provenance.py
 
-test: test-project
+test: test-project test-setup-ui
 test-project:
 	python3 -m unittest discover -s test -p 'test_*.py'
+
+test-setup-ui:
+	node --test test/test_*_ui.js
 
 suite-build:
 	python3 tools/build_suite.py --version "$(DRIVER_VERSION)"

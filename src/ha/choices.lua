@@ -24,6 +24,23 @@ function M.suggestedFamily(row)
   return row.families and row.families[1]
 end
 
+function M.endpointKeys(row)
+  local choice = row.attributes.device_choice
+  local load = choice and choice.source_load
+  local canonical = load and load.entity_id or row.entity_id
+  local keys = { [canonical] = true, [row.entity_id] = true }
+  for _, alias in ipairs(row.entity_aliases or {}) do
+    keys[alias] = true
+  end
+  return canonical, keys
+end
+
+function M.gestureEntity(row)
+  local physical = row.attributes.device_choice
+  local gesture = physical and physical.gesture_entity_id
+  return contract.entity(gesture) and gesture:match("^event%.") and gesture or nil
+end
+
 local function entity(value)
   return type(value) == "string" and value:match("^[a-z][a-z0-9_]*%.[a-z0-9_]+$") ~= nil
 end
@@ -166,8 +183,12 @@ function M.apply(rows, entries, native)
         if base.c4_exported == true or (codec.isObject(baseEntry) and baseEntry.platform == "control4") then
           item.families = codec.array({})
         elseif options.invert == false then
+          local hiddenBase = codec.isObject(baseEntry)
+            and baseEntry.disabled_by == codec.null
+            and baseEntry.hidden_by ~= codec.null
+            and baseEntry.entity_category == codec.null
           for _, family in ipairs({ "light", "switch" }) do
-            if has(item, family) and has(base, family) then
+            if has(item, family) and (has(base, family) or hiddenBase) then
               local key = family .. ":" .. base.entity_id
               candidates[key] = candidates[key] or {}
               candidates[key][#candidates[key] + 1] = item

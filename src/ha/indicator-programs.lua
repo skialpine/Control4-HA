@@ -54,6 +54,19 @@ local function label(row)
   return roles[row.role] or (row.label .. " [" .. row.id .. "]")
 end
 
+local function has(row, option)
+  for _, behavior in ipairs(row.behaviors or {}) do
+    if behavior == option then
+      return true
+    end
+  end
+  return false
+end
+
+local function canTrack(row)
+  return #row.palette > 0 and has(row, "always_on") and has(row, "always_off")
+end
+
 local function choices(rows, field, parameter)
   local names = {}
   if field == "behavior" and parameter == "Behavior" then
@@ -78,7 +91,7 @@ local function choices(rows, field, parameter)
         (field ~= "brightness" or row.brightness_supported)
         and (field ~= "color" or row.colors and #row.colors > 0)
         and (field ~= "behavior" or row.behaviors and #row.behaviors > 0)
-        and ((field ~= "ON_COLOR" and field ~= "OFF_COLOR") or #row.palette > 0)
+        and ((field ~= "ON_COLOR" and field ~= "OFF_COLOR") or canTrack(row))
       then
         names[#names + 1] = label(row)
       end
@@ -207,7 +220,7 @@ local function run(owner, lease, rows, field, params, stillLinked)
       if field == "tracking_color" then
         value, write = trackingColor(row, preferences(owner, row), params.state), field
       elseif field == "brightness" then
-        value, write = tonumber(params.Brightness), field
+        value, write = indicators.programmedBrightness(row, tonumber(params.Brightness)), field
       elseif field == "behavior" or field == "all_behavior" then
         for id, name in pairs(behaviors) do
           if name == params.Behavior then
@@ -215,6 +228,8 @@ local function run(owner, lease, rows, field, params, stillLinked)
           end
         end
         write = "behavior"
+      elseif field == "ON_COLOR" or field == "OFF_COLOR" then
+        value = canTrack(row) and nearest(row, params.Color) or nil
       else
         value = nearest(row, params.Color)
         if field == "all" or field == "color" then
@@ -244,15 +259,6 @@ local function run(owner, lease, rows, field, params, stillLinked)
     end
   end
   return #plans > 0
-end
-
-local function has(row, option)
-  for _, behavior in ipairs(row.behaviors or {}) do
-    if behavior == option then
-      return true
-    end
-  end
-  return false
 end
 
 local function bound(owner, role)
@@ -290,7 +296,7 @@ function M.policyChoices(owner)
   return names
 end
 
-local function following(owner)
+function M.following(owner)
   if Properties["LED Behavior"] ~= "Follow Bound Device" then
     return false
   end
@@ -298,8 +304,21 @@ local function following(owner)
   return options[#options] == "Follow Bound Device"
 end
 
+function M.pagePolicy(owner)
+  local count = owner and owner.indicatorRows and #owner.indicatorRows or 0
+  if count > 1 then
+    return "all"
+  end
+  if count == 1 then
+    local options = M.policyChoices(owner)
+    if options[#options] == "Follow Bound Device" then
+      return "single"
+    end
+  end
+end
+
 function M.sourceChoices(owner)
-  if not following(owner) then
+  if not M.following(owner) then
     return {}
   end
   local names = { "Disabled" }
@@ -342,7 +361,7 @@ end
 function M.pageRows(owner)
   if
     owner.family ~= "light"
-    or not following(owner)
+    or not M.following(owner)
     or not bound(owner, (Properties["LED Feedback Source"] or ""):lower())
   then
     return owner.indicatorRows, owner.indicatorSignature
@@ -414,7 +433,7 @@ function M.nativeColors(owner)
   local selected = Properties["LED Indicator"]
   local found
   for _, row in ipairs(rows) do
-    if matches(row, selected) and #row.palette > 0 then
+    if matches(row, selected) and canTrack(row) then
       found = row
     end
   end
@@ -451,7 +470,7 @@ function M.nativeColors(owner)
 end
 
 local function feedback(owner, binding, raw)
-  if not following(owner) or not owner.consumer:_current() then
+  if not M.following(owner) or not owner.consumer:_current() or (owner.indicatorPending or {}).replaceFollow then
     return false
   end
   local role = (Properties["LED Feedback Source"] or ""):lower()
@@ -499,7 +518,7 @@ local function policyChanged(owner)
   if not owner then
     return false
   end
-  if following(owner) then
+  if M.following(owner) then
     local names = M.sourceChoices(owner)
     if Properties["LED Feedback Source"] == "Disabled" then
       local target, candidate
@@ -576,7 +595,7 @@ function M.install(family, current)
       if owner and not ok then
         values:update(
           "Last Command Result",
-          "In Advanced, choose Follow Bound Device and the paddle connected to the light.",
+          "In Device Setup, choose Follow the linked light and select the paddle connected to it.",
           "STRING"
         )
       end

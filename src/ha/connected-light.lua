@@ -1,5 +1,6 @@
 -- A connected Control4 light owns its own level, presets, scenes and ramps.
 local Color = require("lib.light.color")
+local Settings = require("lib.light.settings")
 local contract = require("ha.contract")
 local ids = require("ha.identities")
 local metrics = require("ha.performance").shared
@@ -13,6 +14,7 @@ local VARIABLES = { POWER, LEVEL, COLOR, CAPS }
 local ROLES = { "app", "top", "toggle", "bottom" }
 local RETRY_TIMER = "HA.Connected.Target"
 local RELEASE_RETRIES = 3
+local TRACE_LIMIT = 25
 local POWER_COMMANDS = { ON = "ON", DYNAMIC_ON = "ON", OFF = "OFF", DYNAMIC_OFF = "OFF", TOGGLE = "TOGGLE" }
 local LEVEL_COMMANDS = { SET_LEVEL = true, RAMP_TO_LEVEL = true, SET_BRIGHTNESS_TARGET = true }
 local STOP_COMMANDS = { SET_BRIGHTNESS_STOP = "brightnessStop", SET_COLOR_STOP = "colorStop" }
@@ -135,14 +137,29 @@ local function resolve(link, ownIds)
   return #valid == 1 and valid[1] or nil, #valid > 1
 end
 
-local function capabilities(xml)
+local function capabilities(xml, device)
+  local caps = {}
   if type(xml) == "string" and #xml <= 65536 and xml:find("<DynamicCapabilities", 1, true) then
     local ok, parsed = pcall(ParseXml, xml)
     if ok and type(parsed) == "table" and type(parsed.DynamicCapabilities) == "table" then
-      return parsed.DynamicCapabilities
+      caps = parsed.DynamicCapabilities
     end
   end
-  return {}
+  if boolean(caps.dimmer) == true and caps.ramp_level == nil then
+    -- Director's dynamic capabilities variable omits this deprecated field.
+    -- Its native setup response still reports whether the target supports ramps.
+    local ok, setup = pcall(function()
+      local response = SendUIRequest(device, "GET_SETUP", {})
+      if type(response) == "string" and #response <= 65536 then
+        return Select(ParseXml(response), "setup")
+      end
+    end)
+    if ok and type(setup) == "table" then
+      caps.ramp_level = boolean(setup.ramp_level)
+      caps.brightness_rate_max = number(setup.brightness_rate_max, 1, 999999) or caps.brightness_rate_max
+    end
+  end
+  return caps
 end
 
 local function reportColor(raw, color, cct)
@@ -169,6 +186,22 @@ function Target:linked()
   return next(self.links) ~= nil
 end
 
+function Target:setTrace(enabled)
+  if enabled ~= (self.traceLines ~= nil) then
+    self.traceLines = enabled and 0 or nil
+  end
+end
+
+function Target:_tracing()
+  return self.traceLines ~= nil and self.traceLines < TRACE_LIMIT
+end
+
+function Target:_trace(message)
+  self.traceLines = self.traceLines + 1
+  local suffix = self.traceLines == TRACE_LIMIT and " | Limit reached. Select Off, then Trace to start again." or ""
+  print("Linked light trace | " .. message .. suffix)
+end
+
 function Target:_unwatch()
   local previous = self.target
   self.target = nil
@@ -189,7 +222,15 @@ end
 
 function Target:_publish()
   local state = self:state()
+  local previous = self.current
   self.current = state
+  if self:_tracing() and previous and previous.id == state.id then
+    local report, before = state.report, previous.report
+    if report and (not before or before.on ~= report.on or before.level ~= report.level) then
+      local level = report.level and (" at %g%%"):format(report.level * 100) or ""
+      self:_trace("Linked light reported " .. (report.on and "On" or "Off") .. level)
+    end
+  end
   self.changed(state)
 end
 
@@ -330,7 +371,7 @@ function Target:state()
   end
   if not target.caps or target.capsSource ~= target.values[CAPS] then
     target.capsSource = target.values[CAPS]
-    target.caps = capabilities(target.capsSource)
+    target.caps = capabilities(target.capsSource, target.device)
   end
   local caps = target.caps
   local on, level = boolean(target.values[POWER]), number(target.values[LEVEL], 0, 100)
@@ -384,12 +425,18 @@ end
 
 function Target:_send(operation, command, parameters)
   local target = self.target
-  if not target or self.sending or not samePeer(target.link, self.links[target.link.role]) then
-    return false
+  if self.sending then
+    return false, "another linked command is being sent"
+  end
+  if not target or not samePeer(target.link, self.links[target.link.role]) then
+    return false, "the selected connection changed"
   end
   local readOK, live = pcall(peers, self.ownIds)
-  if not readOK or not sameLinks(self.links, live) then
-    return false
+  if not readOK then
+    return false, "the connections could not be verified"
+  end
+  if not sameLinks(self.links, live) then
+    return false, "the connections changed"
   end
   local span = metrics:start(operation)
   self.sending = true
@@ -397,7 +444,7 @@ function Target:_send(operation, command, parameters)
   self.sending = false
   local sent = ok and result ~= false
   metrics:finish(span, sent and "accepted" or "failed")
-  return sent
+  return sent, not sent and "Director did not accept the command" or nil
 end
 
 local function colorIntent(state, params)
@@ -444,48 +491,93 @@ function Target:isAppTarget(device)
   return target ~= nil and (target.device == device or target.link.device == device)
 end
 
-function Target:command(command, params, onPreset)
-  local state = self.current
+local function route(state, command, params, onPreset)
   if not state or not state.reachable then
-    return false
+    return nil, "the linked light has no current state"
   end
   local power = POWER_COMMANDS[command]
   if power then
-    return self:_send("connected." .. power:lower(), power)
+    return "connected." .. power:lower(), power
   elseif LEVEL_COMMANDS[command] then
     local level = number(params.LEVEL or params.LIGHT_BRIGHTNESS_TARGET, 0, 100)
-    local requestedRate = params.TIME or params.RATE
-    local rate = requestedRate ~= nil and number(requestedRate, 0, state.device.fade.maxMs or 65535) or nil
-    if not level or (requestedRate ~= nil and rate == nil) then
-      return false
+    if level == nil then
+      return nil, "the requested brightness is missing or invalid"
     end
     local preset, origin =
       tonumber(params.LIGHT_BRIGHTNESS_TARGET_PRESET_ID), tonumber(params.LIGHT_BRIGHTNESS_TARGET_PRESET_ORIGIN)
+    local nativePreset = command == "SET_BRIGHTNESS_TARGET"
+      and (origin == nil or origin == Settings.PRESET_ORIGIN_DEVICE)
+    if nativePreset and level == 0 and preset == Settings.OFF_PRESET_ID then
+      -- Director can translate Navigator Off into a preset with the source's ramp rate.
+      -- The linked light owns its Off transition, just as it owns the On preset.
+      return "connected.off", "OFF"
+    end
+    local requestedRate = params.TIME or params.RATE
+    local rate = requestedRate ~= nil and number(requestedRate, 0, state.device.fade.maxMs or 65535) or nil
+    if requestedRate ~= nil and rate == nil then
+      return nil, "the requested transition time is out of range"
+    end
     if
-      command == "SET_BRIGHTNESS_TARGET"
+      nativePreset
       and level > 0
-      and (origin == nil or origin == 1)
-      and (preset ~= nil and preset == (onPreset or 1) or preset == 10)
+      and (preset == (onPreset or Settings.DEFAULT_ON_PRESET_ID) or preset == Settings.PREVIOUS_ON_PRESET_ID)
     then
-      return self:_send("connected.on", "ON"), preset
+      return "connected.on", "ON", nil, preset
     end
     if not state.device.dims then
       if rate and rate > 0 then
-        return false
+        return nil, "the linked light supports only on and off"
       end
-      return self:_send(level > 0 and "connected.on" or "connected.off", level > 0 and "ON" or "OFF")
+      return level > 0 and "connected.on" or "connected.off", level > 0 and "ON" or "OFF"
     elseif rate and rate > 0 then
-      return state.controls.ramp and self:_send("connected.ramp", "RAMP_TO_LEVEL", { LEVEL = level, TIME = rate })
-        or false
+      if not state.controls.ramp then
+        return nil, "the linked light does not support timed brightness changes"
+      end
+      return "connected.ramp", "RAMP_TO_LEVEL", { LEVEL = level, TIME = rate }
     end
-    return self:_send("connected.level", "SET_LEVEL", { LEVEL = level })
+    return "connected.level", "SET_LEVEL", { LEVEL = level }
   elseif command == "SET_COLOR_TARGET" then
     local data = colorIntent(state, params)
-    return data and self:_send("connected.color", command, data) or false
+    if data then
+      return "connected.color", command, data
+    end
+    return nil, "the color request is invalid or unsupported by the linked light"
   elseif STOP_COMMANDS[command] then
-    return state.controls[STOP_COMMANDS[command]] and self:_send("connected.stop", command) or false
+    if state.controls[STOP_COMMANDS[command]] then
+      return "connected.stop", command
+    end
+    return nil, "the linked light does not support stopping that transition"
   end
-  return false
+  return nil, "unsupported command"
+end
+
+local function brightnessDetails(params)
+  local level = number(params.LEVEL or params.LIGHT_BRIGHTNESS_TARGET, 0, 100)
+  local rate = number(params.TIME or params.RATE, 0, 999999)
+  return (level and (" %g%%"):format(level) or "") .. (rate and (" over %g ms"):format(rate) or "")
+end
+
+function Target:command(command, params, onPreset)
+  local operation, forwarded, data, preset = route(self.current, command, params, onPreset)
+  local sent, reason = false, forwarded
+  if operation then
+    sent, reason = self:_send(operation, forwarded, data)
+  end
+  if self:_tracing() and Target.handlesCommand(command) then
+    local request = command .. (LEVEL_COMMANDS[command] and brightnessDetails(params) or "")
+    if sent then
+      self:_trace(request .. " forwarded as " .. forwarded .. (data and brightnessDetails(data) or ""))
+    else
+      self:_trace(request .. " not forwarded: " .. reason)
+    end
+  end
+  return sent, preset
+end
+
+function Target:traceOnColorSkipped()
+  if self:_tracing() then
+    self:_trace("SET_COLOR_TARGET not forwarded: the linked light applies its own On preset")
+  end
 end
 
 function Target:_paddle(link, command)
@@ -493,6 +585,9 @@ function Target:_paddle(link, command)
   local ok, result = pcall(SendToProxy, link.binding, command, {}, "COMMAND")
   local sent = ok and result ~= false
   metrics:finish(span, sent and "accepted" or "failed")
+  if self:_tracing() then
+    self:_trace(link.role .. " button " .. command .. (sent and " forwarded" or " failed"))
+  end
   return sent
 end
 

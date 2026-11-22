@@ -35,16 +35,10 @@ function Connection.authority(url)
   return authority, scheme
 end
 
-function Connection.validate(url, token, ca, clientTLS)
-  if type(url) ~= "string" or url == "" or type(token) ~= "string" or token == "" then
-    return nil, "Enter your Home Assistant address in HA URL and your access token in HA Token."
-  end
+local function validateOrigin(url, ca, clientTLS)
   local authority, scheme = Connection.authority(url)
   if not authority then
     return nil, scheme
-  end
-  if token:find("[%c%s]") then
-    return nil, "Paste the access token into HA Token again. Remove any spaces or line breaks."
   end
   if ca ~= nil and (type(ca) ~= "string" or ca:find("[%c]")) then
     return nil, "Check CA Certificate Path in Properties."
@@ -63,9 +57,23 @@ function Connection.validate(url, token, ca, clientTLS)
     clientTLS = clientTLS,
     origin = scheme .. "://" .. authority,
     url = (scheme == "https" and "wss" or "ws") .. "://" .. authority .. "/api/websocket",
-    token = token,
     ca = ca,
   }
+end
+
+function Connection.validate(url, token, ca, clientTLS)
+  if type(url) ~= "string" or url == "" or type(token) ~= "string" or token == "" then
+    return nil, "Enter your Home Assistant address in HA URL and your access token in HA Token."
+  end
+  local config, err = validateOrigin(url, ca, clientTLS)
+  if not config then
+    return nil, err
+  end
+  if token:find("[%c%s]") then
+    return nil, "Paste the access token into HA Token again. Remove any spaces or line breaks."
+  end
+  config.token = token
+  return config
 end
 
 function Connection.new(onState, onMessage)
@@ -111,11 +119,14 @@ function Connection:_resume()
   end)
 end
 
-function Connection:_retire()
+function Connection:_retire(onRetired)
   local ws = self.socket
   self.socket = nil
   if not ws then
     self:_resume()
+    if onRetired then
+      onRetired()
+    end
     return
   end
   self.closing = ws
@@ -124,6 +135,9 @@ function Connection:_retire()
       self.closing = nil
       self:_resume()
     end
+    if onRetired then
+      onRetired()
+    end
   end)
 end
 
@@ -131,7 +145,7 @@ function Connection:_stop(state, detail)
   if self.destroyed then
     return
   end
-  local outcome = state == "disconnected" and "retired" or "failed"
+  local outcome = state == "verified" and "ok" or state == "disconnected" and "retired" or "failed"
   metrics:finish(self.connectTiming, outcome)
   metrics:finish(self.authTiming, outcome)
   self.connectTiming, self.authTiming = nil, nil
@@ -142,15 +156,24 @@ function Connection:_stop(state, detail)
     self.attempts = math.min(self.attempts + 1, 6)
     self.delay = math.min(1000 * 2 ^ (self.attempts - 1), 30000)
   end
-  self:_state(state, detail)
-  self:_retire()
+  if self.config and self.config.probe then
+    local generation = self.generation
+    self:_retire(function()
+      if self.generation == generation then
+        self:_state(state, detail)
+      end
+    end)
+  else
+    self:_state(state, detail)
+    self:_retire()
+  end
 end
 
 function Connection:_fail(detail, retry)
-  self:_stop(retry and "retrying" or "rejected", detail)
+  self:_stop(retry and not (self.config and self.config.probe) and "retrying" or "rejected", detail)
 end
 
-function Connection:configure(url, token, ca, clientTLS)
+function Connection:_configure(config, err)
   if self.destroyed then
     return false
   end
@@ -159,13 +182,24 @@ function Connection:configure(url, token, ca, clientTLS)
   self.connectTiming, self.authTiming = nil, nil
   self.generation = self.generation + 1
   self:_cancel()
-  local config, err = self.validate(url, token, ca, clientTLS)
   self.config = config
   self.wantConnect = config ~= nil
   self.attempts, self.delay = 0, 1
   self:_state(config and "connecting" or "unconfigured", config and "Connecting to HA" or err)
   self:_retire()
   return config ~= nil
+end
+
+function Connection:configure(url, token, ca, clientTLS)
+  return self:_configure(self.validate(url, token, ca, clientTLS))
+end
+
+function Connection:probe(url, ca)
+  local config, err = validateOrigin(url, ca)
+  if config then
+    config.probe = true
+  end
+  return self:_configure(config, err)
 end
 
 function Connection:disconnect()
@@ -176,11 +210,20 @@ function Connection:_open()
   if self.destroyed or self.socket or self.closing or not self.wantConnect then
     return
   end
-  self.connectTiming = metrics:start("transport.connect")
+  local config, generation = self.config, self.generation
+  local cached = WebSocket.Sockets and WebSocket.Sockets[config.url]
+  if cached and cached.deleteAfterClosing then
+    cached:delete(function()
+      if self.generation == generation then
+        self:_resume()
+      end
+    end)
+    return
+  end
+  self.connectTiming = metrics:start(config.probe and "transport.port_probe" or "transport.connect")
   -- Raw template traces include auth frames and private incoming state. Routine
   -- suite logging never enables those global debug switches.
   DEBUG_WEBSOCKET, DEBUG_RFN = false, false
-  local config, generation = self.config, self.generation
   local options = { VERIFY_MODE = "peer", AUTO_CONNECT = false, KEEP_CONNECTION = false, MONITOR_CONNECTION = false }
   if config.ca and config.ca ~= "" then
     options.CACERTFILE = config.ca
@@ -200,7 +243,7 @@ function Connection:_open()
     return not self.destroyed and self.socket == ws and self.generation == generation
   end
   local function deadline(detail)
-    SetTimer(self.prefix .. "Handshake", 10000, function()
+    SetTimer(self.prefix .. "Handshake", config.probe and 3500 or 10000, function()
       if active() then
         self:_fail(detail, true)
       end
@@ -208,7 +251,9 @@ function Connection:_open()
   end
   ws:SetEstablishedFunction(function()
     if active() then
-      self.authTiming = metrics:start("transport.authenticate")
+      if not config.probe then
+        self.authTiming = metrics:start("transport.authenticate")
+      end
       phase = "required"
       self:_state("authenticating", "Waiting for HA authentication challenge")
       deadline("HA authentication timed out; check the endpoint and proxy WebSocket support")
@@ -226,6 +271,10 @@ function Connection:_open()
       return
     end
     if phase == "required" and message.type == "auth_required" then
+      if config.probe then
+        self:_stop("verified", "Home Assistant authentication prompt detected")
+        return
+      end
       phase = "auth"
       DEBUG_WEBSOCKET = false
       ws:Send(codec.encode({ type = "auth", access_token = config.token }))

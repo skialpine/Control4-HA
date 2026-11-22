@@ -179,7 +179,7 @@
     {
       "id": "finitelabs/template",
       "repository": "https://github.com/finitelabs/control4-driver-template",
-      "revision": "cdbfbfef4aaa0c171247e41c4ec8539538bd75f3",
+      "revision": "1041c5fe4fd0329fd5363a5da65e9e710362baa4",
       "credit": "Finite Labs / Derek Miller and template contributors",
       "terms": "AGPL-3.0",
       "permission": "established",
@@ -197,8 +197,8 @@
         {
           "path": ".copier-answers.yml",
           "source_path": "template/{{ _copier_conf.answers_file }}.jinja",
-          "sha256": "4d4c57390017df011f8a9f2b3d868f64be05ed528f775291d2cd18c047f27389",
-          "changes": "Copier 9.19.1 render at v0.9.116 using the suite answers"
+          "sha256": "4808c5871e35d0f67eb046f192e07f7e903e8af3993fd214c7579d76a0583cb4",
+          "changes": "Copier 9.19.1 render at v0.9.117 using the suite answers"
         },
         {
           "path": "LICENSE",
@@ -215,8 +215,8 @@
         {
           "path": "CONTRIBUTING.md",
           "source_path": "template/CONTRIBUTING.md.jinja",
-          "sha256": "4b76b23b74ace75af84ee3b48d239a66cafdbd98fbff3ab560204df4f56b88af",
-          "changes": "Copier-rendered configuration, suite release guidance and the mandatory example-driver update process"
+          "sha256": "08c36463035021defb6f92d424262d4547e325fc77f71d0b9dcc6af8e204dbe2",
+          "changes": "Copier-rendered configuration, suite release guidance, mandatory example-driver update process and Node setup UI tests"
         },
         {
           "path": "CHANGELOG.md",
@@ -551,8 +551,8 @@
         {
           "path": "test/light_conformance.lua",
           "source_path": "template/test/light_conformance.lua",
-          "sha256": "03362d1c8e3e63863291a65b73a9ae3bc170f905ff562dec6edb6b8d4dbac056",
-          "changes": "Suite adapter rig coverage and the upstream v0.9.112 keypad color expectations"
+          "sha256": "241ee8b1c3b4685cbfda8664c674b44f4d12b45b8c43781308dde910be6e7598",
+          "changes": "Suite adapter rig coverage and the upstream v0.9.112 keypad color expectations; register live groups in membership conformance cases"
         },
         {
           "path": "test/test_conditionals_sort_order.lua",
@@ -707,8 +707,8 @@
         {
           "path": "src/lib/github-updater.lua",
           "source_path": "template/src/lib/github-updater.lua",
-          "sha256": "4283887bee2721073ba55566e5e554b5bc720a0b768d9f1e87ad77e67115bbce",
-          "changes": "Preserve newer installed driver versions; expose the template release-list request with bounded transfers and pagination."
+          "sha256": "b03670ab50a9ca5449b2494c6fab7e968348d4b719a69b89a6a8d94e7ec27047",
+          "changes": "Preserve newer installed driver versions; expose the template release-list request with bounded transfers and pagination. Expose the existing archive writer and Director reload request for verified suite batches."
         },
         {
           "path": "src/lib/drivercentral.lua",
@@ -827,8 +827,8 @@
         {
           "path": "src/lib/ui/page.js",
           "source_path": "template/src/lib/ui/page.js",
-          "sha256": "7f47f2f1b250f9a15a6ebdecf8f02bc37de146eb0cd62300ddbb61327b34f53d",
-          "changes": "Preserves focused edits and validation, routes a single property list to contextual sections, and supports explicit form submission and read-only facts."
+          "sha256": "83ad3320cee29fab4145cd109f3e8301860ebc80ab5737ab1c006d606bb28bc6",
+          "changes": "Preserves focused edits and validation, routes a single property list to contextual sections, supports explicit form submission and read-only facts, and allows display labels to differ from stored choice values."
         },
         {
           "path": "src/lib/ui/collapse.js",
@@ -911,13 +911,13 @@
         {
           "path": "src/lib/light/settings.lua",
           "source_path": "template/src/lib/light/settings.lua",
-          "sha256": "d0268c7779bd4b0bcbe790e6db27c883bd4174f08bee8123fe3840aee8758e78",
-          "changes": "Expose delegated On preset identity and keep Default On synchronized with its native preset; include upstream preset removal, startup cleanup and color-origin resolution"
+          "sha256": "7bbe94b82320b9de93291d6bf047e7ee3203862714ca53e2c4a94760e6b6710d",
+          "changes": "Expose delegated On preset identity, keep Default On synchronized with its native preset, and preserve separate native brightness and color rate readback. Include upstream preset removal, startup cleanup and color-origin resolution."
         },
         {
           "path": "src/lib/light/group.lua",
           "source_path": "template/src/lib/light/group.lua",
-          "sha256": "c0eab3abd4fdbae1ae496ab071b3c0c9fc0bc2c259169d0dc806cf1c9910dd0f",
+          "sha256": "710323bac3f04546800ecbf7e03aa7f91b5f6e598fe0ee67ef833a1f5b1c8cdd",
           "changes": "Unmodified copy"
         },
         {
@@ -995,8 +995,8 @@
         {
           "path": "src/lib/light/groups.lua",
           "source_path": "template/src/lib/light/groups.lua",
-          "sha256": "8ba45a27d9180ae2d4bf328194b33713ff7f4c28e0c7287cc0875f1181cf7f0c",
-          "changes": "Unmodified copy"
+          "sha256": "1ee7d22d573d243c22becfb466a52be961df08670d7449ccd2c903d1417b2991",
+          "changes": "Reconcile persistent memberships with Director after a missed group leave and preserve pending removal evidence through incomplete lookups"
         },
         {
           "path": "src/lib/light/ledger.lua",
@@ -1007,8 +1007,8 @@
         {
           "path": ".github/workflows/release.yml",
           "source_path": "template/.github/workflows/release.yml",
-          "sha256": "4c7391243a3405fcfc5bed9be2e91863433a02ec51b77526eef503a045b6180e",
-          "changes": "Publish exact suite manifest with inventory; preserve permission scope and numeric prerelease promotion."
+          "sha256": "6f149f13b730e953b2ec31b468d213ffa14b06b16124dff3b8975d330800df7f",
+          "changes": "Publish from a verified GitHub draft with exact suite manifest and inventory, resume missing uploads, and verify public reruns without writes. Preserve permission scope and numeric prerelease promotion."
         },
         {
           "path": ".github/workflows/build.yml",

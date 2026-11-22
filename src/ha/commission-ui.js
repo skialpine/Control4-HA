@@ -25,6 +25,7 @@
     multiple_matches: "More than one project device matches.",
     unresolved_add: "An earlier attempt could not confirm this addition. Check the project and review again.",
     different_device_or_coordinator: "This device matches another setup in the project. Check its existing setup.",
+    button_device_match: "The listed Control4 driver already uses this device’s buttons. Check its setup before adding another driver.",
     legacy_switch_match: "An older switch driver already controls this device. Check Migrate switch drivers in Quick Setup.",
     legacy_switch_unconfirmed: "Check the existing switch’s Home Assistant device before adding another control.",
     legacy_light_match: "Check this Light’s Properties. If it already controls the Home Assistant device you selected, go back and uncheck that device.",
@@ -473,7 +474,7 @@
       canBrowse = data.can_browse === true && !!setup;
       text("connection", data.error || (canBrowse ? "Connected" :
         data.can_browse ? "This Coordinator version does not offer Quick Setup." :
-          "Check the Home Assistant address and access token in Properties, then check the connection again."));
+          "Check the Home Assistant address and access token in Properties. Devices appear when Home Assistant connects."));
       el("reload-state").hidden = canBrowse;
       render();
       if (canBrowse && !finished) findDevices();
@@ -489,6 +490,10 @@
     else if (!el("fix-selection").hidden) el("fix-selection").focus();
     else if (staleDraft()) el("clear").focus();
     else (selectedOnly ? el("show-all") : el("search")).focus();
+  }
+
+  function refreshWaitingConnection() {
+    if (!canBrowse && (!pending || pending.command === "HA_ADD_GET")) readState();
   }
 
   function requestPreview() {
@@ -631,8 +636,12 @@
   el("picker").addEventListener("focusin", function () { requestAnimationFrame(keepFocusVisible); });
   window.addEventListener("resize", keepFocusVisible);
   window.addEventListener("pagehide", cancelBrowse);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) refreshWaitingConnection();
+  });
   Kit.connectDriver({
     handlers: {
+      HA_ADD_CONNECTED: refreshWaitingConnection,
       HA_ADD_STATE: receive,
       HA_ADD_PAGE: recvPage,
       HA_ADD_PREVIEWED: receive,

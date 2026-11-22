@@ -3,10 +3,11 @@
 This driver connects Control4 to Home Assistant. Start in **Properties**.
 **Quick Setup** is available when you want to add lights and switches to rooms.
 
-1. In Composer, open **Properties** on Home Assistant Connection. In **HA URL**,
-   enter the address you use to reach Home Assistant, for example
-   `http://homeassistant.local:8123`. Include the port if needed and leave off
-   any dashboard path.
+1. In Composer, open **Properties** on Home Assistant Connection. Enter the
+   hostname or IP address in **HA Host** and select **HA Protocol**. Leave **HA
+   Port** blank to check common ports. If Home Assistant answers on exactly one
+   of them, the driver fills in the port. Enter the port yourself if you already
+   know it or the field stays blank.
 1. In Home Assistant, open your profile and select **Security**. Under
    **Long-lived access tokens**, create a token named **Control4**, copy it, and
    paste it into **HA Token** in Composer.
@@ -15,10 +16,10 @@ This driver connects Control4 to Home Assistant. Start in **Properties**.
    Setup**. The connection is ready to find devices. You can check each added
    device's status in its own **Device Setup** tab.
 
-If you updated an existing connection, keep its saved settings. To change them,
-enter the host and port (for example, `homeassistant.local:8123`) in **Home
-Assistant URL**, set **Use SSL** to **Yes** for HTTPS or **No** for HTTP, and
-use **Long Lived Access Token** for the token.
+If you updated an existing connection, keep its saved settings. A saved **HA
+URL** remains editable. If the driver shows **Home Assistant URL**, enter the
+host and port there, select **Yes** in **Use SSL** for HTTPS or **No** for HTTP,
+and use **Long Lived Access Token** for the token.
 
 ## Add devices to rooms
 
@@ -65,7 +66,8 @@ shows the driver name and its Control4 room. The original still controls the
 switch. Open **Programming**, select the listed device and event, and change the
 indicated actions to use the new driver. Keep the other actions in each script.
 For a switch that triggers a program, recreate the event using the new driver
-and verify the program in Composer.
+and verify the program in Composer. Then remove the actions from the matching
+event on the old driver.
 
 Return to Quick Setup and choose **Check programming**. For recognized On and
 Off actions, it checks the replacement action in the same event before moving
@@ -84,25 +86,44 @@ driver controls the switch again. Any programs you moved still point to the new
 driver. Keep it in place to retry, or restore the project backup to return to
 the original programming.
 
-### Manual migration for button switches
+If a driver update interrupts migration, return to **Quick Setup** and choose
+**Restore original connections**. Quick Setup checks the switch and its
+connections before restoring them. Follow the instructions shown after it checks
+the saved migration against the updated drivers.
 
-1. Save a project backup. In Composer, record the original driver's name, room,
-   selected wall control, controlled device, button behavior, indicator settings
-   and connections. Use **Tools → Detective Suite → Programming** to find
-   scripts that the driver triggers or that use it.
-1. Add a **Home Assistant Switch** to the same room with a temporary name. Keep
-   its device selection empty while preparing it. In **Device Setup**, plan to
-   choose the same wall control and linked load. If the original used
-   **Programming Events Only**, choose **Buttons only** on the replacement.
-1. Disconnect the original driver's Home Assistant link in **Connections**.
-   Configure the replacement in **Device Setup**, then move its relay and button
-   connections. Recreate the original gestures, actions and conditions on the
-   replacement. Check that indicator settings and any programmed indicator
-   actions address the same buttons.
-1. Test the switch, each gesture you use and any changed programming or scenes.
-   Rename the original to distinguish it, then give the replacement the original
-   name. Keep the original until the replacement passes these tests. Restore the
-   saved project backup if you need to undo the cutover.
+### Migrate a switch with button events
+
+1. Save a project backup. In **Quick Setup → Migrate switch drivers**, review
+   the Home Assistant device and connections, then select **Start migration**.
+   Read the return instructions and select **Continue migration**. Quick Setup
+   adds a replacement in the same room with a temporary name and copies
+   supported button and LED settings. If Composer selects the replacement, go
+   back to the Coordinator’s **Quick Setup** to continue.
+1. Follow the next step shown for that switch. If a connected device also needs
+   to migrate, handle it first and select **Recheck connections**. Move any
+   listed programming before proceeding. Use **Tools → Detective Suite →
+   Programming** to find the scripts that use the original. When Quick Setup
+   verifies the names before programming, the replacement uses the original name
+   and the source is labeled as the old driver. The old driver keeps control
+   while you move the listed actions.
+1. Quick Setup transfers a verified selection and its supported connections
+   automatically. If it asks you to confirm the load, open the shown entity in
+   Home Assistant and compare it with the load the original controls. Choose
+   **Confirm load and transfer** if they match. Quick Setup rechecks the match
+   and connections before setting up the replacement and moving the verified
+   connections. If you’re unsure, choose **Get manual setup steps**. Find the
+   device in the new driver’s **Device Setup** before disconnecting the original
+   in **Connections**. Use **Move verified connections** when Quick Setup offers
+   it.
+1. Test the new driver. Try the buttons you use and any on/off control,
+   programming or scenes you changed. If you finished the transfer manually,
+   select **Confirm testing** or **Apply original name**, as shown.
+1. Select **Review old drivers for removal**. Quick Setup checks the named
+   replacement again and lists the originals ready to delete in Composer.
+
+If Quick Setup shows **Restore the project backup**, restore it before
+continuing with any switch in the batch. Return to Quick Setup and choose
+**Refresh status**.
 
 ## Run a Home Assistant action from Programming
 

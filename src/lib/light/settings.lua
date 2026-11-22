@@ -397,13 +397,12 @@ function Settings:readSetup(xml)
     end
   end
 
-  local rate = tointeger(setup.light_brightness_rate_default)
-  if rate then
-    self:_updateBrightnessRateDefault({ RATE = rate })
-  end
-  rate = tointeger(setup.light_color_rate_default)
-  if rate then
-    self:_updateColorRateDefault({ RATE = rate })
+  local brightnessRate = tointeger(setup.light_brightness_rate_default)
+  local colorRate = tointeger(setup.light_color_rate_default)
+  if brightnessRate or colorRate then
+    -- A native reply can still have two different fields, even with shared rate controls.
+    persist:set(Settings.P_RATE_DEFAULT, brightnessRate or colorRate)
+    persist:set(Settings.P_COLOR_RATE_DEFAULT, colorRate or brightnessRate)
   end
 end
 

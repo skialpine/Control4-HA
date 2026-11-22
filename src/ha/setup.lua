@@ -19,6 +19,7 @@ local gestureContract = require("ha.gesture-contract")
 local indicators = require("ha.indicators")
 local indicatorPrograms = require("ha.indicator-programs")
 local catalogNames = require("ha.catalog-names")
+local migration = require("ha.switch-migration")
 local log = require("lib.logging")
 local Setup = {}
 Setup.__index = Setup
@@ -239,6 +240,69 @@ function Setup:mode(candidate)
     return NATIVE
   end
   return config and config.controlled_load and NATIVE or BUTTONS
+end
+
+function Setup:buttonBehaviorTargets()
+  local config = self.config
+  local load = config and config.controlled_load
+  local haName = load
+    and (
+      setupPage.friendlyName(self.loadName)
+      or setupPage.friendlyName(load.name)
+      or (
+        (config.key == load.entity_id or config.controlled_load_origin == "selected_endpoint")
+        and setupPage.friendlyName(config.name)
+      )
+    )
+  local linked = self.adapter and self.adapter.targetState and self.adapter:targetState()
+  return haName, linked and setupPage.friendlyName(linked.name)
+end
+
+function Setup:hasAppLinkChoices()
+  return self.linked and self.adapter and self.adapter.appLinkChoices and self.adapter:appLinkChoices() ~= nil
+end
+
+function Setup:buttonBehaviorLabels()
+  local haName, connectedName = self:buttonBehaviorTargets()
+  local haTarget = haName or "the Home Assistant load"
+  return {
+    [LOAD_ONLY] = "Control " .. haTarget .. " only",
+    [LOAD_BUTTONS] = "Control " .. haTarget .. " + presses",
+    [NATIVE] = "Home Assistant · " .. (haName or "Linked load"),
+    [LOCAL] = "Control4 · " .. (connectedName or "Linked light"),
+    [BUTTONS] = "Button presses only",
+  }
+end
+
+function Setup:buttonBehaviorSummary()
+  local mode = self:mode()
+  local haName, connectedName = self:buttonBehaviorTargets()
+  local config = self.config
+  local summary
+  if mode == LOCAL then
+    summary = connectedName and ("The app controls " .. connectedName .. " through Control4.")
+      or "Choose which connected Control4 light or lighting group the app will control."
+  elseif mode == BUTTONS then
+    summary = "App control is off."
+  elseif haName then
+    summary = "The app controls " .. haName .. " through Home Assistant."
+  elseif config and config.controlled_load then
+    summary = "Home Assistant has not reported the controlled load’s name yet."
+  else
+    summary = "Choose a Home Assistant load to use app control."
+  end
+  if self:usesButtons() then
+    local source = setupPage.friendlyName(config.name)
+    return summary
+      .. (
+        source and (" Use button presses from " .. source .. " in Control4 Programming.")
+        or " Button presses are available in Control4 Programming."
+      )
+  end
+  if config and config.gesture_entity_id then
+    return summary .. " This mode turns off button presses in Control4 Programming."
+  end
+  return summary
 end
 
 function Setup:activate()
@@ -594,12 +658,14 @@ function Setup:message(kind, data)
   elseif kind == "snapshot" or kind == "state" then
     self.failures[data.entity_id] = nil
     local attrs = data.attributes
-    if config.controlled_load and data.entity_id == config.controlled_load.entity_id then
+    local load = config.controlled_load
+    if load and data.entity_id == load.entity_id then
       local friendly = setupPage.friendlyName(attrs.friendly_name)
       if friendly then
         self.loadName = friendly
-        if config.key == config.controlled_load.entity_id and config.name ~= friendly then
-          config.name = friendly
+        local named = config.key == load.entity_id and config or load
+        if named.name ~= friendly then
+          named.name = friendly
           saveRecord(config)
         end
       end
@@ -711,9 +777,9 @@ function Setup:connectedView(state)
   elseif target.reason == "waiting_target" then
     state.status, state.detail =
       "Waiting for connected light", "Check that the linked light or lighting group is available."
-  elseif target.reason == "choose_paddle" and self.linked then
+  elseif self:hasAppLinkChoices() then
     state.status, state.detail =
-      "Choose a connected light", "In Device Setup, set App Control Link to a linked button or Automatic."
+      "Choose a connected light", "Choose a destination under “Light controlled by the app” below."
   else
     state.status, state.detail =
       "Choose a connected light", "Connect one light or lighting group to the App Control Link."
@@ -750,6 +816,8 @@ function Setup:deviceView()
   if lease and self.indicatorRows and #self.indicatorRows > 0 then
     state.capabilities[#state.capabilities + 1] = "Indicator lights"
     state.indicator_lease = lease
+    state.indicator_policy = indicatorPrograms.pagePolicy(self)
+    state.indicator_following = state.indicator_policy == "single" and indicatorPrograms.following(self) or nil
     state.indicators, state.indicator_signature = indicatorPrograms.pageRows(self)
   elseif config.device_id or config.gesture_entity_id then
     local facts = self.consumer.readiness:view(config.gesture_entity_id)
@@ -838,6 +906,18 @@ end
 
 function Setup:view()
   local state = self:deviceView()
+  state.migration_available = migration.reviewAvailable(self.family, self.config ~= nil or self.linked == true)
+  state.button_behavior_summary = self:buttonBehaviorSummary()
+  local adapter = self.adapter
+  local target = self:mode() == LOCAL and adapter and adapter.targetState and adapter:targetState()
+  if target and target.device and target.device.dims then
+    local rampTarget = adapter and adapter.bottomRampTarget and setupPage.friendlyName(adapter:bottomRampTarget())
+    state.linked_settings_help = "App On uses the linked light’s Brightness On Mode."
+      .. " Where available, edit Click Rates and Hold Ramp Rates on the light each paddle controls."
+      .. (rampTarget and (" For this bottom paddle, edit Hold Ramp Rates → Down on " .. rampTarget .. ".") or "")
+      .. " Explicit brightness or color changes can still use a requested transition rate."
+  end
+  state.app_link_available = self:mode() == LOCAL and self:hasAppLinkChoices() or nil
   state.separate_target = self.config ~= nil
     and (self:mode() == LOCAL or self.config.controlled_load_origin == "explicit_link")
   local connectedTarget = self.config or self:mode() == LOCAL
@@ -934,6 +1014,18 @@ function Setup:changeIndicator(params, done)
     end
     return
   end
+  local singleBehavior = params.field == "behavior"
+    and lease
+    and lease == params.lease
+    and self.consumer:_current()
+    and indicatorPrograms.pagePolicy(self) == "single"
+    and self.indicatorRows[1].id == params.id
+  if singleBehavior and (params.value == "follow_bound" or params.value == "use_device_setting") then
+    local policy = params.value == "follow_bound" and "Follow Bound Device" or "Use Device Setting"
+    UpdateProperty("LED Behavior", policy, true)
+    done({ message = "Indicator behavior saved." })
+    return
+  end
   if
     not lease
     or lease ~= params.lease
@@ -943,7 +1035,7 @@ function Setup:changeIndicator(params, done)
     done({ error = Setup.explain("indicator_unavailable") })
     return
   end
-  local owner = {}
+  local owner = { replaceFollow = singleBehavior and indicatorPrograms.following(self) }
   self.indicatorPending = owner
   local function complete(err)
     if self.indicatorPending == owner then
@@ -954,6 +1046,9 @@ function Setup:changeIndicator(params, done)
     elseif err then
       done({ error = Setup.explain(err.kind == "rejected" and "indicator_rejected" or err.kind) })
     else
+      if owner.replaceFollow and Properties["LED Behavior"] == "Follow Bound Device" then
+        UpdateProperty("LED Behavior", "Use Device Setting", true)
+      end
       done({ message = "Change accepted. The settings shown follow device feedback." })
     end
   end

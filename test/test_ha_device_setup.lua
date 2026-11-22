@@ -390,15 +390,18 @@ do
 end
 
 T.section("The existing diagnostics action prints a recorded release failure once")
-do
-  fixture("light")
+for _, family in ipairs({ "light", "switch" }) do
+  fixture(family)
   local function printDiagnostics()
     return T.capture(function()
       ExecuteCommand("PrintDiagnostics", {})
     end)
   end
   local ok, _, output = printDiagnostics()
-  T.truthy("the normal diagnostics action runs", ok)
+  T.truthy(
+    family .. " diagnostics includes gesture count and last sequence",
+    ok and output:find("Button events: 0 | Last sequence: 0", 1, true)
+  )
   T.falsy("an empty command result adds no diagnostics line", output:find("Last command result", 1, true))
   local message = require("ha.setup-page").explain("connected_release_failed")
   require("lib.values"):update("Last Command Result", message, "STRING")
@@ -457,6 +460,7 @@ do
   T.eq("boot selects no endpoint", #selected[#selected], 0)
   T.eq("boot makes no HA request", #c.sent, 0)
   T.eq("boot status", view().status, "Not configured")
+  T.eq("unconfigured Light can review older drivers", view().migration_available, true)
   T.eq("fresh native setup shows an unselected device without a target row", {
     Properties["Selected Device"],
     attribs["Selected Device"],
@@ -547,7 +551,17 @@ do
   T.eq("incoming keypad cannot become the app target", view().target, "Patio relay")
   bindTarget(ids.targetLinks.top, 30, ids.lightLinks.top)
   bindTarget(ids.targetLinks.toggle, 30, ids.lightLinks.toggle)
+  T.eq("shared destination needs no selector", advanced()["App Control Link"], nil)
   T.eq("paddles with one destination select that light automatically", view().target, "Stair Lights")
+  T.eq(
+    "Automatic names the exact Control4 target resolved from the links",
+    view().button_behavior_summary,
+    "The app controls Stair Lights through Control4."
+  )
+  T.eq("the mode choices name the Home Assistant and Control4 targets separately", {
+    advanced()["Button behavior"].choice_labels["Home Assistant device"],
+    advanced()["Button behavior"].choice_labels["Connected Control4 light"],
+  }, { "Home Assistant · Patio relay", "Control4 · Stair Lights" })
   T.eq("native landing identifies both the HA selection and its connected target", {
     Properties["Selected Device"],
     Properties.Controls,
@@ -555,7 +569,33 @@ do
   }, { "Patio relay", "Stair Lights", 0 })
   bindTarget(ids.targetLinks.bottom, 31, ids.lightLinks.bottom)
   T.eq("distinct paddle destinations need one explicit target", view().status, "Choose a connected light")
-  T.truthy("Advanced offers the app target selector when the paddle links apply", advanced()["App Control Link"])
+  T.eq(
+    "Automatic explains an unresolved link without naming a guessed target",
+    view().button_behavior_summary,
+    "Choose which connected Control4 light or lighting group the app will control."
+  )
+  local appChoice = advanced()["App Control Link"]
+  T.eq("two linked devices are listed once each by name", appChoice.choices, { "Automatic", "Top", "Bottom" })
+  T.eq("the options identify the actual linked devices", {
+    appChoice.choice_labels.Top,
+    appChoice.choice_labels.Bottom,
+  }, { "Stair Lights", "Hall Light" })
+  local getDisplayName = C4.GetDeviceDisplayName
+  function C4:GetDeviceDisplayName(device)
+    return device == 31 and "Stair Lights" or getDisplayName(self, device)
+  end
+  appChoice = advanced()["App Control Link"]
+  C4.GetDeviceDisplayName = getDisplayName
+  T.eq("two different devices with the same name stay distinguishable", {
+    appChoice.choice_labels.Top,
+    appChoice.choice_labels.Bottom,
+  }, { "Stair Lights · Top", "Stair Lights · Bottom" })
+  setProperty("App Control Link", "Toggle")
+  T.eq(
+    "the web picker rejects a role omitted from the current options",
+    last("PROPERTY_ERROR").property,
+    "App Control Link"
+  )
   setProperty("App Control Link", "Bottom")
   T.eq("the prototype's explicit Bottom choice selects only that button's target", view().target, "Hall Light")
   bindTarget(ids.targetLinks.app, 32, ids.lightLinks.toggle)
@@ -567,12 +607,35 @@ do
   )
   bindTarget(ids.targetLinks.app, nil, ids.lightLinks.toggle)
   T.eq("removing the dedicated link restores the explicit Bottom choice", view().target, "Hall Light")
+  bindTarget(ids.targetLinks.top, 31, ids.lightLinks.top)
+  T.eq(
+    "deduplication keeps the saved role as the representative of its device",
+    advanced()["App Control Link"].choices,
+    { "Automatic", "Bottom", "Toggle" }
+  )
+  bindTarget(ids.targetLinks.toggle, 31, ids.lightLinks.toggle)
+  T.eq("three links to the same device hide the selector", advanced()["App Control Link"], nil)
+  T.eq("hiding the selector preserves its saved role", Properties["App Control Link"], "Bottom")
+  bindTarget(ids.targetLinks.top, 30, ids.lightLinks.top)
+  bindTarget(ids.targetLinks.toggle, 30, ids.lightLinks.toggle)
   bindTarget(ids.targetLinks.bottom, nil, ids.lightLinks.bottom)
   T.eq("an unlinked saved choice waits for the user's next step", view().status, "Choose a connected light")
   setProperty("App Control Link", "Automatic")
   T.eq("removing the second destination restores the common target", view().target, "Stair Lights")
+  bindTarget(ids.targetLinks.bottom, 31, ids.lightLinks.bottom)
   setProperty("Button behavior", "Home Assistant device")
   T.eq("explicit mode wins over bindings", selected[#selected][1], relay)
+  T.truthy("linked-light choices can be rendered before the installer changes mode", advanced()["App Control Link"])
+  T.eq("the linked-light selector is hidden during Home Assistant control", view().app_link_available, nil)
+  setProperty("App Control Link", "Top")
+  T.eq("an inactive app link choice is refused", last("PROPERTY_ERROR").property, "App Control Link")
+  setProperty("Button behavior", "Automatic")
+  T.eq(
+    "Automatic reveals the linked-light selector with the status push",
+    last("HA_SETUP_STATE").app_link_available,
+    true
+  )
+  setProperty("Button behavior", "Home Assistant device")
   c.sent, c.reads = {}, {}
   restart()
   T.eq("reload retains operating override", Properties["Button behavior"], "Home Assistant device")
@@ -700,6 +763,7 @@ do
   local c = fixture("switch")
   local dimmer = "light.fixture"
   T.eq("Switch is initially unconfigured", view().status, "Not configured")
+  T.eq("unconfigured Switch can review older drivers", view().migration_available, true)
   browse("browse-switch")
   c:reply("get_devices", result({ remote }, false))
   local page = assert(last("HA_SETUP_PAGE", "browse-switch"))
@@ -735,6 +799,10 @@ do
     dimmer
   )
   T.eq("unavailable explicit link is disclosed", view().status, "Device unavailable")
+  T.check(
+    "Automatic leaves an unreported linked load unnamed",
+    view().button_behavior_summary:find("Home Assistant has not reported the controlled load’s name yet.", 1, true)
+  )
   T.eq(
     "Switch never exposes connected-C4 mode",
     table.concat(advanced()["Button behavior"].choices, ","),
@@ -767,9 +835,23 @@ do
     end)
   end
   T.eq("the originally unavailable link gets fresh evidence", view().target, "Linked patio light")
+  T.eq("the labels distinguish the controlled light from its paddle", {
+    advanced()["Button behavior"].choice_labels["Control linked device only"],
+    advanced()["Button behavior"].choice_labels["Control device and report presses"],
+  }, { "Control Linked patio light only", "Control Linked patio light + presses" })
+  T.eq(
+    "the Automatic explanation names both routes",
+    view().button_behavior_summary,
+    "The app controls Linked patio light through Home Assistant. Use button presses from Patio buttons in Control4 Programming."
+  )
   T.eq("Switch exposes only relevant capabilities", view().capabilities, { "On and off", "Button presses" })
   setProperty("Button behavior", "Control linked device only")
   T.eq("load-only Switch keeps the linked load and releases the event source", selected[#selected], { dimmer })
+  T.eq(
+    "the live device-only explanation updates without reopening the page",
+    last("HA_SETUP_STATE").button_behavior_summary,
+    "The app controls Linked patio light through Home Assistant. This mode turns off button presses in Control4 Programming."
+  )
   T.eq("load-only view removes button capabilities", view().capabilities, { "On and off" })
   T.eq(
     "load-only view removes indicator and button diagnostics",
@@ -781,12 +863,26 @@ do
   T.eq("load-only relay controls the originally selected linked device", c:reply("turn_off").target.entity_id, dimmer)
   restart()
   T.eq("load-only persists across driver restart without the button source", selected[#selected], { dimmer })
+  view("reopen-switch-setup")
   setProperty("Button behavior", "Control device and report presses")
   T.eq("combined mode selects the same load and reinstates button events", selected[#selected], { dimmer, gesture })
   setProperty("Button behavior", "Automatic")
   T.eq("Automatic keeps both endpoints for a prepared Switch", selected[#selected], { dimmer, gesture })
   setProperty("Button behavior", "Buttons only")
   T.eq("buttons-only retires load routing", selected[#selected], { gesture })
+  T.eq(
+    "a buttons-only explanation names the source and shows app control off",
+    last("HA_SETUP_STATE").button_behavior_summary,
+    "App control is off. Use button presses from Patio buttons in Control4 Programming."
+  )
+  setProperty("Button behavior", "Automatic")
+  T.eq("switching back to Automatic shows the cached name before fresh HA feedback", {
+    Properties["Button behavior"],
+    last("HA_SETUP_STATE").button_behavior_summary,
+  }, {
+    "Automatic",
+    "The app controls Linked patio light through Home Assistant. Use button presses from Patio buttons in Control4 Programming.",
+  })
 end
 
 T.section("A later explicit edit invalidates a second tab's outstanding preparation")
@@ -1112,9 +1208,22 @@ for _, familyName in ipairs({ "light", "switch" }) do
   T.eq(familyName .. " startup/selection never sends LED commands", #c.sent, 0)
   local page = view()
   T.eq("only one writable channel is offered", #page.indicators, 1)
+  T.eq(
+    "a single indicator can include the linked-light choice in its behavior control",
+    page.indicator_policy,
+    familyName == "light" and "single" or nil
+  )
   T.eq("black becomes a separately explicit behavior choice", page.indicators[1].colors, { "FF0000", "00FF00" })
   T.eq("verified hardware settings replace the missing-data explanation", page.indicator_hint, nil)
   T.eq("discovered exact brightness steps are offered verbatim", page.indicators[1].levels, { 25, 75 })
+  T.eq("indicator policy keeps saved values and supplies readable labels", advanced()["LED Behavior"].choice_labels, {
+    ["Use Device Setting"] = "Keep current LED setting",
+    ["Follow Load"] = "On when the device is on",
+    ["Follow Load (Inverted)"] = "On when the device is off",
+    ["Always On"] = "Always on",
+    ["Always Off"] = "Always off",
+    ["Follow Bound Device"] = "Follow the linked light",
+  })
   local function change(id, field, value, lease, tag)
     request(
       "HA_SETUP_INDICATOR",
@@ -1154,6 +1263,46 @@ for _, familyName in ipairs({ "light", "switch" }) do
       }))
     end)
   end
+  channel.behavior, channel.color, channel.brightness = nil, nil, nil
+  update()
+  local changing = last("HA_SETUP_STATE")
+  T.eq("live update keeps writable controls while the switch reads back its settings", {
+    changing.request == nil,
+    changing.indicator_lease,
+    changing.indicators and changing.indicators[1].colors,
+    changing.indicators and changing.indicators[1].behaviors,
+    changing.indicators and changing.indicators[1].brightness_supported,
+    changing.capabilities,
+  }, { true, page.indicator_lease, { "FF0000", "00FF00" }, { "always_on", "always_off" }, true, page.capabilities })
+  change("top", "color", "00FF00", nil, "second-color")
+  T.eq("a second color change is accepted without reopening setup", c:reply("set_led").service_data, {
+    entity_id = gesture,
+    led_id = "top",
+    color = "00FF00",
+  })
+  T.eq("the second color request gets a correlated reply", pickResult("second-color").error, nil)
+  channel.behavior, channel.color, channel.brightness = "always_on", "00FF00", 25
+  update()
+  local confirmed = last("HA_SETUP_STATE")
+  T.eq("live feedback displays the second confirmed color without reopening setup", {
+    confirmed.request == nil,
+    confirmed.indicators and confirmed.indicators[1].color,
+  }, { true, "00FF00" })
+  channel.behaviors[3] = "follow_load_inverted"
+  channel.behavior, channel.color, channel.configured_color = "follow_load_inverted", nil, "00FF00"
+  update()
+  local following = last("HA_SETUP_STATE").indicators[1]
+  T.eq("hardware-follow readback carries the saved color without asserting the LED is lit", {
+    following.configured_color,
+    following.behavior,
+    following.color,
+  }, { "00FF00", "follow_load_inverted" })
+  channel.configured_color = "123456"
+  update()
+  T.eq("a saved color outside the device palette is not displayed", view().indicators[1].configured_color, nil)
+  channel.behaviors[3], channel.configured_color = nil, nil
+  channel.behavior, channel.color, channel.brightness = "always_off", "000000", 25
+  update()
   change("top", "brightness", 75, nil, "brightness")
   T.eq("brightness is a distinct change", c:reply("set_led").service_data, {
     entity_id = gesture,
@@ -1170,6 +1319,11 @@ for _, familyName in ipairs({ "light", "switch" }) do
     led_id = "top",
     behavior = "always_on",
   })
+  T.eq(
+    "behavior still shows the last confirmed hardware state at acceptance",
+    view().indicators[1].behavior,
+    "always_off"
+  )
   channel.behavior, channel.color = "always_on", "FF0000"
   update()
   T.eq("later HA evidence confirms both behavior and color", {
@@ -1211,13 +1365,17 @@ for _, familyName in ipairs({ "light", "switch" }) do
     false
   )
   T.eq(
-    "unsupported brightness step is refused",
-    ExecuteCommand("Set LED Brightness", { Button = "0", Brightness = "50" }),
+    "out-of-range programmed brightness is refused",
+    ExecuteCommand("Set LED Brightness", { Button = "0", Brightness = "101" }),
     false
   )
   T.eq("invalid and unsupported programming sends nothing", #c.sent, 0)
-  ExecuteCommand("Set LED Brightness", { Button = "0", Brightness = "25" })
-  T.eq("legacy role number selects exact brightness endpoint", c:reply("set_led").service_data.brightness, 25)
+  ExecuteCommand("Set LED Brightness", { Button = "0", Brightness = "50" })
+  T.eq(
+    "a saved program retains nearest-step behavior with ties going lower",
+    c:reply("set_led").service_data.brightness,
+    25
+  )
   ExecuteCommand("Set LED Behavior", { Button = "Top", Behavior = "Always Off" })
   T.eq("saved behavior label maps to independent setting", c:reply("set_led").service_data.behavior, "always_off")
   if familyName == "light" then
@@ -1277,7 +1435,43 @@ for _, familyName in ipairs({ "light", "switch" }) do
     )
     T.eq("source hidden until following chosen", advanced()["LED Feedback Source"], nil)
     requestedLEDLink = nil
-    setProperty("LED Behavior", "Follow Bound Device")
+    change("top", "behavior", "follow_bound", "retired", "stale-follow")
+    T.truthy("a retired setup page cannot change the policy", pickResult("stale-follow").error)
+    change("top", "behavior", "follow_bound", nil, "follow-bound")
+    T.eq(
+      "the same selector can save the linked-light policy",
+      pickResult("follow-bound").message,
+      "Indicator behavior saved."
+    )
+    T.eq("the reopened page shows the linked-light policy as active", view().indicator_following, true)
+    change("top", "behavior", "always_off", nil, "reject-leaving-follow")
+    T.eq(
+      "new tracking writes wait for the explicit hardware mode change",
+      ReceivedFromProxy(ids.targetLinks.bottom, "MATCH_LED_STATE", { STATE = 1 }),
+      false
+    )
+    T.eq(
+      "hardware mode is sent through the same indicator command",
+      c:reply("set_led", nil, "rejected").service_data.behavior,
+      "always_off"
+    )
+    T.truthy("a rejected hardware mode is reported in Device Setup", pickResult("reject-leaving-follow").error)
+    T.eq("rejection preserves the previous policy and reported mode", {
+      view().indicator_following,
+      view().indicators[1].behavior,
+    }, { true, "always_on" })
+    change("top", "behavior", "always_off", nil, "accept-leaving-follow")
+    c:reply("set_led")
+    T.eq("acceptance disables tracking and waits for hardware readback", {
+      Properties["LED Behavior"],
+      view().indicators[1].behavior,
+    }, { "Use Device Setting", "always_on" })
+    channel.behavior = "always_off"
+    update()
+    T.eq("reopened Device Setup shows the confirmed hardware mode", view().indicators[1].behavior, "always_off")
+    channel.behavior = "always_on"
+    update()
+    change("top", "behavior", "follow_bound", nil, "follow-again")
     local tracking = view().indicators[1]
     T.eq(
       "bound tracking offers black and both device colors",
@@ -1351,7 +1545,8 @@ for _, familyName in ipairs({ "light", "switch" }) do
       false
     )
     links[ids.targetLinks.bottom].boundprovider = previous
-    setProperty("LED Behavior", "Use Device Setting")
+    change("top", "behavior", "use_device_setting", nil, "keep-device-setting")
+    T.eq("keeping the current LED setting shows the reported mode again", view().indicator_following, nil)
     T.eq("disabling tracking leaves existing hardware untouched", #c.sent, 0)
     T.eq(
       "disabled tracking ignores subsequent feedback",
@@ -1382,6 +1577,7 @@ for _, familyName in ipairs({ "light", "switch" }) do
     other.behaviors = codec.array({ "always_off", "follow_load" })
     other.behavior = "follow_load"
     update()
+    T.eq("a switch with multiple indicators can still apply behavior to all of them", view().indicator_policy, "all")
     T.eq(
       "Switch offers only behaviors supported on every available indicator",
       advanced()["LED Behavior"].choices,
@@ -1409,6 +1605,29 @@ for _, familyName in ipairs({ "light", "switch" }) do
   change("top", "color", "FF0000", nil, "palette-changed")
   T.eq("child rechecks changed capabilities before sending", #c.sent, 0)
   T.truthy("removed palette value rejected", pickResult("palette-changed").error)
+  channel.label, channel.color_supported, channel.brightness_supported = "Locator LED", false, false
+  channel.colors = codec.array({ "000000" })
+  channel.behaviors = codec.array({ "follow_load", "follow_load_inverted", "always_off" })
+  channel.color, channel.behavior, other.available = nil, "follow_load_inverted", false
+  update()
+  local locator = view().indicators[1]
+  T.eq("locator LED presents only its three writable behaviors", locator.behaviors, channel.behaviors)
+  T.eq("locator LED displays confirmed behavior", locator.behavior, "follow_load_inverted")
+  T.eq("locator LED has no color or brightness editor", { locator.colors, locator.brightness_supported }, { nil, nil })
+  if familyName == "light" then
+    T.eq("locator LED has no native tracking-color options", GetCommandParamList("Set LED On Color", "Button"), {})
+    T.eq(
+      "locator LED hides native tracking properties",
+      { attribs["LED Indicator"], attribs["LED On Color"], attribs["LED Off Color"] },
+      { 1, 1, 1 }
+    )
+    T.eq(
+      "saved native color commands cannot configure locator LED tracking",
+      ExecuteCommand("Set LED Off Color", { Button = "Top", Color = "000000" }),
+      false
+    )
+    T.eq("unsupported tracking color does not save preferences", PersistData, nil)
+  end
   channel.available, other.available = false, false
   update()
   local noIndicators = view()
@@ -1670,6 +1889,7 @@ do
   T.eq("normal subscription is the only HA request", #c.sent, 1)
   c:snapshot(entity, "off", { friendly_name = "Original light", supported_color_modes = { "onoff" } })
   T.eq("existing device is shown after feedback", view().title, "Original light")
+  T.eq("a configured Light hides the migration panel", view().migration_available, false)
   T.eq(
     "native next step points to the device picker",
     Properties["Next step"],

@@ -401,4 +401,32 @@ local renamedRevision = open(true).metadata.revision
 T.truthy("a real list change still needs a fresh review", renamedRevision ~= nativeRevision)
 nativeAvailability[2].attributes.supported_color_modes = codec.array({ "brightness" })
 T.truthy("nested capability changes still need a fresh review", open(true).metadata.revision ~= renamedRevision)
+
+T.section("Only a unique selectable physical choice claims its button event")
+catalog = Catalog.new(request, function()
+  error("unexpected native fallback")
+end)
+local gesture = "event.primary_control"
+helperPhysical.attributes.device_choice.gesture_entity_id = gesture
+local single = open()
+answer(#requests, oneCompanionPage({ helperPhysical }, upstream))
+T.truthy("single physical control is published", single.metadata)
+T.eq("gesture resolves the exact unique physical choice", catalog:gestureChoice(gesture), choiceId)
+
+local alternate = wire(helperPhysical)
+local endpoint = string.rep("f", 32)
+alternate.entity_id = "device:" .. device .. ":" .. endpoint
+alternate.attributes.device_choice.choice_id = alternate.entity_id
+alternate.attributes.device_choice.source_load = codec.object({
+  domain = "switch",
+  entity_id = "switch.independent",
+  registry_id = endpoint,
+  available = true,
+})
+local shared = open(true)
+local response = oneCompanionPage({ helperPhysical, alternate }, newUpstream)
+response.response.total = 2
+answer(#requests, response)
+T.truthy("both loads can use the same button event", shared.metadata)
+T.eq("ambiguous button event is never assigned to either load", catalog:gestureChoice(gesture), nil)
 T.finish()

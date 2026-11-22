@@ -3,6 +3,7 @@ local updater = require("lib.github-updater")
 local http = require("lib.http")
 local codec = require("ha.codec")
 local installedSuite = require("ha.installed-suite")
+local Installer = require("ha.release-install")
 local deferred = require("deferred")
 local version = require("version")
 
@@ -411,6 +412,8 @@ end
 
 local STATUS = "Driver update status"
 local CHANNEL = "Update channel"
+local AUTOMATIC = "Automatic Updates"
+local SCHEDULE = "HA.ReleaseCheck"
 local HELP = "Use Actions → Check for driver updates."
 local problems = {
   ambiguous_release = "GitHub has more than one release with the same revision. Ask your installer to check the release.",
@@ -428,6 +431,29 @@ local problems = {
 
 function M.installActions(isReady)
   local running
+  local installer = Installer.new()
+  local function enabled()
+    return Properties[AUTOMATIC] == "On" and Installer.isOwner()
+  end
+  local function installStatus(status, revision)
+    if status == "updated" then
+      return "Installed version " .. revision .. " on all suite drivers."
+    end
+    if status == "blocked" then
+      return "The saved update files or installed drivers have changed. Ask your installer to review the suite."
+    end
+    if enabled() then
+      return "The suite update needs attention. Use Check for driver updates to retry it, or ask your installer."
+    end
+    return "The suite update needs attention. Turn on Automatic Updates and check again, or ask your installer."
+  end
+  local function ownerMessage(owner)
+    local name = C4:GetDeviceData(owner, "name")
+    if type(name) == "string" and name ~= "" then
+      return "Driver updates are managed by " .. name .. "."
+    end
+    return "Driver updates are managed by the other Home Assistant Coordinator."
+  end
   local function reset()
     -- One active request can settle after the channel changes. Its response
     -- still clears the request, but it no longer owns the status field.
@@ -443,20 +469,37 @@ function M.installActions(isReady)
     if running or not isReady() then
       return
     end
+    local owner = Installer.owner()
+    if owner and owner ~= C4:GetDeviceID() then
+      UpdateProperty(STATUS, ownerMessage(owner))
+      return
+    end
     local channel = Properties[CHANNEL] == "Pre-release" and "Pre-release" or "Production"
     local request = {}
     running = request
-    UpdateProperty(STATUS, "Checking GitHub for driver updates…")
-    local function complete(message)
+    local function complete(message, installing)
       if running ~= request then
         return
       end
       running = nil
       if isReady() then
-        UpdateProperty(STATUS, request.stale and HELP or message)
+        UpdateProperty(STATUS, request.stale and not installing and HELP or message)
       end
     end
-    local ok, promise = pcall(M.check, channel)
+    local apply = enabled()
+    if installer:pending() then
+      UpdateProperty(STATUS, "Checking the saved suite update…")
+      if
+        not installer:runPending(apply, function(status, revision)
+          complete(installStatus(status, revision), true)
+        end)
+      then
+        complete(installStatus("attention"), true)
+      end
+      return
+    end
+    UpdateProperty(STATUS, "Checking GitHub for driver updates…")
+    local ok, promise = pcall(apply and M.prepare or M.check, channel)
     if not ok then
       complete(problems.installed_unknown)
       return
@@ -464,6 +507,22 @@ function M.installActions(isReady)
     promise:next(function(result)
       local current = " Installed: " .. result.installed .. "."
       if result.kind == "available" then
+        if apply and running == request and isReady() and not request.stale and enabled() then
+          local staged, accepted, problem = pcall(installer.prepare, installer, result)
+          if not staged or not accepted then
+            complete(staged and problem or "Could not prepare the suite update. Ask your installer.", true)
+            return
+          end
+          UpdateProperty(STATUS, "Installing suite version " .. result.revision .. "…")
+          if
+            not installer:runPending(true, function(status, revision)
+              complete(installStatus(status, revision), true)
+            end)
+          then
+            complete(installStatus("attention"), true)
+          end
+          return
+        end
         complete(
           "Version " .. result.revision .. " is available. Ask your Control4 installer to update the suite." .. current
         )
@@ -495,9 +554,53 @@ function M.installActions(isReady)
       end
     end)
   end
+  local function start(checkSoon)
+    CancelTimer(SCHEDULE)
+    if not isReady() then
+      return
+    end
+    local owner = Installer.owner()
+    local ownsUpdates = owner == C4:GetDeviceID()
+    for _, property in ipairs({ AUTOMATIC, CHANNEL }) do
+      if Properties[property] ~= nil then
+        SetPropertyVisible(property, ownsUpdates)
+      end
+    end
+    if owner and not ownsUpdates and Properties[STATUS] ~= nil then
+      UpdateProperty(STATUS, ownerMessage(owner))
+    end
+    if installer:pending() then
+      installer:runPending(false, function(status, revision)
+        if isReady() then
+          UpdateProperty(STATUS, installStatus(status, revision))
+        end
+      end)
+    end
+    if enabled() then
+      local function scheduledCheck()
+        if enabled() and not installer:pending() then
+          EC.CheckDriverUpdates()
+        end
+        if isReady() and enabled() then
+          SetTimer(SCHEDULE, 86400000, scheduledCheck)
+        end
+      end
+      SetTimer(SCHEDULE, checkSoon and 5000 or 86400000, scheduledCheck)
+    end
+  end
+  OPC.Automatic_Updates = function()
+    if running then
+      running.stale = true
+    end
+    start(true)
+  end
   return function()
     running = nil
+    installer:stop()
+    CancelTimer(SCHEDULE)
     reset()
+  end, function()
+    start(true)
   end
 end
 

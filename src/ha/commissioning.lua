@@ -7,6 +7,8 @@ local companions = require("lib.companions")
 local persist = require("lib.persist")
 local deferred = require("deferred")
 local metrics = require("ha.performance").shared
+local choices = require("ha.choices")
+local endpointKeys = choices.endpointKeys
 local Commissioning = {}
 Commissioning.__index = Commissioning
 local KEY, MAX_BATCH, MAX_RECORDS = "HA.Commissioning", 16, 1000
@@ -64,25 +66,6 @@ local function requested(input)
     }
   end
   return result
-end
-
-local function endpointKeys(row)
-  local choice = row.attributes.device_choice
-  local source = choice and choice.source_load
-  local canonical = source and source.entity_id or row.entity_id
-  local keys = { [canonical] = true, [row.entity_id] = true }
-  for _, alias in ipairs(row.entity_aliases or {}) do
-    keys[alias] = true
-  end
-  return canonical, keys
-end
-
-local function legacyGesture(row)
-  local physical = row.attributes.device_choice
-  local gesture = physical and physical.gesture_entity_id
-  -- A prototype may store the gesture entity even when its load was selected.
-  -- Several loads can share that gesture entity, so it only flags legacy review.
-  return contract.entity(gesture) and gesture:match("^event%.") and gesture or nil
 end
 
 local function receipts()
@@ -159,6 +142,11 @@ function Commissioning:existingChoices(page)
   local existing, staged = {}, {}
   for _, row in ipairs(page.entities) do
     local _, keys = endpointKeys(row)
+    local gesture = choices.gestureEntity(row)
+    local gestureMatch = gesture and self.catalog:gestureChoice(gesture) == row.entity_id and gesture or nil
+    if gestureMatch and index.endpoints[gestureMatch] then
+      existing[row.entity_id] = true
+    end
     local pending, ambiguous
     for key in pairs(keys) do
       if index.endpoints[key] then
@@ -180,7 +168,8 @@ function Commissioning:existingChoices(page)
               name = pending.name,
               room_id = pending.room_id,
               keys = keys,
-              legacy_gesture = legacyGesture(row),
+              legacy_gesture = gesture,
+              gesture_match = gestureMatch,
             }
             local decision, id = project.decide(item, index.devices, pending, index.coordinator)
             if decision == "resume" and id == candidate.id then
@@ -211,12 +200,14 @@ function Commissioning:_item(choice, rooms, devices, saved)
     return nil, "name_required"
   end
   local canonical, keys = endpointKeys(row)
+  local gesture = choices.gestureEntity(row)
   local item = {
     choice = choice,
     domain = row.domain,
     endpoint = canonical,
     keys = keys,
-    legacy_gesture = legacyGesture(row),
+    legacy_gesture = gesture,
+    gesture_match = gesture and self.catalog:gestureChoice(gesture) == row.entity_id and gesture or nil,
     source_name = (physical and physical.name) or row.name,
     name = name,
     room_id = choice.room_id,
@@ -374,7 +365,6 @@ function Commissioning:_bind(item, need, deviceId, revision)
   end
   local work = self.configure(deviceId, {
     choice_id = item.choice.choice_id,
-    source_name = item.source_name,
     family = item.family,
     revision = revision,
     prepare = true,

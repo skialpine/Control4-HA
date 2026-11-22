@@ -21,6 +21,22 @@ function M.mode(label)
   return modes[label]
 end
 
+function M.switchButtonBehavior(mode)
+  return ({ bridge = "Control device and report presses", buttons = "Buttons only" })[mode]
+end
+
+function M.ledBehavior(value)
+  if
+    value == "Use Device Setting"
+    or value == "Follow Load"
+    or value == "Follow Load (Inverted)"
+    or value == "Always On"
+    or value == "Always Off"
+  then
+    return value
+  end
+end
+
 local registry = contract.registryId
 
 local function load(value, requireRegistry)

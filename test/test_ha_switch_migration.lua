@@ -24,6 +24,24 @@ local owner = {
   end,
 }
 local secret = "PRIVATE_TEST_PAYLOAD"
+T.falsy("a configured Switch with no plan hides the review", migration.reviewAvailable("switch", true))
+do
+  local key = "HA.SwitchMigration.v1"
+  local decode, decodes = codec.storedObject, 0
+  codec.storedObject = function(raw)
+    decodes = decodes + 1
+    return decode(raw)
+  end
+  persist:set(key, codec.encode({ version = 1, replacement = 54, source = { id = 51 } }), true)
+  T.truthy("an unfinished checkpoint offers a review", migration.reviewAvailable("switch", true))
+  T.truthy("an unchanged checkpoint still offers a review", migration.reviewAvailable("switch", true))
+  T.eq("routine redraws decode the same checkpoint once", decodes, 1)
+  persist:set(key, "malformed", true)
+  T.truthy("a changed unreadable checkpoint offers recovery", migration.reviewAvailable("switch", true))
+  persist:delete(key)
+  T.falsy("a deleted checkpoint no longer offers a review", migration.reviewAvailable("switch", true))
+  codec.storedObject = decode
+end
 local function fixture(v)
   persist:delete("HA.SwitchMigration.v1")
   version, link, peer, changes, reads, failBind = v, 42, { id = 51, port = 1 }, 0, 0, false
@@ -126,7 +144,10 @@ function GetDeviceBindings(id)
       },
     }
   elseif id == 54 then
-    return { [2] = { deviceid = 54, provider = true, bindingclasses = { { class = "RELAY" } } } }
+    return {
+      [1] = { deviceid = 54, provider = false },
+      [2] = { deviceid = 54, provider = true, bindingclasses = { { class = "RELAY" } } },
+    }
   end
   return {}
 end
@@ -177,6 +198,48 @@ local function action(name, params)
     not codec.encode(result):find(secret, 1, true)
   )
   return result
+end
+
+T.section("copy only the known button and LED settings to an unconfigured replacement")
+do
+  fixture("107")
+  operationMode = "Control HA Device with Button Events"
+  local project = require("ha.commissioning-project")
+  local getDevice, getProperties, update = project.device, GetDeviceProperties, UpdateProperty
+  local oldMode, oldLED = Properties["Button behavior"], Properties["LED Behavior"]
+  Properties["Button behavior"], Properties["LED Behavior"] = "Automatic", "Use Device Setting"
+  project.device = function()
+    return { room_id = 7, provider = replacementProvider }
+  end
+  GetDeviceProperties = function()
+    local props = getProperties()
+    props["LED Behavior"] = "Follow Load (Inverted)"
+    return props
+  end
+  UpdateProperty = function(key, value)
+    Properties[key] = value
+  end
+  attach()
+  local args = { SOURCE = "51" }
+  replacementProvider = 83
+  T.eq("a replacement on another coordinator cannot copy settings", UIR.HA_SWITCH_COPY_SETTINGS(args), nil)
+  replacementProvider = 42
+  owner.config = { key = "already configured" }
+  T.eq("an existing selection cannot be overwritten", UIR.HA_SWITCH_COPY_SETTINGS(args), nil)
+  owner.config = nil
+  T.eq("copies settings without selecting a target", UIR.HA_SWITCH_COPY_SETTINGS(args), "<upgrade>copied</upgrade>")
+  T.eq(
+    "preserves the mapped button and LED modes",
+    { Properties["Button behavior"], Properties["LED Behavior"], owner.config },
+    { "Control device and report presses", "Follow Load (Inverted)" }
+  )
+  T.eq(
+    "copy can safely be repeated for the same staged replacement",
+    UIR.HA_SWITCH_COPY_SETTINGS(args),
+    "<upgrade>copied</upgrade>"
+  )
+  Properties["Button behavior"], Properties["LED Behavior"] = oldMode, oldLED
+  project.device, GetDeviceProperties, UpdateProperty = getDevice, getProperties, update
 end
 for _, v in ipairs({ "106", "107" }) do
   T.section("explicit migration and interruption recovery, version " .. v)
@@ -276,6 +339,8 @@ for _, v in ipairs({ "106", "107" }) do
   T.eq("saved setup can run only after original retires", action("configure", { confirmed = true }).phase, "staged")
   UpdateProperty = change
   owner.config = { controlled_load = { entity_id = "switch.hall" } }
+  T.falsy("routine configured Light hides the review", migration.reviewAvailable("light", true))
+  T.truthy("configured replacement still offers the pending migration", migration.reviewAvailable("switch", true))
   T.truthy("completion cannot skip relay readback", action("complete", { confirmed = true }).error)
   suiteVersions[42] = revision - 1
   T.eq("version skew blocks forward relay moves", action("transfer", { confirmed = true }).can_transfer, false)
@@ -305,6 +370,7 @@ for _, v in ipairs({ "106", "107" }) do
   require("c4_fixtures").coldStoredObject("HA.SwitchMigration.v1")
   attach()
   T.truthy("verification survives reopening the driver", action("open").completed)
+  T.falsy("configured Switch hides the review after verified completion", migration.reviewAvailable("switch", true))
   T.truthy("repeating verification is safe", action("complete", { confirmed = true }).completed)
   T.truthy("active replacement blocks rollback", action("rollback", { confirmed = true }).error)
   owner.config = nil

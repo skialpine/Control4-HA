@@ -222,6 +222,82 @@ do
   T.eq("destroyed connection refuses recovery", connection:recover(), false)
 end
 
+T.section("port discovery waits for both candidates and sends no authentication")
+do
+  local Discovery = require("ha.port-discovery")
+  local WebSocket = require("drivers-common-public.module.websocket")
+  local function search(scheme)
+    local outcome
+    local cancel = Discovery.search(scheme .. "://ha.test", scheme, "lab-ca.pem", function(port, matches)
+      outcome = { port, matches }
+    end)
+    clock.run(1)
+    local sockets = {}
+    for _, socket in pairs(WebSocket.Sockets or {}) do
+      sockets[socket.port] = socket
+    end
+    return sockets, function()
+      return outcome
+    end, cancel
+  end
+
+  local count = #sentText()
+  local sockets, outcome, cancel = search("http")
+  T.check("HTTP tries only ports 80 and 8123", sockets[80] and sockets[8123] and not sockets[443])
+  upgrade(sockets[80], nil, frame('{"type":"auth_required"}'))
+  T.eq("one match waits for the other candidate", outcome(), nil)
+  clock.run(6500)
+  T.eq("one Home Assistant match identifies the port", outcome(), { 80, 1 })
+  T.eq("neither candidate sent an auth frame", #sentText(), count)
+  local connection = start("http://ha.test:" .. outcome()[1])
+  T.check(
+    "the discovered port opens a new authenticated socket",
+    connection.socket and connection.socket ~= sockets[80]
+  )
+  upgrade(connection.socket, nil, frame('{"type":"auth_required"}'))
+  T.eq("the discovered port authenticates on the first attempt", #sentText(), count + 1)
+  finish(connection)
+  count = #sentText()
+  cancel()
+  clock.run(3000)
+
+  sockets, outcome, cancel = search("https")
+  T.check("HTTPS tries only ports 443 and 8123", sockets[443] and sockets[8123] and not sockets[80])
+  upgrade(sockets[443], nil, frame('{"type":"auth_required"}'))
+  upgrade(sockets[8123], nil, frame('{"type":"auth_required"}'))
+  T.eq("discovery waits for template sockets to retire", outcome(), nil)
+  clock.run(3000)
+  T.eq("two matching ports leave resolution to the installer", outcome(), { [2] = 2 })
+  T.eq("HTTPS probes also send no authentication", #sentText(), count)
+  cancel()
+  clock.run(3000)
+
+  sockets, outcome, cancel = search("http")
+  upgrade(sockets[80], "302 Found", frame('{"type":"auth_required"}'))
+  upgrade(sockets[8123], nil, frame('{"type":"other_application"}'))
+  clock.run(6500)
+  T.eq("redirects and unrelated applications are ignored", outcome(), { [2] = 0 })
+  cancel()
+  clock.run(3000)
+
+  sockets, outcome, cancel = search("http")
+  upgrade(sockets[8123], nil, frame('{"type":"auth_required"}'))
+  cancel()
+  local earlySocket
+  connection, earlySocket = start("http://ha.test:8123")
+  T.eq("manually selecting a port waits for the closing probe", earlySocket, nil)
+  clock.run(3000)
+  T.check("manual connection allocates a fresh socket", connection.socket and connection.socket ~= sockets[8123])
+  upgrade(connection.socket, nil, frame('{"type":"auth_required"}'))
+  T.eq("manual connection can authenticate immediately after retirement", #sentText(), count + 1)
+  finish(connection)
+
+  sockets, outcome, cancel = search("http")
+  cancel()
+  clock.run(10000)
+  T.eq("cancelling before replies publishes no result", outcome(), nil)
+end
+
 T.section("credentials and private messages are absent at maximum logging")
 local output = table.concat(captured, "\n")
 T.excludes("token not logged", output, token)

@@ -115,6 +115,121 @@ family's confirmed state. Log Mode was Off.
 Each family has two recovery samples. These intervals include the confirmation
 deadline, the harness and the state read.
 
+### Revision 2026112009 packaged Light and Switch
+
+The exact packages passed 1,466 Light and 727 Switch checks against Home
+Assistant 2026.11.1. The driver processes used simulated Director IPC. Log Mode
+was Off, Log Level was Info and Latency Diagnostics was enabled. Each row uses
+ten samples and shows median / nearest-rank p95 in milliseconds. The workstation
+monotonic clock starts at the proxy request and captures each receipt
+separately. The family receipt includes harness scheduling and delivery to the
+Lua driver.
+
+| Operation                     | HA service acceptance | HA state push | Family consumed state |
+| ----------------------------- | --------------------: | ------------: | --------------------: |
+| Dimmer Toggle from Off        |         27.14 / 28.63 | 26.87 / 27.81 |         47.69 / 48.63 |
+| Dimmer Toggle from On         |         27.08 / 28.61 | 26.74 / 28.36 |         47.86 / 49.78 |
+| Dimmer scene activation       |         25.48 / 29.39 | 25.16 / 27.99 |         46.14 / 47.32 |
+| Dimmer group level            |         25.36 / 27.85 | 25.06 / 26.76 |         46.44 / 46.73 |
+| Switch linked Toggle from Off |         25.20 / 26.93 | 25.05 / 26.34 |         46.17 / 48.10 |
+| Switch linked Toggle from On  |         25.60 / 27.70 | 25.48 / 27.07 |         46.44 / 48.84 |
+
+The separate packaged picker run passed six checks per family. Both selected a
+simulated wall control, then returned to the original Porch light through the
+shipped HTML and verified the saved choice.
+
+### Revision 2026112012 Office Light Group
+
+The installer verified the linked Office switch tile on CORE 5 through Off and
+On, then slider zero and On. The Light Group stayed in sync. The linked driver
+reported the following timing samples with Log Mode Print, Level Debug and
+Latency Diagnostics On. All samples used `C4:GetTickCount` and passed the clock
+checks. These elapsed times measure the local send or feedback handler.
+
+| Operation               | Samples | Median (ms) | p95 (ms) |
+| ----------------------- | ------: | ----------: | -------: |
+| Linked On send          |       6 |         101 |      120 |
+| Linked Off send         |       7 |         123 |      170 |
+| Linked ramp send        |      26 |          78 |      108 |
+| Linked feedback handler |      58 |           7 |       27 |
+
+The send timing includes synchronous Director work. It begins after the linked
+target check and ends when the native send returns. The report does not measure
+the time between the initial tap and visible light output.
+
+### Revision 2026112013 Office bottom hold
+
+The Office paddle sends press and release through its connected Control4 Light
+Group. The group has a 4,000 ms hold-down rate. The Office Light has a 5,000 ms
+hold-down rate for its own native control. The group uses brightness zero for
+Off and has 0 ms command delay.
+
+One CORE 5 capture recorded 24 Director samples on the host's monotonic clock.
+The group started at 100% with 3,999 ms remaining toward 0%. At 2,999 ms
+remaining, the group reported 74.92% and the three members reported 74.58% to
+74.88%. This is about 25 percentage points per second of reported ramp time,
+consistent with the group's rate. After release, every member and the Office
+proxy held at 63% through the last sample, about 3.5 seconds after the first
+settled group report. The installer saw the bulbs dim together. The sample
+records Director feedback and the installer observation. It has no optical
+measurement of brightness between the reports.
+
+On CORE 1, a separate 70% hold test on the same group and suite revisions logged
+the forwarded press and release. The group, fixture member and wall proxy all
+settled at 42% after release and stayed there on a later read.
+
+## Revision 2026112101 native reconnect
+
+On the clean CORE 1 project, each of three runs disconnected the Coordinator,
+confirmed all three drivers went offline, and issued the native Connect action.
+The Director client timestamped the acknowledgment and the first connected
+property readback per driver with its monotonic clock. Driver logging and
+runtime profiling were Off. All three drivers were connected afterward, with the
+Hallway wall dimmer and AC selections intact.
+
+| Connect action to observation   | Median  | Range         |
+| ------------------------------- | ------- | ------------- |
+| Director command acknowledgment | 56 ms   | 55–56 ms      |
+| Coordinator connected to HA     | 3.126 s | 3.110–3.133 s |
+| Switch connected                | 3.276 s | 3.222–3.298 s |
+| Light connected                 | 3.521 s | 3.470–3.542 s |
+
+The child interval includes the delay to the first successful property poll.
+This was an explicit reconnect on native Director with the companion loaded. The
+packaged comparison below measures different boundaries, including
+disrupted-socket and Coordinator lifecycle recovery.
+
+An earlier native single run on 2026111813 timed a Coordinator-only reload. The
+Director update operation took 6.968 s. The client first confirmed the Light
+ready 1.359 s after that operation and the Switch ready after 1.425 s. The
+client used its monotonic clock and sampled Director status. The receipt does
+not record logging settings. This supplies a native reload sample, separate from
+the current candidate's startup measurement.
+[CORE 1 recovery receipt](../lab/installed-upgrade-recovery-readback.json)
+
+## Revision 2026112101 paired startup and recovery
+
+The same three packages ran against the same Home Assistant 2026.11.1 fixture
+installation, first without HA Gesture Bridge and then with version 0.1.3. The
+Light and Switch controlled the same direct HA loads in both conditions. Each
+condition ran three fresh packaged Coordinator/Light/Switch process sets and
+passed 30 checks. Package hashes matched the staged suite. The temporary HA
+allocation was removed, and Edwards and its HA installation were unchanged.
+
+| Measured interval                   | Companion absent, median (range) | Companion loaded, median (range) |
+| ----------------------------------- | -------------------------------- | -------------------------------- |
+| Package start to authenticated HA   | 2.160 s (2.158–2.181 s)          | 2.155 s (2.154–2.178 s)          |
+| Socket loss to both consumers ready | 10.319 s (10.298–10.379 s)       | 10.295 s (10.279–10.310 s)       |
+| Coordinator reload to both ready    | 7.044 s (7.038–7.060 s)          | 7.042 s (7.034–7.042 s)          |
+
+The harness used Python monotonic time with driver logging Off and runtime
+profiling disabled. Readiness required a fresh snapshot, exact subscription and
+connected status for each child. These elapsed times include the Director shim,
+inter-process communication and the harness's HA identity checks and forwarding.
+They measure ordinary control with and without the integration loaded. Native
+Director startup and recovery timing and companion-specific gesture timing are
+separate measurements.
+
 ## Prior work across all three repositories
 
 The Light prototype is `light/` inside Control4-HA-Switch. Its history includes
@@ -175,20 +290,20 @@ performance evidence.
 
 ## Common operation matrix
 
-| Operation                                        | Required boundaries                                                                                                                 | Current qualification / remaining gate                                                                 |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Binary Light/Switch On, Off, Toggle              | Request dispatch → HA result, separately → matching confirmed state; app/proxy processing separately                                | Repeated built-package/real-HA transport samples; native family UI/control pending                     |
-| Dimmer level while off/on                        | Request → result and exact brightness feedback; native slider/report cost separately                                                | Repeated real-HA 64/192 level scenarios; actual Light adapter pending                                  |
-| RGB/xy/CCT and transitions                       | Conversion/validation, service result, confirmed color/temperature/level; requested transition duration distinguished from overhead | Request categories registered; feature/scenario qualification pending task 5.2                         |
-| Hold, ramp, release/stop                         | Input → first command, cadence/jitter, release → last future command; canceled/overridden outcome                                   | Template engine correctness proven; timing in actual adapter pending tasks 5.3–5.4                     |
-| Presets, scenes and groups                       | Native dispatch/program execution, target feedback; simultaneous group/scene work and forced synchronization                        | Pending native adapter qualification                                                                   |
-| Connected-C4 On/level and paddle target          | Logical On/explicit level dispatch → target call/feedback; synchronous callback work separated                                      | Pending tasks 6.1–6.2; include ordinary target and group                                               |
-| Single/multi-press, hold/release, extra buttons  | Decode, validation/programming, property/LED, forwarding and publication phases; HA-clock version-2 acknowledgment separately       | Existing companion protocol reused; new receiver wiring pending task 6.3                               |
-| LED color/brightness/behavior                    | Validation/dispatch → result and actual indicator feedback, while preserving behavior                                               | Pending task 6.4; include restricted palette and unavailable/rejected controls                         |
-| Cold picker, warm reopen, revision check, paging | User request → usable options; companion request, scoped metadata, projection and page costs separately                             | Runtime catalog spans wired; repeated UI wall-clock evidence required with task 4.3                    |
-| Selection commit and preparation                 | Choice → validated selection/confirmed state; preparation progress, result and input readiness separately                           | Preparation round-trip hook wired; setup UI and first-use/reuse scenarios pending task 4.4             |
-| Startup and reconnect                            | Initialization → authenticated connection → fresh selected evidence; backoff, read/subscription costs distinct                      | Connect/auth/subscription/read hooks wired; native/physical and repeated recovery measurements pending |
-| Release check/install                            | Check/download/verification/reload → usable restored state, interruption and rollback separately                                    | Pending update implementation and qualification                                                        |
+| Operation                                        | Required boundaries                                                                                                                 | Current qualification / remaining gate                                                                                                                          |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Binary Light/Switch On, Off, Toggle              | Request dispatch → HA result, separately → matching confirmed state; app/proxy processing separately                                | Packaged control and native CORE 1 Toggle sampled with simulated loads. Navigator and wall switch checks are grouped in OpenSpec.                               |
+| Dimmer level while off/on                        | Request → result and exact brightness feedback; native slider/report cost separately                                                | Packaged adapter level changes timed against simulated HA dimmers. Physical dimmer timing remains open.                                                         |
+| RGB/xy/CCT and transitions                       | Conversion/validation, service result, confirmed color/temperature/level; requested transition duration distinguished from overhead | Packaged adapters timed against HA Demo color modes and simulated transition feedback. Physical transitions remain open.                                        |
+| Hold, ramp, release/stop                         | Input → first command, cadence/jitter, release → last future command; canceled/overridden outcome                                   | Template engine correctness proven; timing in actual adapter pending tasks 5.3–5.4                                                                              |
+| Presets, scenes and groups                       | Native dispatch/program execution, target feedback; simultaneous group/scene work and forced synchronization                        | Packaged preset, scene and group dispatch timed. CORE 1 verified saved scenes and group membership with simulated targets. Repeated native timing remains open. |
+| Connected-C4 On/level and paddle target          | Logical On/explicit level dispatch → target call/feedback; synchronous callback work separated                                      | CORE 1 verified On presets with an ordinary target and a Light Group. Repeated native timing remains open.                                                      |
+| Single/multi-press, hold/release, extra buttons  | Decode, validation/programming, property/LED, forwarding and publication phases; HA-clock version-2 acknowledgment separately       | Existing companion protocol reused; new receiver wiring pending task 6.3                                                                                        |
+| LED color/brightness/behavior                    | Validation/dispatch → result and actual indicator feedback, while preserving behavior                                               | Pending task 6.4; include restricted palette and unavailable/rejected controls                                                                                  |
+| Cold picker, warm reopen, revision check, paging | User request → usable options; companion request, scoped metadata, projection and page costs separately                             | Runtime catalog spans wired; repeated UI wall-clock evidence required with task 4.3                                                                             |
+| Selection commit and preparation                 | Choice → validated selection/confirmed state; preparation progress, result and input readiness separately                           | Preparation round-trip hook wired; setup UI and first-use/reuse scenarios pending task 4.4                                                                      |
+| Startup and reconnect                            | Initialization → authenticated connection → fresh selected evidence; backoff, read/subscription costs distinct                      | Connect/auth/subscription/read hooks wired; native/physical and repeated recovery measurements pending                                                          |
+| Release check/install                            | Check/download/verification/reload → usable restored state, interruption and rollback separately                                    | Pending update implementation and qualification                                                                                                                 |
 
 Exercise both normal and failure paths: rejection, timeout, unavailable target,
 retired selection and recovery. A diagnostic failure cannot suppress a command,

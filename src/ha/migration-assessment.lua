@@ -337,6 +337,7 @@ function M.assess(requested, options)
       report.interfaces = false
     end
   end
+  report.bindingsVerified = report.interfaces
   if report.family == "switch" and #report.proxies > 0 then
     report.interfaces = false
   end
@@ -375,6 +376,19 @@ function M.assess(requested, options)
     report.candidate_entity = entity
   end
   report.mode = ok and type(props) == "table" and prototypeSelection.mode(props["Operation Mode"]) or nil
+  if report.family == "switch" and prototypeSelection.switchButtonBehavior(report.mode) and type(props) == "table" then
+    local name = props["Selected Device"]
+    if
+      type(name) == "string"
+      and #name <= 160
+      and name:match("%S")
+      and not name:find("%c")
+      and name ~= "Not selected"
+    then
+      report.selectedName = name
+    end
+    report.ledBehavior = prototypeSelection.ledBehavior(props["LED Behavior"])
+  end
   if not (options and options.skipPrograms) then
     report.programs = readProgramming(members, options and options.programming)
   end
@@ -389,6 +403,37 @@ end
 
 function M.destination(sourceBinding)
   return roles[sourceBinding]
+end
+
+-- Return the exact connected item, including a proxy's underlying driver.
+function M.connectionPeer(id)
+  local label, row = M.deviceLocation(id)
+  if not row then
+    return label
+  end
+  local protocol = row.protocol or {}
+  local child = next(protocol)
+  if child then
+    if next(protocol, child) then
+      return label
+    end
+    id = numeric(child)
+    row = id and lookup(id) or nil
+  end
+  if row and type(row.driverFileName) == "string" then
+    if not ids.legacyPrototypes[row.driverFileName] then
+      return label, true
+    end
+    if M.source(id, row) then
+      return label, false, "legacy"
+    end
+    local light = ids.packages.light
+    return label,
+      row.driverFileName == light.file and C4:GetDeviceData(id, "model") == light.model and tostring(
+        C4:GetDeviceData(id, "version")
+      ):match("^%d%d%d%d%d%d%d%d%d%d$") ~= nil
+  end
+  return label
 end
 
 function M.legacyCoordinator(source)
@@ -416,7 +461,7 @@ function M.switchMigrationModeIssue(source)
     return nil
   end
   if source.mode == "bridge" or source.mode == "buttons" then
-    return "This switch uses button events. See Manual migration for button switches in the Home Assistant Connection driver’s Documentation tab."
+    return "This switch uses button events. Open Quick Setup on Home Assistant Connection and choose Migrate switch drivers."
   end
   return "Check Operation Mode in the original switch’s Properties in Composer, then refresh or reopen this review."
 end

@@ -6,6 +6,8 @@ local installedSuite = require("ha.installed-suite")
 local relays = require("ha.migration-relays")
 local persist = require("lib.persist")
 local ids = require("ha.identities")
+local prototype = require("ha.prototype-selection")
+local project = require("ha.commissioning-project")
 require("lib.bindings")
 local KEY = "HA.SwitchMigration.v1"
 local ALIGN = "Update the installed Home Assistant drivers to the same release, then select Refresh review."
@@ -103,8 +105,7 @@ local function lines(report, replacement)
   return text
 end
 
-local function saved()
-  local raw = persist:get(KEY, nil, true)
+local function parseSaved(raw)
   if raw == nil then
     return nil
   end
@@ -118,6 +119,34 @@ local function saved()
     "invalid checkpoint"
   )
   return data
+end
+
+local function saved()
+  return parseSaved(persist:get(KEY, nil, true))
+end
+
+local reviewedRaw, reviewVisible
+
+function M.reviewAvailable(family, configured)
+  if not configured then
+    return true
+  end
+  if family == "switch" then
+    local readable, raw = pcall(persist.get, persist, KEY, nil, true)
+    -- Keep recovery visible if the saved plan cannot be read.
+    if not readable then
+      return true
+    end
+    if raw == nil then
+      reviewedRaw, reviewVisible = nil, false
+    elseif raw ~= reviewedRaw then
+      local valid, checkpoint = pcall(parseSaved, raw)
+      reviewedRaw = raw
+      reviewVisible = not valid or not contract.integer(checkpoint.completed_revision)
+    end
+    return reviewVisible
+  end
+  return false
 end
 
 local function exclusive(source, me)
@@ -448,6 +477,37 @@ end
 function M.install(register, family, current)
   local preview, ticket = nil, 0
   if family == "switch" then
+    UIR.suppressDebug.HA_SWITCH_COPY_SETTINGS = true
+    UIR.HA_SWITCH_COPY_SETTINGS = function(params)
+      local owner, id = current(), params and tonumber(params.SOURCE)
+      if not owner or owner.pending or owner.working or owner.config or not contract.integer(id) then
+        return
+      end
+      local source = assess.assess(id, { skipPrograms = true })
+      local behavior = source and source.family == "switch" and prototype.switchButtonBehavior(source.mode)
+      local coordinator = behavior and tonumber(C4:GetBoundProviderDevice(id, ids.lightCoordinatorBinding))
+      local replacement = coordinator and coordinator > 0 and project.device(tonumber(C4:GetDeviceID()))
+      if not replacement or replacement.provider ~= coordinator or replacement.room_id ~= source.room_id then
+        return
+      end
+      local existing, led = Properties["Button behavior"], Properties["LED Behavior"]
+      if
+        (existing ~= "Automatic" and existing ~= behavior)
+        or (source.ledBehavior and led ~= "Use Device Setting" and led ~= source.ledBehavior)
+      then
+        return
+      end
+      UpdateProperty("Button behavior", behavior, true)
+      if source.ledBehavior then
+        UpdateProperty("LED Behavior", source.ledBehavior)
+      end
+      if
+        Properties["Button behavior"] == behavior
+        and (not source.ledBehavior or Properties["LED Behavior"] == source.ledBehavior)
+      then
+        return "<upgrade>copied</upgrade>"
+      end
+    end
     UIR.suppressDebug.HA_SWITCH_UPGRADE_STATUS = true
     UIR.HA_SWITCH_UPGRADE_STATUS = function(params)
       local owner, cp = current(), saved()

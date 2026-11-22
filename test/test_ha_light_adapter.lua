@@ -758,6 +758,71 @@ local function dimmer(transition, colorMode)
   return f
 end
 
+T.section("Native saved brightness and color rates retain their own values")
+do
+  local f = fixture("light.native_rate", {
+    setup = "<setup><light_brightness_rate_default>750</light_brightness_rate_default>"
+      .. "<light_color_rate_default>0</light_color_rate_default></setup>",
+  })
+  f.state("on", { brightness = 64, supported_color_modes = codec.array({ "brightness" }), supported_features = 32 })
+  f.proxy:send("RAMP_TO_LEVEL", { LEVEL = 70 })
+  T.eq("the native brightness-only default controls an outgoing ramp without an explicit duration", {
+    f.rpc().service_data.transition,
+    f.adapter.light.settings:defaultColorRate(),
+  }, { 0.75, 0 })
+  f.proxy:send("UPDATE_BRIGHTNESS_RATE_DEFAULT", { RATE = 900 })
+  T.eq("an explicit edit still sets the shared default rate", {
+    f.adapter.light.settings:defaultRate(),
+    f.adapter.light.settings:defaultColorRate(),
+  }, { 900, 900 })
+  f.proxy:send("UPDATE_BRIGHTNESS_RATE_DEFAULT", { RATE = 500 })
+  f.done()
+end
+
+T.section("Retained native click and hold rates reach the direct HA load")
+do
+  local persist = require("lib.persist")
+  local settings = require("lib.light.settings")
+  local keys =
+    { settings.P_CLICK_RATE_UP, settings.P_CLICK_RATE_DOWN, settings.P_HOLD_RATE_UP, settings.P_HOLD_RATE_DOWN }
+  local prior = {}
+  for _, key in ipairs(keys) do
+    prior[key] = persist:get(key)
+    persist:delete(key)
+  end
+  for _, case in ipairs({
+    { binding = 200, command = "DO_CLICK", level = 0, expected = 0.45 },
+    { binding = 201, command = "DO_CLICK", level = 255, expected = 0.9 },
+    { binding = 200, command = "DO_PUSH", level = 0, expected = 4 },
+    { binding = 201, command = "DO_PUSH", level = 255, expected = 6 },
+  }) do
+    local f = fixture("light.native_rate", {
+      setup = "<setup><CLICK_RATE_UP>450</CLICK_RATE_UP><CLICK_RATE_DOWN>900</CLICK_RATE_DOWN>"
+        .. "<HOLD_RATE_UP>4000</HOLD_RATE_UP><HOLD_RATE_DOWN>6000</HOLD_RATE_DOWN></setup>",
+    })
+    f.state(case.level == 0 and "off" or "on", {
+      brightness = case.level,
+      supported_color_modes = codec.array({ "brightness" }),
+      supported_features = 32,
+    })
+    f.proxy:link(case.binding, case.command)
+    f.clock.run(350)
+    T.eq(
+      "native rate " .. case.command .. " from " .. case.level,
+      f.calls[1] and f.calls[1].rpc.service_data.transition,
+      case.expected
+    )
+    f.done()
+  end
+  for _, key in ipairs(keys) do
+    if prior[key] == nil then
+      persist:delete(key)
+    else
+      persist:set(key, prior[key])
+    end
+  end
+end
+
 T.section("Holds stop future commands and only a supported transition is retargeted")
 do
   local top = 200
@@ -822,6 +887,10 @@ for _, case in ipairs({
   {
     name = "an override forwarded to a quiet group",
     retire = function(f)
+      local devices = C4:GetDevices()
+      devices[P.PROXY_DEVICE].variables = f.proxy.vars
+      devices[9179] = { deviceName = "Quiet Load Group" }
+      ShimSetDevices(devices)
       f.proxy:send("JOIN_GROUP", { GROUP_ID = 9179, KEEP_SYNC = true })
       f.proxy:send("ON")
       T.eq("group forwarding does not send a direct request", #f.calls, 1)
@@ -1002,6 +1071,46 @@ do
   T.eq("interactive stop cancels pending increments", #f.calls, 5)
   T.eq("software fade timers did not raise", f.clock.errors, {})
   f.proxy:send("REMOVE_SCENE", params)
+  f.done()
+end
+
+T.section("A direct HA scene combines brightness and color at the longer transition rate")
+do
+  local f = fixture("light.scene")
+  local attrs = {
+    supported_color_modes = codec.array({ "xy" }),
+    supported_features = 32,
+    brightness = 51,
+    color_mode = "xy",
+    xy_color = codec.array({ 0.30, 0.33 }),
+  }
+  f.state("on", attrs)
+  local scene = { SCENE_ID = "189" }
+  f.proxy:send("PUSH_SCENE", {
+    SCENE_ID = scene.SCENE_ID,
+    ELEMENTS = "<element><brightnessEnabled>True</brightnessEnabled><brightness>70</brightness>"
+      .. "<brightnessRate>750</brightnessRate><colorEnabled>True</colorEnabled>"
+      .. "<colorX>0.40</colorX><colorY>0.37</colorY><colorRate>2500</colorRate></element>",
+  })
+  f.proxy:mark()
+  f.proxy:send("ACTIVATE_SCENE", scene)
+  T.eq("one HA call sends both targets at the longer rate", { #f.calls, f.rpc().service_data }, {
+    1,
+    { brightness = 179, xy_color = { 0.40, 0.37 }, transition = 2.5 },
+  })
+  f.calls[1].completion:resolve({})
+  f.clock.run(2499)
+  T.eq("service acceptance alone does not complete either aspect", {
+    f.proxy:count("LIGHT_BRIGHTNESS_CHANGED"),
+    f.proxy:count("LIGHT_COLOR_CHANGED"),
+    #f.calls,
+  }, { 0, 0, 1 })
+  f.clock.run(1)
+  attrs.brightness, attrs.xy_color = 179, codec.array({ 0.40, 0.37 })
+  f.state("on", attrs)
+  f.clock.run(1000)
+  T.eq("the combined fade finishes without a follow-up read", { f.proxy:percent(), #f.calls }, { 70, 1 })
+  f.proxy:send("REMOVE_SCENE", scene)
   f.done()
 end
 

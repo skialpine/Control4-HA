@@ -7,8 +7,18 @@ local events = require("lib.events")
 local page = require("lib.ui.page")
 local setupPage = require("ha.setup-page")
 local properties = require("lib.ui.tab-properties")
+local migrationSelection = require("ha.migration-selection")
 local metrics = require("ha.performance").shared
 local M = {}
+
+local indicatorBehaviorLabels = {
+  ["Use Device Setting"] = "Keep current LED setting",
+  ["Follow Load"] = "On when the device is on",
+  ["Follow Load (Inverted)"] = "On when the device is off",
+  ["Always On"] = "Always on",
+  ["Always Off"] = "Always off",
+  ["Follow Bound Device"] = "Follow the linked light",
+}
 
 function M.install(family, makeAdapter)
   local adapter = makeAdapter and makeAdapter()
@@ -42,11 +52,10 @@ function M.install(family, makeAdapter)
         and (setup.override ~= "Automatic" or setup.linked or setup.config and setup.config.gesture_entity_id ~= nil)
     end
     if name == "App Control Link" then
-      return family == "light"
-        and setup
-        and setup.linked
-        and setup:mode() == "Connected Control4 light"
-        and not adapter:hasDedicatedAppLink()
+      return setup and setup:hasAppLinkChoices() and setup:mode() == "Connected Control4 light"
+    end
+    if name == "Debug Mode" and family == "light" then
+      return setup and (setup.linked or setup:usesButtons() or Properties[name] ~= "Off")
     end
     if name == "Last Gesture" or name == "Gesture Count" or name == "Last Sequence" or name == "Debug Mode" then
       return setup and (setup:usesButtons() or Properties["Debug Mode"] == "On")
@@ -62,8 +71,37 @@ function M.install(family, makeAdapter)
   function properties:list()
     local result = {}
     for _, property in ipairs(list(self)) do
-      if offered(property.name) then
+      -- Keep the linked Light selector in the page so it is reachable by Tab
+      -- immediately when the new button mode makes it applicable.
+      if offered(property.name) or (property.name == "App Control Link" and setup and setup:hasAppLinkChoices()) then
         property.choices = applicableChoices(property.name) or property.choices
+        if property.name == "Button behavior" then
+          property.choice_labels = setup:buttonBehaviorLabels()
+          property.description = nil
+        elseif property.name == "App Control Link" then
+          local choices, devices = adapter:appLinkChoices()
+          local labels, counts = { Automatic = "Automatic (when links match)" }, {}
+          for _, value in ipairs(choices) do
+            local device = devices[value]
+            if device then
+              local label = setupPage.friendlyName(C4:GetDeviceDisplayName(device))
+                or ("Light on the " .. value .. " link")
+              labels[value], counts[label] = label, (counts[label] or 0) + 1
+            elseif value ~= "Automatic" then
+              labels[value] = "Unavailable " .. value .. " link"
+            end
+          end
+          for value, label in pairs(labels) do
+            if (counts[label] or 0) > 1 then
+              labels[value] = label .. " · " .. value
+            end
+          end
+          property.choices, property.choice_labels = choices, labels
+          property.description = "Choose which linked light or group the app controls."
+        elseif property.name == "LED Behavior" then
+          property.choice_labels = indicatorBehaviorLabels
+          property.description = programs.pagePolicy(setup) == "all" and "Applies to every indicator light." or nil
+        end
         result[#result + 1] = property
       end
     end
@@ -100,6 +138,13 @@ function M.install(family, makeAdapter)
   function properties:set(name, value)
     if not offered(name) then
       return "This setting is unavailable for this device."
+    end
+    if name == "App Control Link" then
+      local choices, devices = adapter:appLinkChoices()
+      if choices and (value == "Automatic" or devices[value]) then
+        return set(self, name, value)
+      end
+      return "Choose a light that is still linked."
     end
     local options = applicableChoices(name)
     if options then
@@ -212,7 +257,13 @@ function M.install(family, makeAdapter)
         "can_browse",
         "indicator_hint",
         "indicator_lease",
+        "indicator_policy",
+        "indicator_following",
         "indicator_signature",
+        "button_behavior_summary",
+        "linked_settings_help",
+        "app_link_available",
+        "migration_available",
       }) do
         if not previous or previous[field] ~= state[field] then
           changed = true
@@ -221,7 +272,7 @@ function M.install(family, makeAdapter)
       end
       previous, previousCapabilities = state, capabilities
       if changed then
-        local response = CopyTable(state, true)
+        local response = CopyTable(state)
         response.indicator_signature = nil
         response.buttons_ready = nil
         page.send("HA_SETUP_STATE", response)
@@ -310,6 +361,9 @@ function M.install(family, makeAdapter)
     end
   end
   OPC.Debug_Mode = function()
+    if family == "light" and adapter then
+      adapter:setLinkedTrace(Properties["Debug Mode"] == "Trace")
+    end
     if setup then
       setup.debugLines = 0
       setup:render()
@@ -329,6 +383,10 @@ function M.install(family, makeAdapter)
   UIR.HA_LEGACY_WIRE = function()
     return "<legacy_wire>ignore-v1</legacy_wire>"
   end
+  UIR.suppressDebug.HA_SELECTION_IDENTITY = true
+  UIR.HA_SELECTION_IDENTITY = function()
+    return migrationSelection.encode(setup)
+  end
   EC.suppressDebug.HA_SUITE_V1 = true
   EC.HA_SUITE_V1 = function(params)
     if setup then
@@ -338,6 +396,9 @@ function M.install(family, makeAdapter)
   local function bindingChanged(id)
     if setup then
       setup:bindingsChanged(id)
+      if visible and family == "light" and id ~= ids.coordinatorBinding and id ~= ids.lightCoordinatorBinding then
+        UIR._GET_PROPERTIES()
+      end
     end
   end
   OBC[ids.coordinatorBinding] = bindingChanged
@@ -391,6 +452,9 @@ function M.install(family, makeAdapter)
       events:restoreEvents()
       setup = Setup.new(family, publish, adapter)
       if adapter then
+        if family == "light" then
+          adapter:setLinkedTrace(Properties["Debug Mode"] == "Trace")
+        end
         adapter:start()
       end
       setup:start()

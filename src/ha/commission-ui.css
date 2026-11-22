@@ -83,4 +83,11 @@
 #migration-guide { margin: 6px 0; }
 .upgrade-backup { display: flex; gap: 8px; align-items: start; }
 .upgrade-programming-confirm { margin: 6px 0 10px 24px; }
+.upgrade-footer { position: static; }
+.upgrade-step-status:empty { margin: 0; }
+.upgrade-load-id { display: block; overflow-wrap: anywhere; }
 .upgrade-footer .btn-primary { margin-left: auto; }
+.upgrade-start-dialog { width: 420px; max-width: calc(100% - 24px); max-height: calc(100% - 24px); margin: auto; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); overflow: auto; }
+.upgrade-start-dialog:not([open]) { display: none; }
+.upgrade-start-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.upgrade-start-dialog .setup-actions { justify-content: space-between; }

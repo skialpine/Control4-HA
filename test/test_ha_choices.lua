@@ -132,6 +132,12 @@ do
   T.eq("group remains independent", by["light.group"].entity_aliases, {})
   T.eq("inverted relationship is never inferred equivalent", by["light.inverted"].entity_aliases, {})
   T.eq("wrapper cannot reimport a C4-exported load", by["light.c4_wrapper"].families, {})
+  entries["switch.relay"].hidden_by = "integration"
+  result = assert(Choices.apply(rows, entries))
+  by = keyed(result)
+  local _, aliases = Choices.endpointKeys(by["light.wrapper_a"])
+  T.eq("the hidden base stays out of the picker", by["switch.relay"].families, {})
+  T.eq("a non-inverted wrapper still identifies its hidden base for ownership checks", aliases["switch.relay"], true)
 end
 T.section("companion endpoint choices retain multiple functions and recheck native eligibility")
 do

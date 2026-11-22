@@ -1,7 +1,7 @@
 <devicedata>
   <name>Home Assistant Connection</name>
   <version />
-  <manufacturer>skialpine</manufacturer>
+  <manufacturer>SkiAlpine Labs</manufacturer>
   <model>HA Coordinator</model>
   <creator>skialpine</creator>
   <control>lua_gen</control>
@@ -42,6 +42,25 @@
       <property>
         <name>HA URL</name>
         <tooltip>Your Home Assistant address, including http or https and the port if needed. Example: http://homeassistant.local:8123</tooltip>
+        <type>STRING</type>
+        <default />
+      </property>
+      <property>
+        <name>HA Host</name>
+        <tooltip>Enter the Home Assistant hostname or IP address, such as homeassistant.local.</tooltip>
+        <type>STRING</type>
+        <default />
+      </property>
+      <property>
+        <name>HA Protocol</name>
+        <tooltip>Choose HTTPS if you use https:// to open Home Assistant.</tooltip>
+        <type>LIST</type>
+        <items><item>HTTP</item><item>HTTPS</item></items>
+        <default>HTTP</default>
+      </property>
+      <property>
+        <name>HA Port</name>
+        <tooltip>Leave blank to check common ports, or enter the port you use to open Home Assistant.</tooltip>
         <type>STRING</type>
         <default />
       </property>
@@ -126,7 +145,14 @@
         <type>LIST</type>
         <default>Production</default>
         <items><item>Production</item><item>Pre-release</item></items>
-        <tooltip>Production checks stable releases. Pre-release also checks previews.</tooltip>
+        <tooltip>Production uses stable releases. Pre-release also includes previews.</tooltip>
+      </property>
+      <property>
+        <name>Automatic Updates</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items><item>Off</item><item>On</item></items>
+        <tooltip>Automatically install releases for the Home Assistant drivers in this project.</tooltip>
       </property>
       <property>
         <name>Driver update status</name>

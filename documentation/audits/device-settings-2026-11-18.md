@@ -146,7 +146,16 @@ reload updates the installed driver and event declarations. Navigator refresh
 targets the app and touchscreens.
 
 The Switch uses the UI Button proxy to appear in Control4 experience menus.
-Composer showed the music-and-film symbol in its device tree. The proxy's
-documented icon assets apply to Navigator. DriverWorks documents no tree icon
-setting for this proxy.
-[UI Button proxy reference](https://control4.github.io/docs-driverworks-proxyprotocol/#ui-button-proxy-overview)
+Composer showed the default music-and-film symbol in its device tree. Revision
+2026112002 declares packaged rocker-switch icons for Composer's device tree and
+driver list. The independent preview review checked the 16-pixel icon on both
+normal and selected rows and the 32-pixel list icon. The packaged GIFs match
+those assets. CORE 5 served both expected GIFs after the in-place update.
+Director verified that Fireplace Switch in Patio kept its display name, selected
+Home Assistant device and relay connection, and that the Coordinator, Switch and
+all 19 Lights returned connected. The existing row's icon in Composer still
+showed the default icon on CORE 5 with revision 2026112006. Revision 2026112007
+explicitly declares the proxy count shown in the DriverWorks single-proxy icon
+example. The rocker artwork and proxy identity are unchanged. Composer still
+needs to verify the existing row with this revision.
+[DriverWorks icon management](https://control4.github.io/docs-driverworks-fundamentals/#single-proxy-drivers)

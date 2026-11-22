@@ -29,6 +29,10 @@ download/reload mechanisms; suite manifests and lifecycle recovery still need
 their own tests. A generic cache cannot replace revision checks for the shared
 HA catalog.
 
+The HA connection waits for the template WebSocket deletion callback before
+reusing a probed URL. Virtual-clock tests cover automatic and manual port
+selection while exercising the template's socket cache.
+
 Use the template test shim, virtual clocks, Light conformance kit and existing
 library tests. Translate prototype behavioral tests into adapter/contract tests
 without carrying forward a second scene engine, property framework, transport
@@ -39,6 +43,11 @@ template's one-shot timer and native UI Button notifications because it has no
 Light motion engine. Both adapters use the shared HA load command module for
 service outcomes and exact selected-state reads. Device Setup uses the same
 scoped read for either family's recovery action.
+
+The pinned Composer Kit uses each option value as its display text. The shared
+property renderer accepts optional `choice_labels` to display the resolved
+target's name while preserving the value used by the property's normal save
+handler. Light and Switch use this for Button behavior.
 
 The pinned Light library currently needs two local corrections before the
 adapters can rely on it: explicit logical power intent on commands and permanent
@@ -206,6 +215,45 @@ pending.
 [PR #243](https://github.com/finitelabs/control4-driver-template/pull/243) ·
 [PR #245](https://github.com/finitelabs/control4-driver-template/pull/245)
 
+### v0.9.116 to v0.9.117
+
+The `example-driver/drivers/example_light` diff is empty. PR #246 adds
+`Group:dissolve()` to the group-owner library. The owner calls it when its
+driver is deleted so each member receives `LIGHT_GROUP_LEAVE`. The regression
+checks that every member receives one notice and that later commands reach no
+member.
+
+The render updates `src/lib/light/group.lua`. HA Light uses the member-side
+`lib.light.groups`, and its connected adapter can target an existing Control4
+group. The suite has no group-owner driver to wire to `Group:dissolve()`. The
+existing connected Light and conformance tests cover receiving
+`LIGHT_GROUP_LEAVE` and resuming individual control. The pinned template's
+lighting tests also exercise its new group deletion regression.
+
+[Upstream group deletion fix](https://github.com/finitelabs/control4-driver-template/pull/246)
+
+### Member cleanup after a missed leave
+
+The shared `lib.light.groups` checks saved group IDs against Director's device
+registry when routing commands or sending new feedback. It skips missing groups
+and clears their saved membership after two lookups at least one second apart. A
+lookup that cannot see the member itself keeps saved memberships and any prior
+observation that a group was missing. It leaves previously unobserved
+memberships eligible for routing. The connected Light regression covers built-in
+Load Groups and Light Group, including an incomplete lookup after a group goes
+missing, a group that reappears and an overlapping group that remains active.
+
+### Native brightness and color rate readback
+
+CORE 1 returned a 750 ms default brightness rate and a separate 0 ms color rate
+for the lab dimmer. The template's setup reader applied both fields as
+shared-rate edits, so the color field overwrote the brightness default. The
+suite now restores both reported fields independently and uses the available
+rate for both defaults when the reply has only one. The existing command
+handlers still apply explicit shared-rate edits. The adapter regression
+exercises a brightness ramp with no supplied rate and checks the resulting
+0.75-second Home Assistant transition.
+
 ### Applying the rule by driver
 
 Light uses `example_light` as its Light V2 reference. Keep native membership,
@@ -219,6 +267,13 @@ behavior. Coordinator uses the template's network, HTTP, logging, companion and
 GitHub helpers. Its HA protocol and release-family selection remain suite
 responsibilities. Review the generic example for shared lifecycle and logging
 behavior on all drivers.
+
+The suite uses the pinned GitHub updater's file writer and Director reload
+request. The local extension exposes those already-used operations so the
+Coordinator can hand over the manifest-verified archive bytes and resume from
+its saved batch. The template's existing update path still downloads through the
+same library and sends companions before its own reload. Tests cover its alias,
+write readback and reload order alongside the suite's recovery tests.
 
 The generic example's live **Log Mode** and **Log Level** changes and three-hour
 expiration now run once in the shared foundation used by all three drivers. The

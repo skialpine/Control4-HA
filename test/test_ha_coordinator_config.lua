@@ -19,6 +19,7 @@ function C4:UpdateProperty(key, value)
   Properties[key] = value
 end
 Properties["HA URL"], Properties["HA Token"], Properties["CA Certificate Path"] = "", "", ""
+Properties["HA Host"], Properties["HA Protocol"], Properties["HA Port"] = "", "HTTP", ""
 Properties["Driver Status"], Properties["Driver Version"], Properties["Last action"] = "", "", ""
 Properties.Status, Properties["HA Version"], Properties["Debug Print"] = "Disconnected", "", "Off"
 Properties["Latency Diagnostics"] = "Off"
@@ -55,8 +56,14 @@ T.eq(
 T.eq(
   "names missing configuration",
   Properties["Driver Status"],
-  "Enter your Home Assistant address in HA URL and your access token in HA Token."
+  "Enter the Home Assistant hostname or IP address in HA Host."
 )
+T.eq("first-time setup shows the split connection fields", {
+  visibility["HA Host"],
+  visibility["HA Protocol"],
+  visibility["HA Port"],
+  visibility["HA URL"],
+}, { 0, 0, 0, 1 })
 T.eq(
   "removed visibility switch is absent from the native manifest",
   source:find("<name>Show advanced settings</name>", 1, true),
@@ -102,6 +109,11 @@ Properties["HA URL"] = "https://ha.test"
 OnPropertyChanged("HA URL")
 clock.run(250)
 T.eq("HTTPS offers custom trust without a separate action", visibility["CA Certificate Path"], 0)
+T.eq(
+  "saved full URL remains editable and hides the split host",
+  { visibility["HA URL"], visibility["HA Host"] },
+  { 0, 1 }
+)
 Properties["HA URL"] = "http://ha.test"
 OnPropertyChanged("HA URL")
 clock.run(250)
@@ -501,6 +513,66 @@ Properties["Home Assistant URL"] = ""
 OnPropertyChanged("Home Assistant URL")
 clock.run(250)
 T.eq("clearing the previously observed address clears the programming variable", Variables["HA URL"], "")
+
+T.section("split settings discover a port and keep manual choices")
+do
+  local discovery = require("ha.port-discovery")
+  local search, queries = discovery.search, {}
+  discovery.search = function(origin, protocol, ca, done)
+    local query = { origin = origin, protocol = protocol, ca = ca, done = done }
+    queries[#queries + 1] = query
+    return function()
+      query.cancelled = true
+    end
+  end
+  local function property(name, value)
+    Properties[name] = value
+    OnPropertyChanged(name)
+    clock.run(250)
+  end
+  Properties["Long Lived Access Token"], Properties["HA URL"], Properties["HA Token"] = "", "", ""
+  property("HA Host", "fresh.test")
+  T.eq("blank port triggers detection before a token is entered", queries[1].origin, "http://fresh.test")
+  queries[1].done(80, 1)
+  T.eq("the unique detected port is saved", Properties["HA Port"], "80")
+  T.eq(
+    "the installer is prompted for a token",
+    Properties["Driver Status"],
+    "Enter your Home Assistant access token in HA Token."
+  )
+  property("HA Protocol", "HTTPS")
+  T.eq("changing protocol clears the detected port", Properties["HA Port"], "")
+  T.eq("invalidated automatic port clears the programming address", Variables["HA URL"], "")
+  T.eq("only the newly selected protocol is checked", queries[2].origin, "https://fresh.test")
+  queries[2].done(nil, 2)
+  T.eq("ambiguous result leaves the property blank", Properties["HA Port"], "")
+  T.check(
+    "ambiguous result tells the installer what to do",
+    Properties["Driver Status"]:find("More than one port", 1, true)
+  )
+  property("HA Protocol", "HTTP")
+  T.eq("only the newly selected protocol is checked", queries[3].origin, "http://fresh.test")
+  property("HA Port", "8444")
+  queries[3].done(443, 1)
+  T.eq("late discovery cannot overwrite the installer’s port", Properties["HA Port"], "8444")
+  T.eq("a manual port publishes the normal programming address", Variables["HA URL"], "fresh.test:8444")
+  property("HA Host", "other.test")
+  T.eq("a manual port survives a host edit", Properties["HA Port"], "8444")
+  property("HA Port", "")
+  queries[4].done(nil, 0)
+  T.eq("no match also leaves the property blank", Properties["HA Port"], "")
+  T.eq("clearing the manual port clears the programming address", Variables["HA URL"], "")
+  property("HA Host", "same-port.test")
+  queries[5].done(80, 1)
+  property("HA Port", "80")
+  property("HA Protocol", "HTTPS")
+  T.eq("explicitly saving the detected port makes it a manual port", Properties["HA Port"], "80")
+  T.eq("the manual port publishes the configured address", Variables["HA URL"], "same-port.test:80")
+  T.eq("a manual port prevents another discovery", #queries, 5)
+  property("HA Port", "65536")
+  T.eq("an invalid manual port clears the programming address", Variables["HA URL"], "")
+  discovery.search = search
+end
 local text = table.concat(output, "\n")
 T.excludes("saved service data is private", text, "private-json-service-value")
 T.excludes("no secret in diagnostic output", text, "private-coordinator-token")

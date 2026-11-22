@@ -171,7 +171,7 @@ function Catalog:refresh(force)
       table.sort(values, function(a, b)
         return a.entity_id < b.entity_id
       end)
-      local bytes, revisionRows = 0, {}
+      local bytes, revisionRows, gestureChoices = 0, {}, {}
       for index, item in ipairs(values) do
         local encoded = codec.encode(item)
         local size = #encoded
@@ -186,6 +186,11 @@ function Catalog:refresh(force)
         end
         if #item.families > 0 then
           indices.all[#indices.all + 1] = index
+          local gesture = Choices.gestureEntity(item)
+          if gesture then
+            -- A shared gesture can describe more than one independent load.
+            gestureChoices[gesture] = gestureChoices[gesture] == nil and item.entity_id or false
+          end
           local preferred = Choices.suggestedFamily(item)
           if preferred == "light" or preferred == "switch" then
             indices.quick_lighting[#indices.quick_lighting + 1] = index
@@ -201,6 +206,7 @@ function Catalog:refresh(force)
       if not self.snapshot or self.snapshot.revision ~= fingerprint then
         self.snapshot = {
           source = source,
+          gestureChoices = gestureChoices,
           revision = fingerprint,
           indices = indices,
           eligibilityVersion = eligibilityVersion,
@@ -366,8 +372,18 @@ function Catalog:refresh(force)
   page(1)
   return pending
 end
+function Catalog:hasVerifiedSnapshot()
+  return self.snapshot ~= nil and self.verified == self.generation
+end
+
+function Catalog:gestureChoice(gesture)
+  if self:hasVerifiedSnapshot() then
+    return self.snapshot.gestureChoices[gesture] or nil
+  end
+end
+
 function Catalog:read(rev, cursor, family)
-  if not self.snapshot or self.verified ~= self.generation then
+  if not self:hasVerifiedSnapshot() then
     return nil, "catalog_unverified"
   end
   if rev ~= self.snapshot.revision then
@@ -397,7 +413,7 @@ function Catalog:read(rev, cursor, family)
   return result
 end
 function Catalog:choice(id, family, expectedRevision)
-  if not self.snapshot or self.verified ~= self.generation then
+  if not self:hasVerifiedSnapshot() then
     return nil, "catalog_unverified"
   end
   if expectedRevision and expectedRevision ~= self.snapshot.revision then
@@ -410,6 +426,69 @@ function Catalog:choice(id, family, expectedRevision)
     end
   end
   return nil, "unsupported_endpoint"
+end
+
+function Catalog:legacySwitchChoice(device, event, revision)
+  if not self:hasVerifiedSnapshot() or revision ~= self.snapshot.revision then
+    return nil
+  end
+  local match
+  for _, index in ipairs(self.snapshot.indices.switch) do
+    local row = self.snapshot.rows[index]
+    local choice = row.attributes.device_choice
+    if
+      choice
+      and choice.device_id == device
+      and (not choice.gesture_entity_id or choice.gesture_entity_id == event)
+    then
+      if match then
+        return nil
+      end
+      match = row.entity_id
+    end
+  end
+  return match
+end
+
+function Catalog:endpointKeys(identities)
+  if not self:hasVerifiedSnapshot() then
+    return nil
+  end
+  local keys = {}
+  for _, value in ipairs(identities) do
+    keys[value] = true
+  end
+  -- Discovery has already resolved same-entity aliases. Match against the
+  -- input identities so related choices cannot authorize an unrelated load.
+  for _, row in ipairs(self.snapshot.rows) do
+    local _, aliases = Choices.endpointKeys(row)
+    for _, value in ipairs(identities) do
+      if aliases[value] then
+        for alias in pairs(aliases) do
+          keys[alias] = true
+        end
+        break
+      end
+    end
+  end
+  return keys
+end
+
+-- Use labels only for the exact proposed load, including a linked load that
+-- differs from the device whose button events we are migrating.
+function Catalog:loadDetails(entity)
+  if not self:hasVerifiedSnapshot() then
+    return
+  end
+  for _, row in ipairs(self.snapshot.rows) do
+    local choice = row.attributes.device_choice
+    local source = choice and choice.source_load
+    if row.entity_id == entity and not choice then
+      return row.name, row.area_name
+    elseif source and source.entity_id == entity then
+      return source.name, choice.area, source.registry_id
+    end
+  end
 end
 
 return Catalog

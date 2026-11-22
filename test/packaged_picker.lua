@@ -119,4 +119,18 @@ return function(family)
   end
   failure = nil
   assert(browse("retry").choices[1].name == "Hallway")
+
+  local sendUIRequest = SendUIRequest
+  SendUIRequest = function(id, command, params)
+    assert(id == device and command == "HA_SELECTION_IDENTITY")
+    local xml = UIRequest(command, params)
+    assert(type(ParseXml(xml).selection) == "string", "The installed selection handler must return valid XML")
+    return xml
+  end
+  local identity = require("ha.migration-selection").read(device)
+  SendUIRequest = sendUIRequest
+  assert(
+    identity and identity.key == "" and not identity.buttons,
+    "The migrated identity round trip must recognize an unconfigured installed driver"
+  )
 end

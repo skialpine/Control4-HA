@@ -72,19 +72,25 @@ In **Actions**, run **Check for driver updates** and read **Driver update
 status** in Properties. **Driver Version** shows the installed revision. The
 update status shows the newest eligible release or explains why the check could
 not finish. The check compares the exact installed suite packages with the
-GitHub release and verifies the required downloads. It preserves the running
-driver versions and Home Assistant connections.
+GitHub release and verifies the required downloads. **Automatic Updates** is off
+by default. Turn it on to install a verified release from the selected channel.
+The Coordinator checks shortly after enablement or startup and then daily.
+**Check for driver updates** can install an update when enabled.
 
 The configured GitHub repository is `skialpine/Control4-HA`. When a compatible
 release is available, the status reports its revision. A partial release or
 failed integrity check should be corrected in the release before installing. The
-current payload check is separate from automatic installation. To update a lab
-manually, use exact matching packages, update installed children first and
-Coordinator last, then verify each original selection and binding.
+Coordinator stages every required archive before replacing any drivers. It
+retains the previous archive bytes and installs the Coordinator last. Projects
+with multiple Coordinators or certificates stored inside the current Coordinator
+package require an installer-managed update. To update a lab manually, use exact
+matching packages, update installed children first and Coordinator last, then
+verify each original selection and binding.
 
-If an installation stops partway through, read each installed driver version in
-Composer before retrying. Use the same complete package set to finish the
-update. Recheck selection, connections, control and feedback on each affected
-driver. If the update changed project settings or links and recovery cannot be
-verified, use the saved Control4 project backup and the corresponding driver
-packages to restore the working setup.
+If an installation stops partway through, **Check for driver updates** with
+**Automatic Updates** on can resume the saved batch. If files or installed
+drivers changed, have the installer review the project and the same complete
+package set. Recheck selection, connections, control and feedback on each
+affected driver. If the update changed project settings or links and recovery
+cannot be verified, use the saved Control4 project backup and the corresponding
+driver packages to restore the working setup.

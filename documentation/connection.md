@@ -3,11 +3,18 @@
 The Coordinator owns one HA WebSocket connection using the pinned template's
 WebSocket, timer and logging helpers. Configure these Composer properties:
 
-| Property            | Value                                                                                                                                                                                                   |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HA URL              | Final origin, such as `http://homeassistant.local:8123` or `https://ha.example.com`. Use a DNS name or IPv4 address, without a path, query, fragment or embedded credentials. For IPv6, use a DNS name. |
-| HA Token            | HA long-lived access token, entered in the password-protected property. Never paste it into logs, programming or support reports.                                                                       |
-| CA Certificate Path | Optional controller-side CA file path for HTTPS, relative to the driver location as defined by DriverWorks. Leave empty to use Director's trust configuration.                                          |
+| Property            | Value                                                                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| HA Host             | Home Assistant DNS name or IPv4 address, such as `homeassistant.local`. For IPv6, use a DNS name.                                                                                                                                                                  |
+| HA Protocol         | Choose **HTTP** or **HTTPS** to match the address you use to open Home Assistant.                                                                                                                                                                                  |
+| HA Port             | Enter your port, or leave it blank to check `80` and `8123` over HTTP or `443` and `8123` over HTTPS. The Coordinator fills it in when exactly one port answers with the Home Assistant authentication prompt. If none or several answer, enter the port yourself. |
+| HA Token            | HA long-lived access token, entered in the password-protected property. Never paste it into logs, programming or support reports.                                                                                                                                  |
+| CA Certificate Path | Optional controller-side CA file path for HTTPS, relative to the driver location as defined by DriverWorks. Leave empty to use Director's trust configuration.                                                                                                     |
+
+Port detection leaves the access token in Properties. If you change the host or
+protocol, the Coordinator checks common ports again when it picked the previous
+port. A manually entered port stays in place. An existing suite installation
+with a saved **HA URL** continues to show and use the full URL.
 
 An existing BP or prototype Coordinator keeps its original **Home Assistant
 URL**, **Long Lived Access Token** and **Use SSL** settings. Enter the host and
@@ -22,6 +29,17 @@ The **Connect to Home Assistant** and **Disconnect from Home Assistant** actions
 operate the current connection. Disconnect also cancels pending automatic
 retries. The negotiated Home Assistant version appears in Advanced after
 authentication.
+
+The exact 2026112102 packages passed a retained-settings rehearsal over TLS 1.3.
+The packaged Coordinator started with the legacy address and access token fields
+and with **Use SSL** saved as either `Yes` or `True`. In each case, it
+authenticated over WSS. The packaged Light and Switch obtained their scoped
+HTTPS state reads and exact subscriptions and reported ready. The lab harness
+verified the peer and hostname at its loopback TLS proxy to isolated Home
+Assistant. A separate run on that path refreshed and filtered the companion
+catalog, then prepared the selected lab Switch and verified its exact load and
+gesture identities. Native Director trust and retained settings through an
+in-place TLS cutover still need verification.
 
 Existing programming can read the **HA URL** driver variable and run **Call
 Service** with its original six parameters. The variable publishes the validated

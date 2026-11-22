@@ -1,9 +1,11 @@
 -- Independently authored suite entry point; AGPL-3.0.
 local foundation = require("ha.foundation")
 local Connection = require("ha.connection")
+local PortDiscovery = require("ha.port-discovery")
 local Hub = require("ha.hub")
 local Legacy = require("ha.legacy-coordinator")
 local log = require("lib.logging")
+local persist = require("lib.persist")
 local codec = require("ha.codec")
 local Commissioning = require("ha.commissioning")
 local commissionPage = require("ha.commission-page")
@@ -17,10 +19,12 @@ require("ha.switch-upgrade-page").install(function()
   return hub
 end)
 local ready = false
-local resetReleaseCheck = require("ha.release-check").installActions(function()
+local resetReleaseCheck, startReleaseCheck = require("ha.release-check").installActions(function()
   return ready
 end)
 local observedAddress = false
+local portSearch
+local DISCOVERED_PORT = "HA.DiscoveredPort"
 local APPLY_TIMER = "HA.Coordinator.Configure"
 local DEBUG_TIMER_NAME = "HA.Coordinator.DebugPrint"
 local CONNECTED_EVENT, DISCONNECTED_EVENT = 1, 2
@@ -28,8 +32,8 @@ local connectionStatus = {
   connecting = "Connecting to Home Assistant…",
   authenticating = "Signing in to Home Assistant…",
   connected = "Connected to Home Assistant. Open Quick Setup to add devices.",
-  rejected = "Home Assistant rejected the access token. Replace HA Token in Properties.",
-  retrying = "Reconnecting to Home Assistant. If this continues, check HA URL and the controller’s network connection.",
+  rejected = "Home Assistant rejected the access token. Replace it in Properties.",
+  retrying = "Reconnecting to Home Assistant. If this continues, check the connection settings in Properties and the controller’s network connection.",
 }
 
 -- Choose one complete credential namespace. Never pair a token from one
@@ -39,7 +43,51 @@ local function legacySettings()
 end
 
 local function conflictingSettings()
-  return legacySettings() and ((Properties["HA URL"] or "") ~= "" or (Properties["HA Token"] or "") ~= "")
+  return legacySettings()
+    and (
+      (Properties["HA URL"] or "") ~= ""
+      or (Properties["HA Host"] or "") ~= ""
+      or (Properties["HA Token"] or "") ~= ""
+    )
+end
+
+local function splitSettings()
+  return (Properties["HA URL"] or "") == "" and (not legacySettings() or conflictingSettings())
+end
+
+local function hostOrigin()
+  local host = Properties["HA Host"] or ""
+  local protocol = Properties["HA Protocol"] or "HTTP"
+  local scheme = ({ HTTP = "http", HTTPS = "https" })[protocol]
+  if scheme and type(host) == "string" and host:match("^[%w%.%-]+$") then
+    return scheme .. "://" .. host, scheme
+  end
+end
+
+local function splitURL()
+  local origin = hostOrigin()
+  local port = tostring(Properties["HA Port"] or "")
+  if origin and port:match("^%d+$") and tonumber(port) >= 1 and tonumber(port) <= 65535 then
+    return origin .. ":" .. port
+  end
+end
+
+local function cancelPortSearch()
+  local current = portSearch
+  portSearch = nil
+  if current and current.cancel then
+    current.cancel()
+  end
+end
+
+local function refreshDiscoveredPort()
+  local saved = persist:get(DISCOVERED_PORT, nil, true)
+  if type(saved) == "string" and saved ~= splitURL() then
+    persist:delete(DISCOVERED_PORT)
+    if saved:match(":(%d+)$") == tostring(Properties["HA Port"] or "") then
+      UpdateProperty("HA Port", "")
+    end
+  end
 end
 
 local function legacyTLS()
@@ -57,7 +105,8 @@ end
 
 local function connectionSettings()
   if not legacySettings() then
-    return Properties["HA URL"], Properties["HA Token"], Properties["CA Certificate Path"]
+    local url = splitSettings() and splitURL() or Properties["HA URL"]
+    return url, Properties["HA Token"], Properties["CA Certificate Path"]
   end
   local host = Properties["Home Assistant URL"] or ""
   local tls = legacyTLS()
@@ -84,7 +133,7 @@ local function programmingAddress()
   local host = Properties["Home Assistant URL"]
   -- BP publishes host[:port]. Address ownership is independent of the TLS
   -- control and token, which may arrive later during an in-place upgrade.
-  local url = host and host ~= "" and ("http://" .. host) or Properties["HA URL"]
+  local url = host and host ~= "" and ("http://" .. host) or (splitSettings() and splitURL() or Properties["HA URL"])
   local authority = Connection.authority(url)
   return authority
 end
@@ -94,8 +143,13 @@ local function publishConfiguredAddress()
   if address then
     foundation.publishAddress(address)
     observedAddress = true
-  elseif observedAddress and (Properties["Home Assistant URL"] or "") == "" and (Properties["HA URL"] or "") == "" then
-    -- An address that was present on this load has been cleared. At startup
+  elseif
+    observedAddress
+    and (Properties["Home Assistant URL"] or "") == ""
+    and (Properties["HA URL"] or "") == ""
+    and (not legacySettings() or (Properties["HA Host"] or "") == "")
+  then
+    -- An address that was present on this load is no longer configured. At startup
     -- missing properties are not evidence that a saved variable was cleared.
     foundation.publishAddress("")
     observedAddress = false
@@ -116,14 +170,20 @@ local function updatePropertyVisibility()
   local legacy = legacySettings()
   local legacySecure = legacy and legacyTLS() == true
   local _, scheme = Connection.authority(Properties["HA URL"])
+  local split = splitSettings()
+  if split then
+    scheme = Properties["HA Protocol"] == "HTTPS" and "https" or "http"
+  end
   SetPropertyVisible("Status", false)
   -- Director can retain this status from the retired migration action after an update.
   if Properties["Switch driver migration"] ~= nil then
     SetPropertyVisible("Switch driver migration", false)
   end
   SetPropertyVisible("HA Version", (Properties["HA Version"] or "") ~= "")
-  for _, name in ipairs({ "HA URL", "HA Token" }) do
-    SetPropertyVisible(name, not legacy or conflictingSettings())
+  SetPropertyVisible("HA URL", not split and (not legacy or conflictingSettings()))
+  SetPropertyVisible("HA Token", not legacy or conflictingSettings())
+  for _, name in ipairs({ "HA Host", "HA Protocol", "HA Port" }) do
+    SetPropertyVisible(name, split)
   end
   for _, name in ipairs({ "Home Assistant URL", "Long Lived Access Token", "Use SSL" }) do
     SetPropertyVisible(name, legacy)
@@ -142,21 +202,84 @@ local function updatePropertyVisibility()
   end
 end
 
+local function setupStatus(message)
+  connection:configure(nil, nil)
+  UpdateProperty("Driver Status", message)
+end
+
 local function apply()
   if ready and connection then
     updatePropertyVisibility()
     local ok = pcall(function()
+      if not legacySettings() and splitSettings() then
+        refreshDiscoveredPort()
+      end
       publishConfiguredAddress()
       if conflictingSettings() then
+        cancelPortSearch()
         connection:configure(nil, nil)
         UpdateProperty(
           "Driver Status",
           "Two Home Assistant connections are saved. Clear the address and token for the connection you no longer use."
         )
       elseif legacySettings() and (Properties["Long Lived Access Token"] or "") ~= "" and legacyTLS() == nil then
+        cancelPortSearch()
         connection:configure(nil, nil)
         UpdateProperty("Driver Status", "In Properties, set Use SSL to Yes for HTTPS or No for HTTP.")
+      elseif not legacySettings() and splitSettings() then
+        local origin, scheme = hostOrigin()
+        local port = tostring(Properties["HA Port"] or "")
+        if origin and port == "" then
+          local ca = Properties["CA Certificate Path"]
+          if portSearch and portSearch.origin == origin and portSearch.ca == ca then
+            return
+          end
+          cancelPortSearch()
+          local search = { origin = origin, ca = ca }
+          portSearch = search
+          setupStatus("Checking common ports for Home Assistant…")
+          search.cancel = PortDiscovery.search(origin, scheme, ca, function(found, matches)
+            if
+              not ready
+              or portSearch ~= search
+              or hostOrigin() ~= origin
+              or not splitSettings()
+              or legacySettings()
+              or (Properties["HA Port"] or "") ~= ""
+              or Properties["CA Certificate Path"] ~= ca
+            then
+              return
+            end
+            if found then
+              UpdateProperty("HA Port", tostring(found))
+              if tostring(Properties["HA Port"]) == tostring(found) then
+                persist:set(DISCOVERED_PORT, origin .. ":" .. found, true)
+                apply()
+              else
+                UpdateProperty("Driver Status", "Enter HA Port in Properties.")
+              end
+            else
+              UpdateProperty(
+                "Driver Status",
+                matches > 1 and "Enter HA Port. More than one port answered."
+                  or "Enter HA Port or check HA Protocol. No common port answered."
+              )
+            end
+          end)
+        else
+          cancelPortSearch()
+          if not origin then
+            setupStatus("Enter the Home Assistant hostname or IP address in HA Host.")
+          elseif not splitURL() then
+            setupStatus("Enter a port from 1 to 65535 in HA Port, or clear it to check common ports.")
+          elseif (Properties["HA Token"] or "") == "" then
+            setupStatus("Enter your Home Assistant access token in HA Token.")
+          else
+            connection:configure(connectionSettings())
+          end
+        end
       else
+        cancelPortSearch()
         connection:configure(connectionSettings())
       end
     end)
@@ -170,14 +293,22 @@ local function apply()
   end
 end
 
-local function configureSoon()
+local function configureSoon(property)
   if ready then
+    -- Discovery writes without a property callback. A callback for this field
+    -- is an explicit installer edit, even when the port number stays the same.
+    if property == "HA Port" then
+      persist:delete(DISCOVERED_PORT)
+    end
     SetTimer(APPLY_TIMER, 250, apply)
   end
 end
 
 for _, name in ipairs({
   "HA URL",
+  "HA Host",
+  "HA Protocol",
+  "HA Port",
   "HA Token",
   "CA Certificate Path",
   "Home Assistant URL",
@@ -191,7 +322,7 @@ for _, name in ipairs({
   OPC[name:gsub("%W+", "_")] = function()
     -- Generic handler errors include the original value. Keep that boundary
     -- protected even when timer creation fails on Director.
-    if not pcall(configureSoon) then
+    if not pcall(configureSoon, name) then
       UpdateProperty("Driver Status", "Connection setup could not start. Reload Home Assistant Connection.")
     end
   end
@@ -280,12 +411,14 @@ end
 EC.WS_CONNECT = function()
   if ready then
     CancelTimer(APPLY_TIMER)
+    cancelPortSearch()
     apply()
   end
 end
 EC.WS_DISCONNECT = function()
   if ready and connection then
     CancelTimer(APPLY_TIMER)
+    cancelPortSearch()
     connection:disconnect()
   end
 end
@@ -316,6 +449,7 @@ end
 
 function OnDriverInit()
   ready = false
+  cancelPortSearch()
   resetReleaseCheck()
   if legacy then
     legacy:destroy()
@@ -342,6 +476,7 @@ end
 
 function OnDriverLateInit()
   if foundation.lateInit() then
+    cancelPortSearch()
     if legacy then
       legacy:destroy()
     end
@@ -398,6 +533,9 @@ function OnDriverLateInit()
       -- load can retire or lose the socket while handling that transition.
       if ready and hub == currentHub and currentHub.online ~= reportedOnline then
         reportedOnline = currentHub.online
+        if reportedOnline and not pcall(commissionPage.connected) then
+          log:warn("Could not notify Quick Setup about the Home Assistant connection")
+        end
         local event = reportedOnline and CONNECTED_EVENT or DISCONNECTED_EVENT
         if not pcall(C4.FireEventByID, C4, event) then
           log:warn("Could not publish Home Assistant connection event %d", event)
@@ -410,12 +548,14 @@ function OnDriverLateInit()
     hub:announce()
     OPC.Debug_Print()
     apply()
+    startReleaseCheck()
   end
 end
 
 function OnDriverDestroyed()
   foundation.destroy()
   ready = false
+  cancelPortSearch()
   resetReleaseCheck()
   if legacy then
     legacy:destroy()

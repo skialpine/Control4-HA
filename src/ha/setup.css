@@ -6,6 +6,9 @@
 .setup .property-entry button { flex: none; }
 .setup .pfields > div { min-width: 0; }
 .setup .readout { overflow-wrap: anywhere; }
+#button-settings .pfields { grid-template-columns: minmax(0, 1fr); max-width: 36rem; }
+#button-behavior-summary { overflow-wrap: anywhere; }
+#app-link-settings { margin-top: 8px; }
 @media (max-width: 480px) {
   .setup.panel { padding: 8px; }
   .setup .card { padding: 10px; }

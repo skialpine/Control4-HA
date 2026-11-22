@@ -8,10 +8,9 @@ commits alike.
 
 # Control4 lab access
 
-Use the private Control4 MCP/API for lab setup and testing, adding small
-supported capabilities when needed. Never operate Composer directly or through
-computer automation. Prepare exact driver packages and ask the user to perform
-Composer steps. Stage requested packages in `~/OneDrive/C4-drivers`.
+Never operate Composer directly or through computer automation. Prepare exact
+driver packages and ask the user to perform Composer steps. If `AGENTS.local.md`
+exists, read it before accessing a controller or staging a package.
 
 # Shared driver behavior
 

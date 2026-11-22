@@ -133,6 +133,12 @@ def contract(path, expected_hash=None, expected_version=None):
         "sha256": sha256,
         "entrypoint": entrypoint,
         "identity": identity,
+        "capabilities": entries(
+            xml,
+            "capabilities/*",
+            lambda item: item.tag,
+            lambda item: (item.text or "").strip(),
+        ),
         "proxies": entries(
             xml,
             "proxies/proxy",
@@ -336,6 +342,8 @@ def compare(pins, baseline_directory, candidates, expected_version):
         family: contract(path, sha256, expected_version)
         for family, (path, sha256) in candidates.items()
     }
+    if len({row["identity"]["version"] for row in candidate_contracts.values()}) != 1:
+        raise ValueError("candidate archives must share one revision")
     comparisons = []
     families = {}
     for family in FAMILIES:

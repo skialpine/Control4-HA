@@ -45,22 +45,27 @@ for **HA Gesture Bridge** under **Add integration**.
 
 ## In Composer Pro
 
-1. Save a project backup. On the intended controller, import
-   `HA.Coordinator.c4z`, `HA.Light.c4z` and `Control4.HA.Switch.c4z`. Driver
-   Information should show the same revision for all three packages.
+1. Save a project backup. Download `control4-ha-drivers.zip` from the chosen
+   release and extract it. In Composer on the intended controller, choose
+   **Driver → Add or Update Driver or Agent**. Open the extracted folder, select
+   all its `.c4z` files together, and click **Open**. Driver Information should
+   show the same revision for each imported package. The same steps apply as the
+   suite adds more driver families.
    [Control4 manual driver installation](https://docs.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)
-1. Add **Home Assistant Connection** once for this Home Assistant server. In its
-   **Properties**, enter **HA URL** and **HA Token**. Continue when **Driver
-   Status** says **Connected to Home Assistant**.
-1. Open **Quick Setup**. Choose devices from Home Assistant and assign each to a
-   Control4 room. Select **Review devices** and confirm the room, name and
-   action for every row. The confirmation button says what will happen, such as
-   **Create 1 driver** or **Finish setup for 1 driver**. Rows marked **Keep
-   existing Control4 device** keep their settings. **Control4 setup results**
-   shows what finished. For a driver added from Composer Search, open **Device
-   Setup → Choose device**, select its Home Assistant device, and choose **Use
-   selected device**. A single compatible connection is selected automatically.
-   With multiple connections, choose the intended one under **Connections**.
+1. Add only **Home Assistant Connection** to the project. In **Properties**,
+   enter **HA Host**, choose **HA Protocol**, and enter **HA Token**. Leave **HA
+   Port** blank to check common ports or enter the port you already use.
+   Continue when **Driver Status** says **Connected to Home Assistant**.
+1. Open **Quick Setup** to create the Light and Switch drivers. Choose devices
+   from Home Assistant and assign each to a Control4 room. Select **Review
+   devices** and confirm the room, name and action for every row. The
+   confirmation button says what will happen, such as **Create 1 driver** or
+   **Finish setup for 1 driver**. Rows marked **Keep existing Control4 device**
+   keep their settings. **Control4 setup results** shows what finished. For a
+   driver added from Composer Search, open **Device Setup → Choose device**,
+   select its Home Assistant device, and choose **Use selected device**. A
+   single compatible connection is selected automatically. With multiple
+   connections, choose the intended one under **Connections**.
    [Device setup guide](device-setup.md)
 1. Open the new driver and verify the selected device and **Controls** if shown.
    If it controls a load, send a safe command from the Control4 app. Check the
@@ -77,18 +82,24 @@ for **HA Gesture Bridge** under **Add integration**.
 Save a backup and keep the original packages. Update supported **HA
 Coordinator** and **HA Light** instances in place using their existing
 filenames. Check that each keeps its saved selection, connections and
-programming. For an original or prototype **HA Switch** controlling a device
-directly, open **Home Assistant Connection → Quick Setup → Migrate switch
-drivers**. Follow the preview and verify any connections or programming it asks
-you to recreate in Composer. For a prototype switch that uses button events,
-follow **Manual migration for button switches** in the Coordinator’s
-**Documentation** tab. Keep the original driver and project backup until the
-replacement passes its control and programming checks. Use the backup to restore
-the project if the cutover fails. [Compatibility](compatibility.md)
+programming. For an original or prototype **HA Switch**, open **Home Assistant
+Connection → Quick Setup → Migrate switch drivers**. Review the Home Assistant
+device, relay and any button links before selecting **Start migration**. Read
+the return instructions and select **Continue migration**. Quick Setup transfers
+verified connections and identifies work that needs attention. If Composer
+selects a temporary replacement, go back to the Coordinator’s **Quick Setup** to
+continue. Quick Setup automatically transfers a verified selection. If it asks
+you to confirm a proposed load, compare its name and entity ID in Home Assistant
+with the load the original switch controls, then choose **Confirm load and
+transfer** if they match. If you’re unsure, choose **Get manual setup steps**.
+Keep the original driver and project backup until the replacement passes its
+control and programming checks. Use the backup to restore the project if Quick
+Setup says **Restore the project backup**. After restoring, return to Quick
+Setup and select **Refresh status**. [Compatibility](compatibility.md)
 
 Use the Coordinator’s **Check for driver updates** action to check the suite.
-The current development builds report availability and verify the files.
-Installation still needs an installer.
+With **Automatic Updates** off, the action reports update availability. With it
+on, the action can install the verified release.
 [Driver releases](build.md#check-for-a-driver-release)
 
 ## Find where setup stopped

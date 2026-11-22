@@ -9,7 +9,8 @@ The initial release SHALL include homeowner and Composer-installer guides coveri
 
 #### Scenario: Homeowner has no Composer
 - **WHEN** the homeowner follows first-install instructions
-- **THEN** HA preparation and ongoing operation are separated from the one-time installer handoff, and normal automatic updates require no Composer access
+- **THEN** the installer extracts the release ZIP, selects all included driver packages together in Composer's Add or Update Driver dialog, and enables automatic updates once on the Coordinator
+- **AND** after that handoff, the homeowner can operate the suite and receive eligible automatic updates without Composer access
 
 ### Requirement: Accurate HA component instructions
 Documentation SHALL distinguish the custom integration from HA OS apps/add-ons and identify optional dependencies. It MUST cover the current Marketplace installation/setup path, pilot repository-link installation where required, and manual recovery without claiming unapproved catalog publication.

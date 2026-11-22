@@ -27,6 +27,264 @@ python3 tools/check_first_demo.py --version 2026111801 \
   --switch /path/to/Control4.HA.Switch.c4z
 ```
 
+## Revision 2026112106 qualification
+
+The staged Coordinator, Light and Switch matched all six pinned predecessor
+comparisons. The same archive hashes passed 12 device picker checks against
+isolated Home Assistant 2026.11.1 over HTTPS. The packaged Light and Switch each
+selected a light, switched to a wall control, then returned to the light. The
+test exercised the shipped setup pages with a Director shim.
+
+The same packages passed nine TLS recovery checks. A legacy-shaped **Call
+Service** action sent one scoped HA request before and after a Coordinator
+reload. Only the replacement Switch received the resulting feedback. Both
+children recovered their exact selections and subscriptions over one TLS 1.3
+socket, and the simulated switch returned to its starting state.
+
+Native readback on Edwards confirmed the Coordinator remained connected using
+the retained HTTPS configuration and HA URL variable slot 1001. The Hallway wall
+dimmer retained its saved selection. In Composer, Quick Setup created and
+configured the replacement Switch for the isolated AC load on revision
+2026112106\. Returning to the Coordinator showed **Test the new drivers**.
+Director confirmed that the replacement kept the **HA Switch** display name in
+**Room** and gained the Coordinator connection. The retired driver stayed in the
+project with no bindings. Director and Home Assistant both confirmed Off and On
+through the replacement over HTTPS. The simulated load returned to On. After the
+installer restored the backup, Director confirmed the original name and
+Coordinator connection and verified the staged replacement was gone.
+
+Composer's Brightness Test sent a 0.75 s transition to the Hallway dimmer. Home
+Assistant confirmed the 100% target, then the test restored the starting level.
+The separate production update reported 2026112106 on all 21 suite instances and
+preserved device and proxy identities, saved selections and connections.
+
+The interrupted-migration and indicator changes passed independent browser
+review at 320 × 300 and 1000 × 550. The migration harness passed 299 assertions,
+including explicit recovery of the old connection across a revision change.
+Composer keyboard behavior for the revised migration prompts remains open. The
+Office switch's reopened Device Setup matched Home Assistant for Red, 100% and
+On when the device is off. The installer accepted simulated fixed-color and
+multi-channel indicator coverage for the first demo. Physical qualification of
+those two cases still requires suitable hardware.
+
+### Production Leviton locator LED verification
+
+Production Home Assistant reported three writable locator modes for the Pantry
+DZ15S switch and Fireplace Lights DZ6HD dimmer. After the two-file Gesture
+Bridge update, each existing control published the three modes with its
+confirmed selection. For each device, the bridge set **Always off** and restored
+**On when the device is off**. A fresh device query of Z-Wave parameter 7 and
+the published bridge state confirmed both writes. The test sent locator commands
+only. The visible LED response and native Composer settings for these models
+still need observation.
+
+Independent rendered review of both Device Setup pages verified the three
+choices, saved selection, keyboard access and recovery from a rejected write.
+The source test also confirmed that the Light hides tracking color properties
+for these locator LEDs and retains saved tracking colors for compatible devices.
+Candidate 2026112107 passed the six pinned predecessor archive comparisons and
+219 release checks. The three extracted installer files matched the build byte
+for byte.
+
+Director acknowledged all three CORE 1 updates. The standard Coordinator archive
+displaced the certificate that Edwards uses for its isolated HTTPS endpoint.
+Installing the matching Edwards-only Coordinator archive restored trust with the
+original URL and credentials. The selected Hallway dimmer reconnected on
+revision 2026112107, and the unconfigured Switch reported the same revision and
+retained its existing proxy.
+
+CORE 5 also acknowledged all three standard package updates. Native readback
+confirmed that the Coordinator, all 19 Lights and the Switch ran 2026112107 and
+were connected. The production readback used the standard archives.
+
+## Revision 2026112103 qualification
+
+The staged Composer folder, install ZIP, build inventory and suite manifest
+agree on the three archive digests. The suite setup ZIP contains the matching
+suite revision, manuals and setup skill. The archive comparator passed all six
+pinned predecessor comparisons. The exact packaged Coordinator passed 139
+mixed-project checks for original BP and prototype consumers, including scoped
+subscriptions and the saved Composer action.
+
+On each of Home Assistant 2026.11.1 and 2026.11.2, the staged packages passed
+1,131 family checks, 12 picker checks and ten paired recovery checks. All six
+reports match the staged Light, Switch and Coordinator digests. Both temporary
+HA labs were removed. The primary Home Assistant lab and CORE 1 project were
+preserved.
+
+The exact packaged Light and Coordinator replayed the native 750 ms brightness
+and zero color defaults with lab Home Assistant. The light reached the requested
+brightness after accepting a 0.75 s transition. The test restored the starting
+fixture state. Native Director and the physical LED observations remain on the
+OpenSpec operator checklist.
+
+The exact Coordinator and replacement Switch also passed nine TLS recovery
+checks in the Director test harness. A saved legacy-shaped **Call Service**
+action controlled the isolated HA load over TLS 1.3 before and after Coordinator
+reload. Both children recovered their exact subscriptions, and the replacement
+Switch received confirmed feedback. The rehearsal restored the starting load
+state. Native Director trust and an in-place TLS cutover remain open.
+
+## Revision 2026112017 qualification
+
+All four Edwards CORE 1 suite instances updated to revision 2026112017 with
+their device identities and bindings preserved. All three child drivers
+reconnected. The archive comparison and 217 release checks passed for these
+exact packages.
+
+The exact packages passed 1,131 family, 12 picker and ten paired recovery checks
+on each of Home Assistant 2026.11.1 and 2026.11.2. All three archive hashes
+matched both HA runs and the CORE 1 installation receipt. The recovery tests
+covered reconnect, reload and lost feedback. Both temporary HA labs were
+removed. The packaged Coordinator passed 139 mixed-project checks against the
+pinned BP and prototype consumers.
+
+| Audit finding                                                                                          | Regression and result                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A release change could stall a migration with a completed row and a row waiting for load confirmation. | A mixed batch reopens the pending row, keeps the completed receipt, and transfers only after exact load confirmation. The independent browser review checked keyboard focus at 1000 × 550 and 320 × 300.         |
+| Manual migration could move links despite an unresolved second legacy load owner.                      | Relay transfer and naming stop and identify the peer by name and room. The source regression confirms the old driver keeps both connections.                                                                     |
+| Removal review omitted scene, agent and programming references that the driver cannot verify itself.   | Quick Setup asks the installer to verify references alongside the existing test confirmation. The saved tests and reference review are checked independently. The browser review verified completion and reopen. |
+| The first-demo comparator could accept three archives at different revisions.                          | A mixed-revision set fails before archive comparison, including when the caller omits the expected revision.                                                                                                     |
+| Switch feedback repeatedly decoded the same saved migration checkpoint.                                | The visibility check decodes once per stored value. The regression exercises unchanged, replaced, unreadable and deleted records.                                                                                |
+
+The reviewer exercised the Coordinator page with mocked Director responses.
+Native mixed-migration, removal and hardware checks remain tracked separately in
+OpenSpec.
+
+The focused re-audits found no remaining Critical, High or Medium issues.
+Remaining lower-severity work includes a positive packaged round-trip of the
+prepared Switch identity for migration, and reducing repeated replacement
+binding reads during large connection maps if native timing justifies it.
+
+The installer authorized separate CORE 1 rehearsals for Prototype Switch 107 and
+BP Switch 106 using the same disposable HA load. For each source, Quick Setup
+transferred the Coordinator connection to the 2026112017 replacement, preserved
+the display name and room, and offered the old driver for removal after testing
+and reference review. The original and the replacement each completed an on/off
+round trip. The helper then removed the test replacement, restored the original
+name, selection and Coordinator connection, and verified control through the
+original Switch. Fixture cleanup restored the initial project inventory and HA
+load state after each rehearsal.
+
+Director initially loaded its cached 107 package when the helper staged BP 106
+under their shared filename. The installer loaded the pinned BP 106 in Composer
+and Director confirmed its identity before the rehearsal proceeded. The
+2026112017 tests exercised direct control on the simulated load. The earlier
+Composer run on 2026111909 supplies native evidence for the saved incoming Turn
+On action. Automatic rollback on transfer failure is exercised by the source
+harness. The native rehearsals used the helper to restore both disposable
+originals.
+
+Separate full-project Composer rehearsals started with the BP and prototype
+packages. On both, revision 2026112017 preserved the Coordinator's saved Call
+Service action, the Light proxy and its 55% scene, and the original Switch
+action. The installer moved the Switch action to the replacement and removed the
+old driver through Composer. Director then reported no pending migration. The
+saved Light event ran both actions, the scene reached 55% in Control4 and
+140/255 in Home Assistant, and the isolated loads were restored.
+
+The installed 2026112017 suite also passed the CORE 1 cold-reload checks. The
+Hallway wall dimmer kept its saved selection, indicator readback, bindings,
+programming and proxy after an acknowledged native reload. The two baseline
+Light fixtures kept their saved rooms, bindings, presets, programming and scenes
+through an update to the same candidate Lua. The Advanced Lighting agent still
+drove the separate test load to 55% and 62% before and after. The alias archives
+change only the model in the candidate XML.
+
+A fresh isolated HA 2026.11.1 run without HA Gesture Bridge passed 380 checks
+for native helper selection and control across both driver families. Each of the
+four paths recorded 20 software command samples. The temporary HA environment
+was removed. On CORE 1, the installed candidate ignored a fourth tap and
+delivered the following triple tap for each family with the load state and saved
+programming intact.
+
+## Revision 2026112016 qualification
+
+The three C4Zs passed release verification and the first-demo archive
+comparison. CORE 1 confirmed all four suite instances on revision 2026112016
+with their project identities and connections preserved.
+
+Director returned the older-driver review entry for blank Light and Switch
+fixtures and for a configured Switch with an unfinished migration. It hid the
+entry for an ordinarily configured Light and Switch. Both disposable fixtures
+were removed, and the project inventory matched its starting state.
+
+An independent browser review at 1000 × 550 and 320 × 300 checked the same
+visibility rules and keyboard focus when closing a completed review. The code
+review covered the saved checkpoint, the setup response, and the completed
+review's refresh and focus behavior. The installer's CORE 1 Composer screenshots
+confirm that the Hallway wall dimmer and Entryway wall switch hide **Review an
+older driver**, and that the AC Switch with an unfinished migration still offers
+it.
+
+The exact archives passed 1,131 family, 12 picker and ten paired recovery checks
+on each of Home Assistant 2026.11.1 and 2026.11.2. These checks used real
+isolated Home Assistant and a Director shim. Both children recovered their
+subscriptions after a socket drop and a Coordinator reload, and each recovered
+one withheld state update. Both temporary labs were removed. The exact
+Coordinator archive also passed 139 mixed-project checks with the pinned
+predecessor packages.
+
+## Revision 2026112013 qualification
+
+The exact CORE 1 and CORE 5 packages passed the archive comparison against the
+six BP and prototype predecessors. The packaged Coordinator passed 139
+mixed-project checks on simulated Director, including saved Call Service
+programming, scoped feedback and reconnect with both prototype children.
+
+On each of Home Assistant 2026.11.1 and 2026.11.2, the archived drivers passed
+1,131 family checks, 12 picker checks and 10 paired-driver checks. The paired
+run recovered from a socket drop, Coordinator reload and one withheld state push
+per child. A separate 2026.11.1 run without HA Gesture Bridge passed 380 checks
+across manual saved-ID and Device Setup paths. The four paths each collected 20
+command samples on the test host's monotonic clock. All three temporary HA
+containers and volumes were removed.
+
+On CORE 1, the BP and prototype Light rehearsal fixtures updated from
+2026111923\. They kept their device and proxy IDs, rooms, connections, saved
+settings and scene membership. Their saved scenes drove the separate simulated
+load to 55% and 62% respectively, before and after the update. These test
+archives change the model in the candidate XML for the isolated fixtures and
+retain the exact Lua from the candidate package.
+
+The canonical CORE 1 Light kept the saved Lab 64 preset. Its 21 Director ramp
+samples kept a 64% target. Home Assistant accepted one brightness command with a
+750 ms transition. The saved Bottom double-tap program turned off the simulated
+dimmer. Both installed families skipped a fourth tap and delivered the next
+triple tap without changing their load or saved programs. The test restored the
+lab dimmer's initial state.
+
+The installed Coordinator checked both release channels while connected to HA.
+Its Production check found no release, and its Pre-release check reported the
+previous preview as older than 2026112013. The suite stayed on 2026112013 and
+the original Production channel was restored.
+
+## Revision 2026112010 qualification
+
+Build inventory SHA-256
+`508eee2dc3a05498315aba7ad879221eb82eeb7286ee561a3a00837e1d2e279f`. The exact
+three C4Zs passed the package comparison against all six predecessors. The
+release checker qualified the exact candidate bytes on Production and selected
+the same revision on Pre-release in a simulated GitHub promotion. Before the
+newer stable release was available, it downloaded no assets for a switch from
+beta to Production.
+
+The C4Zs passed ten paired Light and Switch checks on each of Home Assistant
+2026.11.1 and 2026.11.2. With both children connected, the packaged Coordinator
+recovered from socket loss and a reload. One scoped read per child recovered
+feedback when the test withheld a state push after command acceptance. Each
+receipt matched the three C4Z digests, and both temporary labs were removed.
+
+A separate HA 2026.11.1 lab exercised `input_boolean` control with HA Gesture
+Bridge absent. Light passed 64 checks and Switch passed 124 checks, with 20
+command samples per family. The temporary lab was removed.
+
+CORE 1 reported the same revision on all four installed suite instances. Its
+saved Bottom double-tap program still turned off the lab Light. The saved Lab 64
+preset also ramped from 37% to 64%, keeping the 64% target throughout all 23
+Director ramp samples. Home Assistant received one brightness command with a
+0.75-second transition. Both tests restored the starting lab load state.
+
 ## Reference archives
 
 The six reference assets remain private. Their exact filenames, SHA-256 hashes,

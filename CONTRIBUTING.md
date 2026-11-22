@@ -167,14 +167,14 @@ import applicable fixes. Follow the
 
 ## Build System
 
-This project uses `make` for build orchestration. All tooling is Python (in a
-local `.venv`) plus a few standalone binaries, with no Node/npm. A repo that
-adds Node tooling of its own pins the version in `.node-version`, which nodenv
-reads locally and the Build workflow sets up in CI.
+This project uses `make` for build orchestration. The build tooling uses Python
+and standalone binaries. Setup UI tests use Node's built-in test runner. The
+Build workflow and nodenv use the version pinned in `.node-version`.
 
 ### Prerequisites
 
 - Python 3.9+ (docs, formatters, preprocess, and driverpackager)
+- Node.js (see `.node-version`) to run Setup UI tests
 - Git, since `make init` clones the driverpackager into `dist/`
 - [LuaJIT](https://luajit.org/) (`brew install luajit`) to run
   `tools/gen-squishy.lua` and the tests
@@ -202,7 +202,7 @@ make check-deps    # Install if needed, then verify .venv matches requirements.t
 make build         # Full build, from clean through zip (see Build Pipeline)
 make build-nodocs  # Build without generating docs
 make verify        # After a build, check what CI checks after one
-make test          # Run the Lua test suite (test/test_*.lua) and tools/test_*.py
+make test          # Run the Lua, Python and Setup UI tests
 make support-code  # Print today's Support Code (see The Support Code)
 make dc-release    # Download the newest release's DriverCentral upload (TAG=v... for another)
 make fmt           # Format all code (Lua, Python, Markdown)
@@ -400,9 +400,8 @@ shared pair above, split by what the code is *about*:
   prefix taken from the driver name.
 
 Both `require("c4_shim")` and build on the C4 environment rather than replacing
-it. Neither runner needs telling about them: `make test` collects only
-`test_*.lua`, and both put `test/` on `LUA_PATH`, so `require("c4_local")`
-resolves on its own.
+it. The Lua runners collect only `test_*.lua` and both put `test/` on
+`LUA_PATH`, so `require("c4_local")` resolves on its own.
 
 Promote either one into the template only once a second driver needs it.
 

@@ -596,7 +596,9 @@ var Kit = (function () {
         ">" +
         p.choices
           .map(function (c) {
-            return "<option" + (c === p.value ? " selected" : "") + ">" + esc(c) + "</option>";
+            var label = p.choice_labels && p.choice_labels[c];
+            return "<option" + (label ? ' value="' + esc(c) + '"' : "") +
+              (c === p.value ? " selected" : "") + ">" + esc(label || c) + "</option>";
           })
           .join("") +
         "</select>"

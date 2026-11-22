@@ -1,5 +1,6 @@
 require("c4_shim")
 local T = require("testlib")
+local F = require("c4_fixtures")
 local codec = require("ha.codec")
 local deferred = require("deferred")
 local http = require("lib.http")
@@ -208,6 +209,18 @@ T.eq(
 )
 
 T.section("Missing installed driver, malformed manifest, compatibility, and corrupted bytes fail closed")
+local writes = {}
+local function unexpectedWrite(api)
+  return function()
+    writes[#writes + 1] = api
+    error("release preparation attempted " .. api)
+  end
+end
+local originalAPI = {}
+local guardedAPIs = { "FileWrite", "FileDelete", "AddDevice", "CreateTCPClient" }
+for _, api in ipairs(guardedAPIs) do
+  originalAPI[api], C4[api] = C4[api], unexpectedWrite(api)
+end
 for _, scenario in ipairs({
   { key = "invalid_manifest", opts = { noManifest = true }, reads = 1 },
   { key = "invalid_manifest", opts = { manifestSchema = 2 }, reads = 2 },
@@ -223,6 +236,7 @@ for _, scenario in ipairs({
   T.eq(scenario.key .. " result", { result.kind, #requested }, { scenario.key, scenario.reads })
   T.eq(scenario.key .. " exposes no partial archive batch", result.assets, nil)
 end
+T.eq("rejected batches leave installed files, devices, and Director reloads untouched", writes, {})
 reset()
 local incomplete = draft("v2026111814", { skip = names[3] })
 installed[names[3]] = nil
@@ -294,8 +308,16 @@ end)
 installed[names[2]] = { [12] = 2026111813 }
 assert(pausedDownload):resolve({ body = payloads[pausedURL] })
 T.eq("matching version headlines cannot conceal replaced device IDs", result, { kind = "installed_changed" })
+T.eq("preparation leaves all installation writes to the caller, including after a stale inventory", writes, {})
+for _, api in ipairs(guardedAPIs) do
+  C4[api] = originalAPI[api]
+end
 
 T.section("Coordinator action owns its status and ignores an older channel reply")
+installed[names[1]] = { [1] = 2026111813 }
+function C4:GetDeviceID()
+  return 1
+end
 local old = check.check
 local pending, calls = deferred.new(), 0
 check.check = function(channel)
@@ -330,7 +352,7 @@ resetAction()
 check.check = old
 
 if arg[1] then
-  T.section("Published manifest validation reads the actual built packages")
+  T.section("Production promotion qualifies the actual built packages")
   reset()
   local function read(name)
     local file = assert(io.open(arg[1] .. "/" .. name, "rb"))
@@ -353,12 +375,17 @@ if arg[1] then
     }
     payloads[url] = body
   end
+  local target = assert(tonumber(published.revision))
+  local previous = draft("v" .. (target - 2))
+  local preview = draft("v" .. (target - 1) .. "-beta.1")
   for index, name in ipairs(names) do
-    installed[name][index] = tonumber(published.revision) - 1
+    installed[name][index] = target - 1
     add(name, read("c4z/" .. name))
   end
   add("ha-suite-release.json", manifest)
-  result = outcome("Production", { release }, check.prepare)
+  result = outcome("Production", { preview, previous }, check.prepare)
+  T.eq("changing from Pre-release to Production downloads no older assets", { result.kind, #requested }, { "ahead", 1 })
+  result = outcome("Production", { preview, previous, release }, check.prepare)
   T.eq("all built C4Zs qualify for installation", { result.kind, #result.assets }, { "available", 3 })
   for index, name in ipairs(names) do
     T.truthy(
@@ -366,6 +393,33 @@ if arg[1] then
       result.assets[index].body == payloads[ASSET_ROOT .. tag .. "/" .. name]
     )
   end
+  result = outcome("Pre-release", { previous, release, preview })
+  T.eq(
+    "the promoted revision is also the latest for Pre-release",
+    { result.kind, result.revision },
+    { "available", target }
+  )
+
+  T.section("the Coordinator applies the exact qualified archives only after opt-in")
+  local root = ShimFiles("C4Z_ROOT")
+  for _, name in ipairs(names) do
+    root[name] = "existing " .. name
+  end
+  Properties["Update channel"], Properties["Automatic Updates"] = "Production", "Off"
+  local endActions, startActions = check.installActions(function()
+    return true
+  end)
+  local tcp = F.captureTcpClient({ holdReplies = true })
+  EC.CheckDriverUpdates()
+  T.eq("Off performs no write or reload", { root[names[2]], #tcp.writes }, { "existing " .. names[2], 0 })
+  Properties["Automatic Updates"] = "On"
+  startActions()
+  ShimFireTimers()
+  T.eq("automatic checks start the installer", #tcp.writes, 1)
+  T.eq("first package is the exact qualified Light archive", root[names[2]], read("c4z/" .. names[2]))
+  T.eq("the other archive stays in place before Light acknowledges", root[names[3]], "existing " .. names[3])
+  endActions()
+  tcp.restore()
 end
 
 T.finish()

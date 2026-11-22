@@ -381,12 +381,46 @@ function Adapter:readLinks()
   return found
 end
 
-function Adapter:hasDedicatedAppLink()
-  return self.connected.links.app ~= nil
+function Adapter:appLinkChoices()
+  local links = self.connected.links
+  if links.app then
+    return
+  end
+  local selected = Properties["App Control Link"]
+  local selectedRole = appLinkRoles[selected]
+  local selectedLink = links[selectedRole]
+  local choices, devices, seen = { "Automatic" }, {}, {}
+  for _, label in ipairs({ "Top", "Bottom", "Toggle" }) do
+    local link = links[appLinkRoles[label]]
+    if link and not seen[link.device] then
+      seen[link.device] = true
+      local value = selectedLink and selectedLink.device == link.device and selected or label
+      choices[#choices + 1], devices[value] = value, link.device
+    end
+  end
+  local needsRecovery = selectedRole ~= nil and selectedLink == nil
+  if #choices > 2 or (#choices == 2 and needsRecovery) then
+    if needsRecovery then
+      choices[#choices + 1] = selected
+    end
+    return choices, devices
+  end
 end
 
 function Adapter:targetState()
   return self.connected.current
+end
+
+function Adapter:bottomRampTarget()
+  local target = self.connected.current
+  local bottom = self.connected.links.bottom
+  if bottom and target and target.controls and target.controls.ramp and self.connected:isAppTarget(bottom.device) then
+    return target.name
+  end
+end
+
+function Adapter:setLinkedTrace(enabled)
+  self.connected:setTrace(enabled)
 end
 
 function Adapter:_button(role, action, identity)
@@ -679,6 +713,8 @@ function Adapter:delegate(binding, command, params)
         end
       end
       self.connected:command(command, params)
+    else
+      self.connected:traceOnColorSkipped()
     end
   end
   return true

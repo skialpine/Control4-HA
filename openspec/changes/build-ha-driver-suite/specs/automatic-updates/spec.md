@@ -4,6 +4,14 @@ Keep installed suite drivers current through automatic, coordinated release inst
 
 ## ADDED Requirements
 
+### Requirement: Installer bootstrap
+The installer SHALL download and extract one suite driver ZIP, then select all of its driver packages together in Composer's Add or Update Driver dialog. The same import process SHALL apply when the ZIP includes more driver families. The installer SHALL verify the installed revision and enable automated updates once on the Coordinator.
+
+#### Scenario: Install the first suite release
+- **WHEN** the installer has downloaded the release bundle
+- **THEN** the installed Coordinator, Light and Switch packages use that release's matching revision
+- **AND** after the installer enables automatic updates, eligible later releases require no further Composer action
+
 ### Requirement: Automatic release channels
 The HA Coordinator SHALL offer Production and Pre-release channels. Child drivers MUST NOT expose independent upgrade settings or actions. Production MUST be the default and exclude prereleases; Pre-release MUST include eligible prereleases. Updates from the selected channel MUST install automatically when enabled, without a Composer action or per-release user approval.
 

@@ -2,6 +2,7 @@
 local contract = require("ha.contract")
 local ids = require("ha.identities")
 local assessment = require("ha.migration-assessment")
+local prototype = require("ha.prototype-selection")
 local M = {}
 local light, interimLight, switch = ids.packages.light, ids.packages.interimLight, ids.packages.switch
 local packages = { [light.file] = light, [interimLight.file] = interimLight, [switch.file] = switch }
@@ -77,6 +78,7 @@ local function identified(id, row)
     input = input,
     family = package == switch and "switch" or "light",
     room_id = tonumber(row.roomId),
+    room = row.roomName,
     name = row.deviceName,
     selected = stringVariable(id, "Selected Endpoint"),
     provider = provider,
@@ -88,24 +90,31 @@ local function legacySelection(id)
   local fromVariable = ok and variable or nil
   local readable, properties = pcall(GetDeviceProperties, id)
   local fromProperty = readable and type(properties) == "table" and properties["Entity ID"] or nil
+  local mode = readable and type(properties) == "table" and prototype.mode(properties["Operation Mode"]) or nil
   if invalid or (fromProperty and fromVariable and fromProperty ~= fromVariable) then
     return nil
   end
   local entity = fromProperty or fromVariable
-  return (entity == "" or contract.entity(entity)) and entity or nil
+  return (entity == "" or contract.entity(entity)) and entity or nil, mode
 end
 
 local function legacyDevice(id, row, origin)
   local binding = GetDeviceBindings(id, nil, false, nil, ids.legacyCoordinatorClass)[ids.lightCoordinatorBinding]
   local provider = binding and tonumber(C4:GetBoundProviderDevice(id, ids.lightCoordinatorBinding))
+  local selected, mode
+  if binding then
+    selected, mode = legacySelection(id)
+  end
   return {
     id = id,
     file = row.driverFileName,
     family = origin.family,
     room_id = tonumber(row.roomId),
+    room = row.roomName,
     name = row.deviceName,
-    selected = binding and legacySelection(id) or nil,
+    selected = selected,
     legacy = true,
+    legacy_mode = mode,
     legacy_provider = provider,
     -- A legacy binding describes the old project device. Only identified
     -- suite consumers can establish ownership or resume a previous add.
@@ -177,7 +186,11 @@ function M.decide(item, devices, receipt, coordinator)
   for _, device in ipairs(devices) do
     if device.selected == nil then
       unreadable[#unreadable + 1] = device
-    elseif item.keys[device.selected] or (device.legacy and device.selected == item.legacy_gesture) then
+    elseif
+      item.keys[device.selected]
+      or (device.legacy and device.selected == item.legacy_gesture)
+      or (device.selected == item.gesture_match and (device.provider == coordinator or device.provider == 0))
+    then
       selected[#selected + 1] = device
     end
     if M.roomAndName(device) == roomAndName then
@@ -193,6 +206,10 @@ function M.decide(item, devices, receipt, coordinator)
   elseif match then
     if match.legacy then
       return "review", match.id, "legacy_" .. match.family .. "_match"
+    elseif not item.keys[match.selected] and match.selected == item.gesture_match then
+      -- A shared physical control accounts for the button device in the
+      -- picker, but does not establish that the installed driver owns its load.
+      return "review", match.id, "button_device_match"
     elseif match.family == item.family and match.provider == coordinator then
       if receipt and (receipt.device_id ~= match.id or receipt.phase ~= "complete") then
         if receipt.device_id ~= match.id then
@@ -206,8 +223,13 @@ function M.decide(item, devices, receipt, coordinator)
     end
     return "review", match.id, "different_device_or_coordinator"
   elseif receipt then
-    if receipt.phase == "complete" and not recorded and #named == 0 and #unreadable == 0 then
-      -- A completed add can be requested again after the installer removes it.
+    if
+      (receipt.phase == "added" or receipt.phase == "complete")
+      and not recorded
+      and #named == 0
+      and #unreadable == 0
+    then
+      -- A known add can be requested again after the installer removes it, even if setup was interrupted.
       -- Director can still report a live connection while the device is absent from inventory.
       local remaining = C4:GetDevices({ DeviceIds = tostring(receipt.device_id) })
       local bound = C4:GetBoundConsumerDevices(coordinator, ids.coordinatorBinding) or {}

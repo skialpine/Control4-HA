@@ -135,11 +135,29 @@ T.section("Linked app is independent of Home Assistant and mirrors a confirmed n
 providers[appBinding], providers[ids.targetLinks.top], providers[ids.targetLinks.bottom] = light, branch, group - 1
 setup:start()
 T.eq("no HA selection required for local app", setup:view().status, "Device connected")
+T.eq("a linked-only Light does not need an older driver review", setup:view().migration_available, false)
 T.eq("explicit target wins over independent paddle targets", setup:view().target, "Bedroom")
 T.eq("initial state is from native target", proxy.level, 0)
 T.eq("target ramp advertised", proxy.caps.ramp_level, true)
 T.eq("unsupported stop hidden", proxy.caps.supports_brightness_stop, false)
 T.eq("only app target is watched", OWVC[branch], nil)
+local rampHelp = "For this bottom paddle, edit Hold Ramp Rates → Down on "
+T.falsy(
+  "the app target is not named as the source of a different paddle's rate",
+  setup:view().linked_settings_help:find(rampHelp, 1, true)
+)
+providers[ids.targetLinks.bottom] = light
+setup:bindingsChanged(ids.targetLinks.bottom)
+T.truthy(
+  "a shared dimmable target is named as the owner of the bottom rate",
+  setup:view().linked_settings_help:find(rampHelp .. "Bedroom.", 1, true)
+)
+providers[ids.targetLinks.bottom] = group - 1
+setup:bindingsChanged(ids.targetLinks.bottom)
+T.falsy(
+  "changing the bottom link removes the old rate owner",
+  setup:view().linked_settings_help:find(rampHelp, 1, true)
+)
 proxy:appOn(100)
 T.eq("Navigator uses target's nighttime preset", last(), { id = light, command = "ON", parameters = {} })
 T.eq("request does not change displayed level", proxy.level, 0)
@@ -408,12 +426,14 @@ T.section("Unbound or conflicting app targets do not follow a random paddle")
 providers[appBinding] = nil
 setup:bindingsChanged(appBinding)
 T.eq("distinct paddle bindings need an explicit app link", setup:view().status, "Choose a connected light")
+T.eq("unresolved app routing hides the settings note", setup:view().linked_settings_help, nil)
 local prior = #requests
 proxy:send("ON")
 T.eq("ambiguous app sends nothing", #requests, prior)
 providers[ids.targetLinks.bottom] = branch
 setup:bindingsChanged(ids.targetLinks.bottom)
 T.eq("one physical paddle target can provide the app target", setup:view().target, "Hall")
+T.eq("binary target hides the dimmer settings note", setup:view().linked_settings_help, nil)
 proxy:send("SET_LEVEL", { LEVEL = 43 })
 T.eq("binary linked light receives power only", last(), { id = branch, command = "ON", parameters = {} })
 local priorReads = reads
@@ -652,6 +672,75 @@ T.eq("a combined group command forwards each supported aspect exactly once", {
 EC.LIGHT_GROUP_LEAVE({ GROUP_ID = driverGroup })
 T.eq("group driver leave removes membership", adapter.light.groups:drivers()[tostring(driverGroup)], nil)
 
+T.section("A member recovers when a deleted group never sends its leave")
+local registry = C4:GetDevices()
+registry[me] = { deviceName = "This HA Light" }
+registry[loadGroup] = { deviceName = "Load Group" }
+registry[driverGroup] = { deviceName = "Light Group" }
+ShimSetDevices(registry)
+proxy:send("JOIN_GROUP", { GROUP_ID = loadGroup, KEEP_SYNC = true })
+EC.LIGHT_GROUP_JOIN({ GROUP_ID = driverGroup, MEMBER_ID = "member" })
+T.eq("the listed group receives a state report", { last().id, last().command }, { driverGroup, "LIGHT_GROUP_STATE" })
+
+local savedLoadGroup = registry[loadGroup]
+registry[loadGroup] = nil
+proxy:send("SET_LEVEL", { LEVEL = 32 })
+T.eq("the first command after a missing group goes to the connected light", last().id, light)
+T.eq("one missing lookup preserves the saved load group", adapter.light.groups:all()[tostring(loadGroup)], true)
+local savedSelf = registry[me]
+registry[me] = nil
+clock.run(1100)
+proxy:send("SET_LEVEL", { LEVEL = 33 })
+T.eq("an incomplete lookup cannot route back to a known missing group", last().id, light)
+T.eq("an incomplete lookup cannot confirm deletion", adapter.light.groups:all()[tostring(loadGroup)], true)
+registry[me] = savedSelf
+registry[loadGroup] = savedLoadGroup
+proxy:send("ON")
+T.eq("a reappearing load group still takes the local command", { last().id, last().command }, { loadGroup, "ON" })
+
+local survivor = 9174
+registry[survivor] = { deviceName = "Surviving Load Group" }
+proxy:send("JOIN_GROUP", { GROUP_ID = survivor, KEEP_SYNC = true })
+registry[loadGroup], registry[driverGroup] = nil, nil
+registry[me] = nil
+proxy:send("ON")
+clock.run(1100)
+proxy:send("ON")
+T.eq(
+  "lookups without this light cannot erase a saved load group",
+  adapter.light.groups:all()[tostring(loadGroup)],
+  true
+)
+T.eq(
+  "lookups without this light cannot erase a saved driver group",
+  adapter.light.groups:drivers()[tostring(driverGroup)],
+  "member"
+)
+registry[me] = savedSelf
+prior = #requests
+proxy:send("ON")
+T.eq("only the surviving synced group receives the command", { #requests, last().id }, { prior + 1, survivor })
+observe(light, 1001, "64")
+registry[me] = nil
+prior = #requests
+observe(light, 1001, "65")
+local reportedMissing = false
+for i = prior + 1, #requests do
+  reportedMissing = reportedMissing or requests[i].id == driverGroup
+end
+T.eq("an incomplete lookup cannot publish back to a known missing group driver", reportedMissing, false)
+registry[me] = savedSelf
+clock.run(1100)
+proxy:send("ON")
+observe(light, 1001, "66")
+clock.run(1100)
+T.eq("the missing load group is cleared from storage", persist:get("load_groups")[tostring(loadGroup)], nil)
+T.eq("the surviving load group stays registered", persist:get("load_groups")[tostring(survivor)], true)
+T.eq("the missing driver group is cleared from storage", persist:get("light_groups")[tostring(driverGroup)], nil)
+proxy:send("LEAVE_GROUP", { GROUP_ID = survivor })
+proxy:send("SET_LEVEL", { LEVEL = 36 })
+T.eq("normal control resumes after the last synced member leaves", last().id, light)
+
 providers[appBinding] = group - 1
 setup:bindingsChanged(appBinding)
 prior = #requests
@@ -660,6 +749,133 @@ proxy:send("GROUP_SET_LEVEL", { GROUP_ID = group - 1, LEVEL = 41 })
 T.eq("a group never receives a member command echoed back through its own target link", #requests, prior)
 providers[appBinding] = replacement
 setup:bindingsChanged(appBinding)
+
+T.section("Navigator Off preserves the linked target's own Off behavior")
+prior = #requests
+proxy:send("SET_BRIGHTNESS_TARGET", {
+  LIGHT_BRIGHTNESS_TARGET = "0",
+  LIGHT_BRIGHTNESS_TARGET_PRESET_ID = "2",
+  RATE = "750",
+})
+T.eq("the native Off preset sends logical Off even without advertised ramp support", { #requests, last() }, {
+  prior + 1,
+  { id = replacement, command = "OFF", parameters = {} },
+})
+proxy:send("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "0" })
+T.eq("an explicit zero level retains its level route", last(), {
+  id = replacement,
+  command = "SET_LEVEL",
+  parameters = { LEVEL = 0 },
+})
+observe(replacement, 1000, "false")
+observe(replacement, 1001, "0")
+T.eq("the proxy mirrors the target's confirmed Off", proxy.level, 0)
+proxy:appOn(100)
+T.eq("Navigator can turn the linked target back on", last(), { id = replacement, command = "ON", parameters = {} })
+clock.run(50)
+
+T.section("Linked fades read native setup when Director omits the deprecated ramp field")
+local setupReads = 0
+local sendUIRequest = C4.SendUIRequest
+function C4:SendUIRequest(device, request, params)
+  if device == replacement and request == "GET_SETUP" then
+    setupReads = setupReads + 1
+    return "<setup><ramp_level>True</ramp_level><brightness_rate_max>8000</brightness_rate_max></setup>"
+  end
+  return sendUIRequest(self, device, request, params)
+end
+observe(
+  replacement,
+  6661,
+  "<DynamicCapabilities><dimmer>True</dimmer><supports_target>True</supports_target></DynamicCapabilities>"
+)
+observe(replacement, 1001, "100")
+observe(replacement, 1000, "true")
+proxy:send("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "750" })
+T.eq("the linked slider sends its requested zero-level fade", last(), {
+  id = replacement,
+  command = "RAMP_TO_LEVEL",
+  parameters = { LEVEL = 0, TIME = 750 },
+})
+observe(replacement, 1000, "false")
+observe(replacement, 1001, "0")
+T.eq("the slider can reach confirmed Off", proxy.level, 0)
+proxy:appOn(100)
+T.eq(
+  "the linked target can turn back on after a slider fade",
+  last(),
+  { id = replacement, command = "ON", parameters = {} }
+)
+T.eq("setup is read once from the linked proxy and never during commands", setupReads, 1)
+clock.run(50)
+C4.SendUIRequest = sendUIRequest
+
+T.section("Linked trace reports decisions and observed feedback with a bounded opt-in capture")
+local traces, originalPrint = {}, print
+print = function(message, ...)
+  if type(message) == "string" and message:find("Linked light trace | ", 1, true) == 1 then
+    traces[#traces + 1] = message
+  else
+    originalPrint(message, ...)
+  end
+end
+local function latestTrace()
+  return traces[#traces]
+end
+proxy:send("DYNAMIC_OFF")
+observe(replacement, 1001, "53")
+observe(replacement, 1000, "true")
+T.eq("trace is silent by default", #traces, 0)
+adapter:setLinkedTrace(true)
+proxy:send("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = 0, LIGHT_BRIGHTNESS_TARGET_PRESET_ID = 2, RATE = 750 })
+T.eq(
+  "trace distinguishes the incoming Off preset and actual native Off",
+  latestTrace(),
+  "Linked light trace | SET_BRIGHTNESS_TARGET 0% over 750 ms forwarded as OFF"
+)
+observe(replacement, 1000, "false")
+T.eq("target feedback is a separate report", latestTrace(), "Linked light trace | Linked light reported Off at 0%")
+observe(replacement, 1000, "false")
+T.eq("duplicate state is silent", #traces, 2)
+proxy:send("RAMP_TO_LEVEL", { LEVEL = 42, TIME = 710 })
+T.eq(
+  "trace records the forwarded ramp level and rate",
+  latestTrace(),
+  "Linked light trace | RAMP_TO_LEVEL 42% over 710 ms forwarded as RAMP_TO_LEVEL 42% over 710 ms"
+)
+local beforeTraceRequest = #requests
+proxy:send("SET_LEVEL", { LEVEL = "private input" })
+T.eq(
+  "trace omits unvalidated values",
+  latestTrace(),
+  "Linked light trace | SET_LEVEL not forwarded: the requested brightness is missing or invalid"
+)
+lookupFailures = 1
+proxy:send("DYNAMIC_ON")
+T.eq(
+  "trace explains why a connection could not be used",
+  latestTrace(),
+  "Linked light trace | DYNAMIC_ON not forwarded: the connections could not be verified"
+)
+T.eq("tracing skips does not send commands", #requests, beforeTraceRequest)
+for _ = 1, 30 do
+  proxy:send("DYNAMIC_ON")
+end
+T.eq("tracing stops after 25 lines while commands continue", { #traces, #requests - beforeTraceRequest }, { 25, 30 })
+T.truthy("last line explains how to start a new capture", latestTrace():find("Limit reached", 1, true))
+adapter:setLinkedTrace(true)
+proxy:send("DYNAMIC_ON")
+T.eq("writing Trace again does not reset the limit", #traces, 25)
+adapter:setLinkedTrace(false)
+proxy:send("DYNAMIC_OFF")
+T.eq("trace can be turned off", #traces, 25)
+adapter:setLinkedTrace(true)
+proxy:send("DYNAMIC_ON")
+T.eq("enabling Trace again begins a new capture", #traces, 26)
+adapter:setLinkedTrace(false)
+print = originalPrint
+clock.run(50)
+
 providers[ids.targetLinks.bottom] = originalPeer
 setup:bindingsChanged(ids.targetLinks.bottom)
 T.truthy("a held paddle is active before teardown", adapter:gesture(heldButton))

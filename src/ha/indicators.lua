@@ -95,6 +95,7 @@ local function project(raw)
         end
       end
       row.color = contains(row.colors, raw.color) and raw.color or nil
+      row.configured_color = contains(row.colors, raw.configured_color) and raw.configured_color or nil
     end
   end
   row.behaviors = values(raw.behaviors, 4, behavior)
@@ -180,6 +181,20 @@ function M.allowed(attrs, id, field, value)
     and row.brightness_supported
     and percent(value)
     and (not row.levels or contains(row.levels, value))
+end
+
+function M.programmedBrightness(row, value)
+  if not row.brightness_supported or not percent(value) then
+    return nil
+  end
+  local best, distance = value, math.huge
+  for _, level in ipairs(row.levels or {}) do
+    local gap = math.abs(level - value)
+    if gap < distance or (gap == distance and level < best) then
+      best, distance = level, gap
+    end
+  end
+  return best
 end
 
 function M.command(entity, args)

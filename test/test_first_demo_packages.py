@@ -135,6 +135,18 @@ class FirstDemoPackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected driver version"):
             contract(path)
 
+    def test_archive_inventory_records_declared_native_capabilities(self):
+        path = self.root / "example.c4z"
+        archive(
+            path,
+            "Example",
+            "115",
+            "<capabilities><dimmer>True</dimmer><brightness_rate_min>0</brightness_rate_min></capabilities>",
+        )
+        self.assertEqual(
+            contract(path)["capabilities"], {"dimmer": "True", "brightness_rate_min": "0"}
+        )
+
     def pin(self, origin, family, filename, model, version, interface, **kwargs):
         identifier = f"{origin}-{family}"
         sha = archive(
@@ -156,6 +168,17 @@ class FirstDemoPackageTests(unittest.TestCase):
 
     def compare(self):
         return compare(self.pins, self.references, self.candidates, None)
+
+    def test_explicit_archives_must_share_one_revision(self):
+        self.candidate(
+            "coordinator",
+            "HA.Coordinator.c4z",
+            "HA Coordinator",
+            "116",
+            bindings(edge("1", "1", "false", "HA_DEVICE", "SKIALPINE_HA_SUITE_V1")),
+        )
+        with self.assertRaisesRegex(ValueError, "must share one revision"):
+            self.compare()
 
     def test_additive_legacy_classes_and_deliberate_switch_migration(self):
         report = self.compare()
@@ -220,7 +243,7 @@ class FirstDemoPackageTests(unittest.TestCase):
             "coordinator",
             "HA.Coordinator.c4z",
             "HA Coordinator",
-            "114",
+            "115",
             bindings(edge("1", "1", "false", "HA_DEVICE"))
             + "<events><event><id>2</id><name>Disconnected</name></event></events>",
         )
@@ -228,7 +251,7 @@ class FirstDemoPackageTests(unittest.TestCase):
             "coordinator",
             "HA.Coordinator.c4z",
             "HA Coordinator",
-            "114",
+            "115",
             bindings(edge("1", "1", "false", "SKIALPINE_HA_SUITE_V1"))
             + "<events><event><id>2</id><name>Connected</name></event></events>",
         )
@@ -247,7 +270,7 @@ class FirstDemoPackageTests(unittest.TestCase):
         self.assertEqual(report["archive_contract"], "blocked")
         self.assertTrue(
             any(
-                "higher than 114" in item
+                "higher than 115" in item
                 for item in report["candidates"]["coordinator"]["issues"]
             )
         )
