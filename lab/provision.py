@@ -217,7 +217,7 @@ def provision(
         save_private(backup, seed)
     image = "ghcr.io/home-assistant/home-assistant:" + inventory["ha_version"]
     print(
-        "Pulling the explicit HA image onto the Docker host (not this Mac).", flush=True
+        "Pulling the selected HA image onto the Docker host.", flush=True
     )
     query = urllib.parse.urlencode({"fromImage": image})
     pulled = client.call("POST", "/images/create?" + query, raw=True, timeout=300)
@@ -258,7 +258,7 @@ def provision(
     config = {
         "Image": digest,
         "Labels": {**labels, "com.centurylinklabs.watchtower.enable": "false"},
-        "Env": ["TZ=America/Denver"],
+        "Env": ["TZ=UTC"],
         "ExposedPorts": {"8123/tcp": {}},
         "HostConfig": {
             "NetworkMode": inventory["network"],

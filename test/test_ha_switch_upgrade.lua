@@ -1,4 +1,8 @@
 local T = require("testlib")
+local function reviewRemoval(wizard, tested, reviewed, evidence)
+  return wizard:reviewRemoval(tested, reviewed, evidence, wizard:state().removalScope)
+end
+
 local codec = require("ha.codec")
 local deferred = require("deferred")
 local persist = require("lib.persist")
@@ -435,8 +439,41 @@ T.eq("finished state survives reopening", wizard():state().rows[1].state, "upgra
 T.eq("no verified programming is shown when none was moved", wizard():state().rows[1].verifiedActions, nil)
 T.eq("old source is no longer offered", #upgrade:list(), 0)
 T.eq("the entry remains available until cleanup", wizard():availability(), { count = 0, pending = true })
-T.truthy("cleanup review requires testing confirmation", upgrade:reviewRemoval(false).error)
-T.eq("only the safely retired driver is offered", upgrade:reviewRemoval(true, true).rows, {
+do
+  local sources, getDevices = assess.sources, C4.GetDevices
+  local before = writes
+  local file = upgrade.batch.records[1].source.file
+  assess.sources = function()
+    error("Unexpected project discovery")
+  end
+  function C4:GetDevices(filter)
+    return filter.DeviceIds == tostring(source) and { [source] = { driverFileName = file } } or {}
+  end
+  local owner, response = { switchUpgrade = wizard() }, nil
+  local page = require("lib.ui.page")
+  local send = page.send
+  page.send = function(command, data)
+    if command == "HA_SWITCH_UPGRADE_REPLY" then
+      response = data
+    end
+  end
+  require("ha.switch-upgrade-page").install(function()
+    return owner
+  end)
+  UIR.HA_SWITCH_UPGRADE({
+    DATA = C4:Base64Encode(JSON:encode({ action = "availability", request = "reopen", includeStatus = true })),
+  })
+  assess.sources, C4.GetDevices, page.send = sources, getDevices, send
+  T.eq("reopening returns the saved result without scanning other drivers", {
+    response.request,
+    response.pending,
+    response.status and response.status.rows[1].state,
+    response.error,
+    writes,
+  }, { "reopen", true, "upgraded", nil, before })
+end
+T.truthy("cleanup review requires testing confirmation", reviewRemoval(upgrade, false).error)
+T.eq("only the safely retired driver is offered", reviewRemoval(upgrade, true, true).rows, {
   {
     id = 51,
     name = "Hall switch (old driver 51)",
@@ -448,17 +485,17 @@ T.eq("only the safely retired driver is offered", upgrade:reviewRemoval(true, tr
 programs = true
 T.eq(
   "new programming blocks removal",
-  upgrade:reviewRemoval(true, true).rows[1].message,
+  reviewRemoval(upgrade, true, true).rows[1].message,
   "Keep this driver and check its name, connections and programming."
 )
 programs = false
 relayOwner, relayPort = 99, 5
-T.eq("a redirected relay blocks removal", upgrade:reviewRemoval(true, true).rows[1].state, "blocked")
+T.eq("a redirected relay blocks removal", reviewRemoval(upgrade, true, true).rows[1].state, "blocked")
 relayOwner, relayPort = replacement, 2
 retired = true
 T.eq(
   "cleanup checks removal after the installer deletes the old driver",
-  upgrade:reviewRemoval(true, true).rows[1].message,
+  reviewRemoval(upgrade, true, true).rows[1].message,
   "Removed from Control4."
 )
 T.eq("the entry clears when the retired driver is gone", wizard():availability(), { count = 0, pending = false })
@@ -490,7 +527,7 @@ local second = upgrade:start(review.token, true)
 T.eq("new result and earlier cleanup both survive", { second.rows[1].id, second.rows[2].id }, { source, 59 })
 T.eq(
   "a cold reopen retains the earlier removal row",
-  wizard():reviewRemoval(true, true).rows[2].name,
+  reviewRemoval(wizard(), true, true).rows[2].name,
   "Previous switch (old driver 59)"
 )
 
@@ -621,21 +658,21 @@ for mode, behavior in pairs({ bridge = "Control device and report presses", butt
   )
   T.eq("the original stays identifiable for cleanup", result.rows[1].oldDriver, "Hall switch (old driver 51)")
   T.eq("naming does not change any bindings", writes, 3)
-  T.truthy("manual naming does not waive the scene and programming check", controller:reviewRemoval(false).error)
+  T.truthy("manual naming does not waive the scene and programming check", reviewRemoval(controller, false).error)
   programs = true
   T.eq(
     "removal review protects an original with remaining programming",
-    controller:reviewRemoval(false, true).rows[1].state,
+    reviewRemoval(controller, false, true).rows[1].state,
     "blocked"
   )
   programs = false
   T.eq(
     "the detached driver can be reviewed separately without another test confirmation",
-    controller:reviewRemoval(false).rows[1].state,
+    reviewRemoval(controller, false).rows[1].state,
     "ready"
   )
   relayOwner, relayPort = 0, 0
-  T.eq("removal is blocked if the transferred relay is lost", controller:reviewRemoval(false).rows[1].state, "blocked")
+  T.eq("removal is blocked if the transferred relay is lost", reviewRemoval(controller, false).rows[1].state, "blocked")
   retired = true
   T.eq(
     "the section can disappear after the old driver is removed",
@@ -673,10 +710,12 @@ local function buttonCutoverCase()
     revision = catalogRevision,
     gestureChoices = {},
     indices = { switch = { 1 } },
+    byId = { [choice] = 1 },
     rows = {
       {
         entity_id = choice,
         name = "Fireplace",
+        families = { "switch" },
         entity_aliases = { "light.fireplace_alias" },
         attributes = {
           device_choice = { device_id = physical, source_load = load, area = "Patio" },
@@ -777,7 +816,7 @@ do
   )
 
   controller = buttonCutoverCase()
-  hub.catalog.snapshot.gestureChoices[event] = choice
+  hub.catalog.snapshot.gestureChoices[event] = hub.catalog.snapshot.rows[1]
   plan = controller:review({ source })
   T.eq("review shows the exact catalog load for Start approval", plan.rows[1].reviewedLoad.entity, entity)
   outcome = controller:start(plan.token, true).rows[1]
@@ -800,8 +839,8 @@ do
     replacement,
     replacement,
   })
-  T.truthy("automatic transfer still requires testing before removal", controller:reviewRemoval(false).error)
-  T.eq("testing opens the separate removal review", controller:reviewRemoval(true, true).rows[1].state, "ready")
+  T.truthy("automatic transfer still requires testing before removal", reviewRemoval(controller, false).error)
+  T.eq("testing opens the separate removal review", reviewRemoval(controller, true, true).rows[1].state, "ready")
 
   controller = buttonCutoverCase()
   plan = controller:review({ source })
@@ -881,7 +920,7 @@ do
   revision = previousRevision
 
   controller = buttonCutoverCase()
-  hub.catalog.snapshot.gestureChoices[event] = choice
+  hub.catalog.snapshot.gestureChoices[event] = hub.catalog.snapshot.rows[1]
   preparedTarget = "switch.reassigned"
   plan = controller:review({ source })
   outcome = controller:start(plan.token, true).rows[1]
@@ -1157,7 +1196,7 @@ do
   T.eq("the shared runner enforces recovery", controller:run().error, recovery)
   T.eq(
     "recovery blocks naming and removal review",
-    { controller:finishNames().error, controller:reviewRemoval(true, true).error },
+    { controller:finishNames().error, reviewRemoval(controller, true, true).error },
     { recovery, recovery }
   )
   T.eq(
@@ -1225,6 +1264,44 @@ T.eq(
   { oldLink, relayOwner, writes },
   { coordinator, source, 0 }
 )
+
+T.section("recheck verifies the exact original connection after a Composer move")
+unsafeRelay = false
+for _, invalid in ipairs({ { 0, 0 }, { 99, 2 }, { replacement, 300 } }) do
+  relayOwner, relayPort = unpack(invalid)
+  local row = wizard():resume(review.token).rows[1]
+  T.eq("a changed endpoint stays unresolved", { row.state, row.unresolvedConnections }, { "review", true })
+  T.eq("a changed endpoint does not release the original or rewire anything", { oldLink, writes }, { coordinator, 0 })
+end
+relayOwner, relayPort = replacement, 2
+T.eq("the exact Composer move completes migration", wizard():resume(review.token).rows[1].state, "upgraded")
+T.eq("the already moved relay is left in place", topology(), { 0, 42, 261, 2, "ready" })
+T.eq("only the old Home Assistant connection was disconnected", writes, 1)
+
+fixture()
+unsafeRelay = true
+upgrade = wizard()
+review = upgrade:review({ source })
+upgrade:start(review.token, true)
+unsafeRelay, relayOwner, relayPort, extraConnection = false, replacement, 2, true
+local extra = wizard():resume(review.token).rows[1]
+T.eq("an unreviewed replacement edge still prevents migration", { extra.state, oldLink, writes }, {
+  "attention",
+  coordinator,
+  0,
+})
+T.contains("the installer is directed to the extra connection", extra.message, "extra connections")
+
+fixture()
+programs = true
+upgrade = wizard()
+review = upgrade:review({ source })
+T.eq("a verified relay can wait on a programming review", upgrade:start(review.token, true).rows[1].state, "review")
+programs, relayOwner, relayPort, rejectTransfer = false, replacement, 2, true
+local rechecked = wizard():resume(review.token)
+T.eq("the manual connection move does not waive programming review", rechecked.rows[1].confirmProgramming, true)
+T.eq("failed feedback triggers restoration", wizard():resume(review.token, { source }).rows[1].state, "restored")
+T.eq("restoration reconnects the original relay and Home Assistant", topology(), { 42, 0, 51, 1, "reserved" })
 
 fixture()
 extraPeer =
@@ -1314,6 +1391,49 @@ T.eq("a bound replacement in the wrong room cannot displace the original", topol
 T.eq("a changed room needs attention", upgrade:state().rows[1].state, "attention")
 T.eq("the moved replacement authorized zero writes", writes, 0)
 hub.connection.readState = readState
+
+T.section("an unchanged missing-load checkpoint can be revalidated across a suite update")
+do
+  fixture()
+  local oldRevision = revision
+  hub.connection.readState = function()
+    local result = deferred.new()
+    result:reject({ kind = "not_found" })
+    return result
+  end
+  local controller = wizard()
+  local plan = controller:review({ source })
+  local blocked = controller:start(plan.token, true).rows[1]
+  T.eq(
+    "missing load retains the original and the staged replacement",
+    { blocked.state, oldLink, relayOwner, writes },
+    { "attention", coordinator, source, 0 }
+  )
+  T.contains(
+    "the row says the selected switch could not be found",
+    blocked.message,
+    "couldn’t find the selected switch"
+  )
+  hub.connection.readState = readState
+  revision = oldRevision + 1
+  controller = wizard()
+  T.eq("reopening preserves the retry reason", controller:state().rows[1].message, blocked.message)
+  replacementRoom = 8
+  T.truthy("a moved replacement still blocks release revalidation", controller:resume(plan.token).error)
+  replacementRoom = 7
+  T.eq("revalidation leaves ownership and bindings in place", controller:resume(plan.token).rows[1].state, "attention")
+  T.eq(
+    "the batch revision can advance without writes",
+    { controller.batch.revision, oldLink, relayOwner, writes },
+    { revision, coordinator, source, 0 }
+  )
+  T.eq(
+    "the next explicit retry can finish loading the repaired entity",
+    controller:resume(plan.token).rows[1].state,
+    "upgraded"
+  )
+  revision = oldRevision
+end
 
 fixture()
 readGate = deferred.new()
@@ -1535,9 +1655,13 @@ T.eq("the result keeps the names of the actions verified at cutover", wizard():s
   { location = "Hallway light in Hall", event = "Turned Off", eventId = 5101, command = "Turn Off" },
 })
 destinationNamedOn = 0
-T.eq("removal blocks if the moved action goes missing", wizard():reviewRemoval(true, true).rows[1].state, "blocked")
+T.eq("removal blocks if the moved action goes missing", reviewRemoval(wizard(), true, true).rows[1].state, "blocked")
 destinationNamedOn = 1
-T.eq("removal proceeds once both moved actions are restored", wizard():reviewRemoval(true, true).rows[1].state, "ready")
+T.eq(
+  "removal proceeds once both moved actions are restored",
+  reviewRemoval(wizard(), true, true).rows[1].state,
+  "ready"
+)
 
 T.section("rollback after moving programming restores control but leaves the edited scripts")
 for _, version in ipairs({ "106", "107" }) do

@@ -6,7 +6,7 @@ and verifies the inventory's own digest. Unlisted archives are ignored. The
 normal development build and verification targets remain available.
 
 ```sh
-make suite-verify-first-demo
+make suite-verify-first-demo FIRST_DEMO_BASELINES=/path/to/references
 ```
 
 The target checks the committed VERSION by default. Set DRIVER_VERSION
@@ -41,42 +41,38 @@ reload. Only the replacement Switch received the resulting feedback. Both
 children recovered their exact selections and subscriptions over one TLS 1.3
 socket, and the simulated switch returned to its starting state.
 
-Native readback on Edwards confirmed the Coordinator remained connected using
-the retained HTTPS configuration and HA URL variable slot 1001. The Hallway wall
-dimmer retained its saved selection. In Composer, Quick Setup created and
-configured the replacement Switch for the isolated AC load on revision
-2026112106\. Returning to the Coordinator showed **Test the new drivers**.
-Director confirmed that the replacement kept the **HA Switch** display name in
-**Room** and gained the Coordinator connection. The retired driver stayed in the
-project with no bindings. Director and Home Assistant both confirmed Off and On
-through the replacement over HTTPS. The simulated load returned to On. After the
-installer restored the backup, Director confirmed the original name and
-Coordinator connection and verified the staged replacement was gone.
+Native testing confirmed the Coordinator retained HTTPS and the HA URL variable
+slot. Quick Setup created and configured the replacement Switch for the original
+Home Assistant selection. Returning to the Coordinator showed **Test the new
+drivers**. Director confirmed retention of the original room and name, the
+replacement's Coordinator connection, and the retired driver's disconnection.
+Director and Home Assistant both confirmed Off and On over HTTPS. After the
+backup restore, Director confirmed the original connection and checked that the
+replacement was gone.
 
-Composer's Brightness Test sent a 0.75 s transition to the Hallway dimmer. Home
-Assistant confirmed the 100% target, then the test restored the starting level.
-The separate production update reported 2026112106 on all 21 suite instances and
-preserved device and proxy identities, saved selections and connections.
+Composer's Brightness Test sent the configured transition to the simulated
+dimmer. Home Assistant confirmed the target and the test restored its starting
+level. A separate installed update preserved driver and proxy identities, saved
+selections and connections.
 
 The interrupted-migration and indicator changes passed independent browser
 review at 320 × 300 and 1000 × 550. The migration harness passed 299 assertions,
 including explicit recovery of the old connection across a revision change.
-Composer keyboard behavior for the revised migration prompts remains open. The
-Office switch's reopened Device Setup matched Home Assistant for Red, 100% and
-On when the device is off. The installer accepted simulated fixed-color and
-multi-channel indicator coverage for the first demo. Physical qualification of
-those two cases still requires suitable hardware.
+Composer keyboard behavior for the revised migration prompts remains open.
+Reopening Device Setup on a physical switch showed the same indicator color,
+brightness and behavior as Home Assistant. The installer accepted simulated
+fixed-color and multi-channel indicator coverage for the first demo. Physical
+qualification of those two cases still requires suitable hardware.
 
-### Production Leviton locator LED verification
+### Leviton locator LED verification
 
-Production Home Assistant reported three writable locator modes for the Pantry
-DZ15S switch and Fireplace Lights DZ6HD dimmer. After the two-file Gesture
-Bridge update, each existing control published the three modes with its
-confirmed selection. For each device, the bridge set **Always off** and restored
-**On when the device is off**. A fresh device query of Z-Wave parameter 7 and
-the published bridge state confirmed both writes. The test sent locator commands
-only. The visible LED response and native Composer settings for these models
-still need observation.
+Home Assistant reported three writable locator modes for a DZ15S switch and a
+DZ6HD dimmer. The updated gesture integration published all three modes and the
+confirmed selection. On both devices, the integration set a different mode and
+then restored the original selection. A fresh device query of Z-Wave parameter 7
+and the published bridge state confirmed both writes. The test sent locator
+commands only. The visible LED response and native Composer settings for these
+models still need observation.
 
 Independent rendered review of both Device Setup pages verified the three
 choices, saved selection, keyboard access and recovery from a rejected write.
@@ -86,16 +82,10 @@ Candidate 2026112107 passed the six pinned predecessor archive comparisons and
 219 release checks. The three extracted installer files matched the build byte
 for byte.
 
-Director acknowledged all three CORE 1 updates. The standard Coordinator archive
-displaced the certificate that Edwards uses for its isolated HTTPS endpoint.
-Installing the matching Edwards-only Coordinator archive restored trust with the
-original URL and credentials. The selected Hallway dimmer reconnected on
-revision 2026112107, and the unconfigured Switch reported the same revision and
-retained its existing proxy.
-
-CORE 5 also acknowledged all three standard package updates. Native readback
-confirmed that the Coordinator, all 19 Lights and the Switch ran 2026112107 and
-were connected. The production readback used the standard archives.
+Installed updates verified matching driver revisions, retained proxies and
+reconnected children. A lab HTTPS connection required reinstating its custom CA
+after the update. The original endpoint and credentials still worked once trust
+was restored.
 
 ## Revision 2026112103 qualification
 
@@ -127,10 +117,9 @@ state. Native Director trust and an in-place TLS cutover remain open.
 
 ## Revision 2026112017 qualification
 
-All four Edwards CORE 1 suite instances updated to revision 2026112017 with
-their device identities and bindings preserved. All three child drivers
-reconnected. The archive comparison and 217 release checks passed for these
-exact packages.
+The installed lab suite updated to revision 2026112017 with their device
+identities and bindings preserved. All three child drivers reconnected. The
+archive comparison and 217 release checks passed for these exact packages.
 
 The exact packages passed 1,131 family, 12 picker and ten paired recovery checks
 on each of Home Assistant 2026.11.1 and 2026.11.2. All three archive hashes
@@ -184,7 +173,7 @@ saved Light event ran both actions, the scene reached 55% in Control4 and
 140/255 in Home Assistant, and the isolated loads were restored.
 
 The installed 2026112017 suite also passed the CORE 1 cold-reload checks. The
-Hallway wall dimmer kept its saved selection, indicator readback, bindings,
+simulated dimmer kept its saved selection, indicator readback, bindings,
 programming and proxy after an acknowledged native reload. The two baseline
 Light fixtures kept their saved rooms, bindings, presets, programming and scenes
 through an update to the same candidate Lua. The Advanced Lighting agent still
@@ -213,9 +202,8 @@ An independent browser review at 1000 × 550 and 320 × 300 checked the same
 visibility rules and keyboard focus when closing a completed review. The code
 review covered the saved checkpoint, the setup response, and the completed
 review's refresh and focus behavior. The installer's CORE 1 Composer screenshots
-confirm that the Hallway wall dimmer and Entryway wall switch hide **Review an
-older driver**, and that the AC Switch with an unfinished migration still offers
-it.
+confirm that the simulated dimmer and simulated wall switch hide **Review an
+older driver**, and that a Switch with an unfinished migration still offers it.
 
 The exact archives passed 1,131 family, 12 picker and ten paired recovery checks
 on each of Home Assistant 2026.11.1 and 2026.11.2. These checks used real
@@ -227,10 +215,10 @@ predecessor packages.
 
 ## Revision 2026112013 qualification
 
-The exact CORE 1 and CORE 5 packages passed the archive comparison against the
-six BP and prototype predecessors. The packaged Coordinator passed 139
-mixed-project checks on simulated Director, including saved Call Service
-programming, scoped feedback and reconnect with both prototype children.
+The exact installed packages passed the archive comparison against the six BP
+and prototype predecessors. The packaged Coordinator passed 139 mixed-project
+checks on simulated Director, including saved Call Service programming, scoped
+feedback and reconnect with both prototype children.
 
 On each of Home Assistant 2026.11.1 and 2026.11.2, the archived drivers passed
 1,131 family checks, 12 picker checks and 10 paired-driver checks. The paired
@@ -247,7 +235,7 @@ load to 55% and 62% respectively, before and after the update. These test
 archives change the model in the candidate XML for the isolated fixtures and
 retain the exact Lua from the candidate package.
 
-The canonical CORE 1 Light kept the saved Lab 64 preset. Its 21 Director ramp
+The lab Light kept its saved custom brightness preset. Its 21 Director ramp
 samples kept a 64% target. Home Assistant accepted one brightness command with a
 750 ms transition. The saved Bottom double-tap program turned off the simulated
 dimmer. Both installed families skipped a fourth tap and delivered the next
@@ -280,15 +268,16 @@ Bridge absent. Light passed 64 checks and Switch passed 124 checks, with 20
 command samples per family. The temporary lab was removed.
 
 CORE 1 reported the same revision on all four installed suite instances. Its
-saved Bottom double-tap program still turned off the lab Light. The saved Lab 64
-preset also ramped from 37% to 64%, keeping the 64% target throughout all 23
-Director ramp samples. Home Assistant received one brightness command with a
-0.75-second transition. Both tests restored the starting lab load state.
+saved Bottom double-tap program still turned off the lab Light. The saved custom
+brightness preset preset also ramped from 37% to 64%, keeping the 64% target
+throughout all 23 Director ramp samples. Home Assistant received one brightness
+command with a 0.75-second transition. Both tests restored the starting lab load
+state.
 
 ## Reference archives
 
 The six reference assets remain private. Their exact filenames, SHA-256 hashes,
-source pins, archive versions and expected local locations are in
+source pins and archive versions are in
 [first-demo-baselines.json](../provenance/first-demo-baselines.json). The
 original BP Light and Switch inputs are the untouched v1.0.6 release assets. The
 Coordinator 113 input is the stock build from the v1.1.3 source tag. The
@@ -298,8 +287,7 @@ repository and has the same install name as the original BP Light. The separate
 HA Gesture Bridge source pin in the same manifest is revision
 `c4f16485776afe2cca3eef914b1c88bc03060163` at version 0.1.2.
 
-To keep archives outside the expected checkout and cache locations, put them
-under these exact relative paths in a private directory.
+Store the archives under these relative paths in a directory of your choice.
 
 | Reference directory     | Archive              | Driver version |
 | ----------------------- | -------------------- | -------------- |
@@ -310,10 +298,10 @@ under these exact relative paths in a private directory.
 | `bp-switch`             | `HA.Switch.c4z`      | 106            |
 | `prototype-switch`      | `HA.Switch.c4z`      | 107            |
 
-Pass `FIRST_DEMO_BASELINES=/path/to/references` to Make, or
-`--baseline-dir /path/to/references` to the script. A hash mismatch stops the
-check. Rebuilding a reference from the correct source can still change its ZIP
-bytes. Use the pinned asset when reporting results.
+The default reference directory is `.cache/first-demo-baselines`. Override it
+with `FIRST_DEMO_BASELINES` in Make or `--baseline-dir` in the script. A hash
+mismatch stops the check. Rebuilding a reference from the correct source can
+still change its ZIP bytes. Use the pinned asset when reporting results.
 
 ## Reading the report
 
@@ -359,57 +347,29 @@ fixture run passed 1,064 checks using these packaged drivers and a simulated
 Director binding graph. It did not exercise a saved CORE 1 project or establish
 full baseline parity.
 
-### CORE 1 rehearsal baseline
+### Native rehearsal baseline
 
-The verified lab backup contains 58 project items, 20 binding edges and three
-saved event scripts. None references original Light 52 or its proxy 53. The
-project has Coordinator 42 version 114, original Light 52 and Switch 51 version
-106, and a distinct development Coordinator 59. The original drivers connect to
-provider 42/1 from input 999. The saved Light proxy is 53/5001. Record the
-fingerprint with `python3 lab/compare_saved_project.py BEFORE.c4p` before the
-update. Run
-`python3 lab/compare_saved_project.py BEFORE.c4p AFTER.c4p --before-sha256 FINGERPRINT`
-to compare existing item identities, room assignments, bindings and saved
-scripts locally. The tool omits script arguments and credentials from its
-output.
+The pre-update backup recorded driver and proxy identities, bindings, and saved
+event scripts. The native rehearsal connected the original drivers to isolated
+simulated loads. A Director listener observed the Light's saved selection
+variable, and native control restored the load after verifying feedback in both
+directions. Saved script execution required a separate check.
 
-For the authorized Docker rehearsal, Coordinator 42 was pointed to the isolated
-lab. Light 52 was set to the binary test light and Switch 51 to the switch
-paddle. The private development tool's native listener on 52/1001 observed the
-change after its initial notification, and proxy 53 operated the test light in
-both directions. Confirmed state came from the isolated Home Assistant instance.
-A listener verifies a live variable identity. A saved Composer event script
-requires separate qualification.
+The first Coordinator update preserved the protocol instance and saved
+connection properties. The new driver failed to interpret the legacy TLS setting
+and left the original HA URL variable empty, despite passing local upgrade
+tests.
 
-On the first native Coordinator update, Director retained protocol 42 and the
-development helper acknowledged the new package. A separate read of driver
-metadata confirmed version 20261118. The original Light and Switch stayed
-installed. The saved legacy endpoint matched the lab, its token was present, and
-the new credential fields were empty. The connection did not recover on this
-build. The TLS setting was not recognized, and the original HA URL variable was
-still present at 1001 but empty. This run exposed a regression after the local
-upgrade tests passed.
+Revision 2026111802 reconnected using the saved legacy properties and restored
+the HA URL variable at its original slot. The original Light proxy controlled
+the simulated load before and after the update. A native listener confirmed
+selection changes through both the new and original manual properties. The
+original Switch stayed on its predecessor revision. Independent Director
+readback confirmed both installed upgrades after the update tool timed out.
 
-On revision 2026111802, Director reported the new version on both existing items
-42 and 52. Coordinator 42 reconnected using the saved legacy Docker endpoint and
-token and repopulated HA URL at slot 1001. Before and after updating Light 52,
-its existing proxy 53 changed the binary fixture and restored its starting
-state, verified in Home Assistant. Light retained the configured entity across
-the update. The same native listener on 52/1001 observed two selection changes
-before the update and two after, advancing from count 1 to 5. The post-update
-changes used both the new manual property and the original Entity ID property.
-Original Switch 51 remained at version 106. The update helper timed out waiting
-for inventory on both updates, but a later independent inventory read confirmed
-both installed versions. The saved graph comparison is recorded below.
-
-The recovered pre-update backup matched the recorded SHA-256
-6a1604088dd6070a308d55ee8d2b43f13651628b53b35ea6daf4e72e3e7039f8. Both backup
-archives passed integrity checks. Their complete saved graphs matched across all
-58 item IDs, names, parent rooms or devices and package filenames, all 20
-binding edges and all three saved scripts. The embedded Coordinator advanced
-from 114 to 2026111802 and Light from 106 to 2026111802. Switch remained at 106.
-None of the three scripts references Light 52 or proxy 53. The native listener
-test above covers the Light variable callback separately.
+The pre- and post-update backups passed archive integrity checks. Driver and
+proxy identities, room assignments, binding edges and saved scripts matched
+through the Coordinator and Light updates.
 
 ### Revision 2026111803
 
@@ -421,21 +381,20 @@ Switch checks using this exact package inventory (SHA-256
 `8106a49985be2a5411ae56cfd3593422ebbef83660612b013836fd1bd5e3f64c`). This run
 uses simulated Director/proxy IPC and real Home Assistant services.
 
-Director confirmed revision 2026111803 for Coordinator 42 and Light 52 through a
-native metadata read. An explicit Light refresh preserved its saved selection,
-and proxy 53 controlled and restored the isolated binary light. The suite Switch
-54 updated separately; original Switch 51 remained at 106. Composer Driver
-Information independently confirmed Light 52, proxy 53, and version 2026111803.
-Its Advanced Properties pane showed only Properties and Lua. The standard setup
-page and Actions were missing in the user’s screenshot. Revision 2026111804
-corrects a duplicated top-level capabilities element in the Light archive. After
-reconnecting, Composer showed the driver pages and native property rows on
-revision 2026111804. The recheck combined a package change with a reconnect, so
-it does not isolate which refreshed the screen.
+Director confirmed the Coordinator and Light updated to revision 2026111803.
+Refreshing the Light preserved its selection. Native control operated and
+restored the simulated load. The suite Switch updated separately while the
+original Switch stayed at 106. Composer confirmed the Light and proxy identities
+and installed revision. Its Advanced Properties pane showed only Properties and
+Lua. The standard setup page and Actions were missing in the user’s screenshot.
+Revision 2026111804 corrects a duplicated top-level capabilities element in the
+Light archive. After reconnecting, Composer showed the driver pages and native
+property rows on revision 2026111804. The recheck combined a package change with
+a reconnect, so it does not isolate which refreshed the screen.
 
-Director confirmed Light 52 was updated in place to 2026111804. Its existing
-proxy still operated the isolated binary light and restored its original state.
-A GET_PROPERTIES_SYNC read from the protocol driver returned all 32 properties.
+Director confirmed the Light updated in place to 2026111804. Its existing proxy
+still operated the isolated binary light and restored its original state. A
+GET_PROPERTIES_SYNC read from the protocol driver returned all 32 properties.
 Three had visibility attributes set to zero: Driver Status (“Device connected”),
 Next step (“Home Assistant is reporting its state.”) and Show advanced settings
 (“No”). The protocol response rules out missing runtime values for those three
@@ -455,12 +414,11 @@ bound consumer and checks the reply. This complements the six-source
 compatibility comparison. It also covers errors starting the request and
 formatting a reply.
 
-Revision 10 is installed on CORE 1 with Coordinator 42, Light 52 (proxy 53) and
-suite Switch 54. Original Switch 51 remains at 106. The read-only MCP verified
-the restored wall-dimmer selection and the reported on/off, brightness, button
-and indicator capabilities. The verification does not establish native preset
-editing, a complete Switch migration or physical indicator behavior. See the
-[native readback](../lab/installed-setup-readback.json) and the
+Revision 2026111810 installed on a lab controller while the original Switch
+remained in place at revision 106. Director readback verified the restored
+wall-dimmer selection and the reported on/off, brightness, button and indicator
+capabilities. The verification does not establish native preset editing, a
+complete Switch migration or physical indicator behavior. See the
 [task-based audit](audits/device-settings-2026-11-18.md).
 
 The development workflow uses the current OpenSpec section 0 tasks. Record the
@@ -479,8 +437,7 @@ their selected Home Assistant devices with the same proxy IDs and Coordinator
 bindings. Director retained the Switch's saved **Bottom - 2 taps → Turn off HA
 Light** program. A synthetic double tap delivered one gesture and turned off the
 fixture light. Its original state was restored, and the Switch load stayed
-unchanged. [CORE 1 readback](../lab/installed-revision-17-readback.json) ·
-[Saved gesture readback](../lab/gesture-program-readback.json)
+unchanged.
 
 Connected Light keypad and group routing have automated coverage. A physical
 keypad and a Navigator group still need a native acceptance check.
@@ -493,7 +450,6 @@ Home Assistant 2026.11.1 and 2026.11.2 each passed 1,131 family, 12 browser
 setup and eight shared-Coordinator checks with the same packages as CORE 1. The
 runtime and browser runs used isolated Home Assistant containers with simulated
 Director and proxy behavior.
-[Revision 2026111817 matrix](../lab/recovery-evidence.json)
 
 ### Revision 2026111816 qualification
 
@@ -501,13 +457,12 @@ Revision 2026111816 passed the six predecessor archive comparisons. CORE 1 kept
 the existing Light and Switch selections, proxy IDs and bindings during
 child-first updates, followed by a Coordinator update. Both devices returned to
 **Device connected**.
-[CORE 1 readback](../lab/installed-revision-16-readback.json)
 
 The operator later saved **Bottom - 2 taps → Turn off HA Light** in Composer.
 Director reported one attached action on the Switch. A synthetic bottom double
 tap produced one gesture and Home Assistant confirmed the Light changed from on
 to off. The Light's original state was restored and the Switch load stayed
-unchanged. [Saved gesture readback](../lab/gesture-program-readback.json)
+unchanged.
 
 Home Assistant 2026.11.1 and 2026.11.2 each passed 1,131 family assertions, 12
 browser setup assertions and eight shared-Coordinator assertions using this
@@ -517,12 +472,11 @@ confirmed the Switch subscription remained intact, interrupted the shared
 socket, and exercised Coordinator destroy and init callbacks. Both children
 recovered their exact subscriptions and confirmed control after reload. These
 are isolated HA and simulated Director/proxy results.
-[Revision 2026111816 matrix](../.cache/version-runs/2026111816/recovery-evidence.json)
 
 ```sh
-receipts=.cache/version-runs/2026111816
+receipts=/path/to/receipts
 python3 tools/check_first_demo.py --version 2026111816 --match-evidence \
-  --controller-receipt lab/installed-revision-16-readback.json \
+  --controller-receipt /path/to/controller-receipt.json \
   --docker-receipt "$receipts/2026.11.1-family.json" \
   --docker-receipt "$receipts/2026.11.1-picker.json" \
   --docker-receipt "$receipts/2026.11.2-family.json" \
@@ -535,13 +489,13 @@ Revision 2026111815 passed the archive comparison against all six predecessor
 packages. CORE 1 loaded the Coordinator and both current child packages at that
 revision. The existing Light and suite Switch returned to their saved Home
 Assistant selections after the Coordinator reloaded. Their bindings were
-preserved. [CORE 1 readback](../lab/installed-release-check-readback.json)
+preserved.
 
-The [gesture check](../lab/gesture-program-readback.json) used the isolated
-Switch fixture. Four taps delivered no Programming event. The following three
-taps delivered one, with the load state unchanged. The lab's installed Light and
-Switch had no saved gesture programs to retest. Composer display, saved
-programming and physical response still require separate qualification.
+The gesture check used the isolated Switch fixture. Four taps delivered no
+Programming event. The following three taps delivered one, with the load state
+unchanged. The lab's installed Light and Switch had no saved gesture programs to
+retest. Composer display, saved programming and physical response still require
+separate qualification.
 
 Home Assistant 2026.11.1 passed 1,113 family assertions and 12 browser setup
 assertions. Home Assistant 2026.11.2 passed 1,122 family assertions and 12
@@ -563,11 +517,11 @@ all three revisions with CORE 1 readback. Director reports the installed
 versions. The hashes come from the deployment record. The open behavioral and
 operator checks below still govern handoff.
 
-| OpenSpec task                               | Evidence on this candidate                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Remaining qualification                                                                                                                                                                                                                                                                               |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.3, mixed original drivers                 | The packaged Coordinator passed 123 checks with eleven original BP child sources, including fresh state after reconnect, two independently targeted Lights and a saved Call Service action with a numeric argument. [Reproduction](compatibility.md#platform-and-identity-contract)                                                                                                                                                                                                         | Live saved project and native TLS. Original Fan and Alarm Panel binaries need separate qualification.                                                                                                                                                                                                 |
-| 0.15, setting up Light and Switch           | The five-sample Docker run passed 746 Light and 367 Switch checks. The shipped HTML searched for a different known device and Cancel returned focus and preserved the saved selection for both. A [second browser run](../lab/picker-round-trip-evidence.json) confirmed a different fixture and restored the initial selection in both families. Archived UIRequest tests also exercised paging, permission denial, disconnection and retry. [Docker results](../lab/family-evidence.json) | Native Composer interaction and physical controls have separate acceptance tasks.                                                                                                                                                                                                                     |
-| 0.16–0.18, in-place settings and indicators | Director reported the restored dimmer and its indicator capabilities. Proxy 53 set the Docker dimmer to 26% and 72%, with independent HA and Director feedback. The fixture’s original power and brightness were restored. A packaged Light test edited and reopened native settings through the proxy. [Installed driver readback](../lab/installed-setup-readback.json)                                                                                                                   | The [HA indicator run](../lab/indicator-evidence.json) verified color, brightness, power behavior and tracking with fixture settings restored. Rehearse both predecessor paths with different selected and controlled devices, edit presets in Composer, and verify a physical wall-device indicator. |
+| OpenSpec task                               | Evidence on this candidate                                                                                                                                                                                                                                                                                                                                                                          | Remaining qualification                                                                                                                                                                                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.3, mixed original drivers                 | The packaged Coordinator passed 123 checks with eleven original BP child sources, including fresh state after reconnect, two independently targeted Lights and a saved Call Service action with a numeric argument. [Reproduction](compatibility.md#platform-and-identity-contract)                                                                                                                 | Live saved project and native TLS. Original Fan and Alarm Panel binaries need separate qualification.                                                                                                                                                               |
+| 0.15, setting up Light and Switch           | The five-sample Docker run passed 746 Light and 367 Switch checks. The shipped HTML searched for a different known device and Cancel returned focus and preserved the saved selection for both. A second browser run confirmed a different fixture and restored the initial selection in both families. Archived UIRequest tests also exercised paging, permission denial, disconnection and retry. | Native Composer interaction and physical controls have separate acceptance tasks.                                                                                                                                                                                   |
+| 0.16–0.18, in-place settings and indicators | Director reported the restored dimmer and its indicator capabilities. The native proxy set the Docker dimmer to 26% and 72%, with independent HA and Director feedback. The fixture’s original power and brightness were restored. A packaged Light test edited and reopened native settings through the proxy.                                                                                     | The HA indicator run verified color, brightness, power behavior and tracking with fixture settings restored. Rehearse both predecessor paths with different selected and controlled devices, edit presets in Composer, and verify a physical wall-device indicator. |
 
 ## Revision 2026111824 Light qualification
 
@@ -581,13 +535,13 @@ passed 458 Light checks using real Home Assistant services and simulated
 Director. The matching Coordinator archive passed 123 mixed-family checks
 against the original BP command sources.
 
-On CORE 1, the existing HA Light retained IDs 52 and 53, its selection, bindings
-and `ENTITY_ID`. Proxy 53 set the dimmer to 26% and 72%. The saved Switch double
-tap program still turned the Light off. A temporary scene sent through the proxy
-set the dimmer to 40% before reload. The same activation after reload did not
-change brightness. The temporary scene was removed and the fixture's starting
-settings were restored. The next native check uses a scene saved in the project.
-The
+On the lab controller, the existing HA Light retained its protocol and proxy
+identities, its selection, and its bindings. The native proxy set the dimmer to
+26% and 72%. The saved Switch double tap program still turned the Light off. A
+temporary scene sent through the proxy set the dimmer to 40% before reload. The
+same activation after reload did not change brightness. The temporary scene was
+removed and the fixture's starting settings were restored. The next native check
+uses a scene saved in the project. The
 [Light parity matrix](audits/light-switch-functional-parity.md#light-qualification-against-bp-106-and-prototype-1)
 records the remaining baseline, Composer, Navigator and physical checks.
 
@@ -606,7 +560,7 @@ Home Assistant 2026.11.1 with simulated Director, logging Off and level Info.
 Director gave the first scene saved in Composer ID zero. Revision 2026111824
 left the test dimmer at brightness 64 when that scene called for 255. Revision
 2026111825 restores the template's zero-ID support. The in-place update retained
-the selected device, Device Link, proxy 53 and `ENTITY_ID` on Light 52. Director
+the selected device, Device Link, proxy and `ENTITY_ID` on the Light. Director
 and HA confirmed the saved level of 100% before and after a same-revision
 reload. The test restored the fixture's starting power and brightness.
 
@@ -636,12 +590,12 @@ revision. The outer Properties pane showed the dimmer editor, preset controls
 and rates. Its On mode only showed a brightness field. An independent review
 confirmed the profile change matches the pinned Light example and Light Group,
 and identified native selection and save/reopen as the remaining checks. CORE 1
-retained Light 52, proxy 53, selection, bindings and `ENTITY_ID` on the update.
+retained the Light and proxy identities, selection, bindings and `ENTITY_ID`.
 Director and HA again confirmed the saved scene reached 100%, and the fixture
 returned to its prior settings.
 
 The next Composer screenshot still showed only the brightness field. Director's
-`GET_SETUP` reported both brightness modes disabled for Light 52's proxy. On a
+`GET_SETUP` reported both brightness modes disabled for Light's proxy. On a
 fresh temporary test copy of the same package it reported both modes enabled and
 included Previous On preset ID 10, matching Light Group. The temporary instance
 was removed. Revision 2026111827 exercised a runtime capability notification on
@@ -652,9 +606,9 @@ Revision 2026111828 keeps the native profile from revision 2026111826 and
 removes the experimental notification. Its Light archive SHA-256 is
 `7fba309553325ff034dbaf042ce0f1f66f0161a1d8ce1fb11949c647d4de6403`. This
 candidate was applied to the existing Light in Composer. Director confirmed the
-new revision on Light 52. Proxy 53 still reported both modes disabled and kept
-its original preset IDs 1 and 2. The Composer update therefore reproduced the
-same limitation as the development helper.
+new revision on the Light. The native proxy still reported both modes disabled
+and kept its original preset IDs 1 and 2. The Composer update therefore
+reproduced the same limitation as the development helper.
 
 The original proxy's Default On Brightness remained functional. After the
 isolated dimmer was switched off from 33% and again from 67%, an ordinary On
@@ -700,12 +654,12 @@ trials with that one field omitted. Final feedback retained the Off preset ID.
 This establishes the trigger on this HA Light. Why Light Group handles the same
 field differently and what Navigator displays after the fix remain open.
 
-Revision 2026111831 passed the in-place Director rehearsal on Light 52, proxy
-53\. From both 36% and 55%, each sampled Director target was 0 and Home Assistant
-recorded just one `turn_off` with a 750 ms transition. The native preset edit
-saved and read back 55%. An ordinary Navigator-style On command made Director
-report 55% and Home Assistant report 140 of 255. The test restored the prior
-preset and dimmer state. Native Composer edit and reopen, the preset Test
+Revision 2026111831 passed the in-place Director rehearsal on the existing Light
+proxy. From both 36% and 55%, each sampled Director target was 0 and Home
+Assistant recorded just one `turn_off` with a 750 ms transition. The native
+preset edit saved and read back 55%. An ordinary Navigator-style On command made
+Director report 55% and Home Assistant report 140 of 255. The test restored the
+prior preset and dimmer state. Native Composer edit and reopen, the preset Test
 button, and direct Navigator observation remain unverified. The archive omits
 the diagnostic code, although Director kept the prior trace property metadata
 after the in-place update.
@@ -745,12 +699,12 @@ this to the three affected built-in presets. The adapter tests check the numeric
 targets and verify that a custom preset still carries its identity during a
 ramp.
 
-On CORE 1, the normal revision 2026111834 package kept the same Light 52 and
-proxy 53. Across 33 Director samples for Default On at 55% and 34 for Previous
-Level at 37%, every reported target matched the selected mode. The preceding Off
-runs reported only 0% targets. Home Assistant received one request per
-operation, and the operator's saved preset and fixture state were restored. The
-operator then confirmed that the On bounce was gone in the Control4 app.
+On CORE 1, the normal revision 2026111834 package kept the same Light and proxy.
+Across 33 Director samples for Default On at 55% and 34 for Previous Level at
+37%, every reported target matched the selected mode. The preceding Off runs
+reported only 0% targets. Home Assistant received one request per operation, and
+the operator's saved preset and fixture state were restored. The operator then
+confirmed that the On bounce was gone in the Control4 app.
 
 Light Group's 2026111801 settings also reproduced the Default On mismatch in an
 offline test. With preset 1 active at 75%, `SET_PRESET_LEVEL` saved 55% while
@@ -780,7 +734,7 @@ original `ALS:<id>` key. After the in-place update to 2026111834, Director
 reported the same protocol ID (239), Light V2 proxy (240), scene ID (1),
 membership and level. Activation through the Advanced Lighting agent brought
 both the upgraded proxy and its isolated linked Example Light to 55%. The test
-used a temporary package alias and simulated load. The original Light 52 was
+used a temporary package alias and simulated load. The original Light was
 verified at 2026111834 and was outside this rehearsal.
 
 For the prototype repeat, CORE 1 installed the pinned Light 1 code under a
@@ -807,9 +761,9 @@ outside the measurement.
 ### Revision 2026111837 template fade verification
 
 The suite now uses template v0.9.114 with upstream PR #242. On CORE 1 (OS
-3.4.3), the existing Light 52 and proxy 53 kept their Home Assistant selection
-and native preset settings after the update. Director reported only 0% in both
-Off fades, 55% across 22 Default On samples, and 37% across 21 Previous Level
+3.4.3), the existing Light and proxy kept their Home Assistant selection and
+native preset settings after the update. Director reported only 0% in both Off
+fades, 55% across 22 Default On samples, and 37% across 21 Previous Level
 samples. Each transition produced one Home Assistant service call, and both
 systems confirmed the final levels. The original preset settings and lab light
 state were restored.
@@ -821,13 +775,13 @@ CORE 1 probe used two disposable Example Lights and a 750 ms ramp from 37% to
 showing 37% until the fade finished. With v0.9.114, all 14 active ramp samples
 showed 64%. Both settled at 64%. This tested the native proxy notification.
 
-The operator then saved **Lab 64** at 64% in Composer and reselected the Light.
-Director reported the saved preset as ID 1000. A native command applied that
-preset from 37% on Light 52 without changing its On mode. All 14 samples taken
-during the 750 ms fade showed a 64% target. Director settled at 64%, and Home
-Assistant confirmed brightness 163 out of 255 after one service call. The
-original light state was restored, and the preset settings matched their
-pre-test values on readback.
+The operator then saved a custom brightness preset at 64% in Composer and
+reselected the Light. Director reported the saved preset as ID 1000. A native
+command applied that preset from 37% on the Light without changing its On mode.
+All 14 samples taken during the 750 ms fade showed a 64% target. Director
+settled at 64%, and Home Assistant confirmed brightness 163 out of 255 after one
+service call. The original light state was restored, and the preset settings
+matched their pre-test values on readback.
 [Upstream fix #242](https://github.com/finitelabs/control4-driver-template/pull/242)
 
 ### Revision 2026111838 mixed Coordinator
@@ -863,19 +817,19 @@ selection were tested with simulated Director IPC. The temporary copies were
 removed and the primary lab was preserved. Version-specific receipts are in
 `.cache/version-runs/2026111910`.
 
-The installer used the native Composer editor on Light 52 to add, test, edit,
+The installer used the native Composer editor on the Light to add, test, edit,
 reopen and remove a temporary preset. They tested 61%, then 43%. The simulated
 HA dimmer received brightness 156 and 110 of 255 in that order. Director
 confirmed the temporary preset was removed, the saved On mode still used its 57%
-preset, and the existing Lab 64 preset remained at 64%.
+preset, and the existing custom brightness preset remained at 64%.
 
 The installed Light also accepted changes through the Device Setup indicator
-request. The simulated Hallway wall dimmer reported each change independently.
-Changing color, brightness or behavior left the other fields intact. An
-unsupported color was rejected without a change. The page reported the confirmed
-blue color when the indicator was on. The original Green, 50% and Off settings
-were restored. These checks exercise the installed driver and the companion's
-simulated endpoints. Physical indicator verification remains open.
+request. The simulated dimmer reported each change independently. Changing
+color, brightness or behavior left the other fields intact. An unsupported color
+was rejected without a change. The page reported the confirmed blue color when
+the indicator was on. The original Green, 50% and Off settings were restored.
+These checks exercise the installed driver and the companion's simulated
+endpoints. Physical indicator verification remains open.
 
 Each row below uses five samples and a monotonic clock on the test host. The
 Coordinator and Light had log output and latency diagnostics off. The observed
@@ -904,22 +858,22 @@ control samples and 49 setup observations with log output off. The test host
 used a monotonic clock to distinguish service acceptance, observed state, and
 feedback consumed by the driver. The tests used real HA and simulated Director
 IPC. Both temporary HA copies were removed, and the primary lab was preserved.
-[Version rehearsal](../lab/recovery-evidence.json)
 
 All four installed suite instances on the CORE 1 lab controller moved to
 2026111911 with their project names, rooms, selections and bindings intact. The
 migrated Switch retained its saved Turn On action, and the independent fixture's
-programming was unchanged. On Light proxy 53, Director's native On command and
-the saved Lab 64 preset reached 57% and 64% on the simulated HA dimmer. Home
-Assistant reported brightness 145 and 163 out of 255. The test restored the
-dimmer's initial state and confirmed that its saved On mode remained selected.
+programming was unchanged. Through the Light proxy, Director's native On command
+and the saved custom brightness preset reached 57% and 64% on the simulated HA
+dimmer. Home Assistant reported brightness 145 and 163 out of 255. The test
+restored the dimmer's initial state and confirmed that its saved On mode
+remained selected.
 
 The installed Advanced Lighting agent activated the existing HA Light parity
-scene, ID 0. Its sole member, Light proxy 53, reached the saved 100% level in
-Home Assistant. The existing Bottom - 2 taps program on Switch 54, event 45,
-then turned off the Light from 57% after a synthetic Home Assistant button
-event. The scene definition, programming references, and Switch power were
-unchanged. The Light returned to its starting state.
+scene, ID 0. Its sole member, the Light proxy, reached the saved 100% level in
+Home Assistant. The existing Bottom - 2 taps program on the Switch, then turned
+off the Light from 57% after a synthetic Home Assistant button event. The scene
+definition, programming references, and Switch power were unchanged. The Light
+returned to its starting state.
 
 GitHub's six published assets for v2026111823-beta.1 matched the downloaded
 sizes and SHA-256 digests. Coordinator 2026111822 had previously verified the
@@ -931,10 +885,10 @@ connected to Home Assistant. The original release channel was restored.
 
 The Light also received the four existing indicator programming commands on
 Director. Five requests each verified current color, brightness, behavior and
-the bulk color command using the simulated Hallway wall dimmer’s single
-indicator. Each request preserved the unrelated settings. The original color,
-brightness and behavior were restored. The host used a monotonic clock with
-driver log output off.
+the bulk color command using the simulated dimmer’s single indicator. Each
+request preserved the unrelated settings. The original color, brightness and
+behavior were restored. The host used a monotonic clock with driver log output
+off.
 
 | Programming command   | Director reply min / median / max (ms) | Confirmed HA read min / median / max (ms) |
 | --------------------- | -------------------------------------: | ----------------------------------------: |
@@ -1131,10 +1085,9 @@ action. Reload stayed beside Cancel through results, empty results and errors.
 It preserved the query and returned focus to search. The Coordinator's Quick
 Setup Refresh kept focus and ignored a second keypress while the first request
 was pending. Browser review used simulated driver replies. In Composer, the
-installer confirmed that `light.badid` showed no selection action, and that
-`switch.ha_lab_switch_paddle` found one **Entryway wall switch** row under the
-same search field. The current selection still displayed **Hallway wall
-dimmer**. Device Setup and Properties were visible in the same tab row.
+installer confirmed that an unknown ID offered no selection action and an exact
+switch ID found one row. The current simulated dimmer selection stayed visible.
+Device Setup and Properties were visible in the same tab row.
 
 The Lua tests cover authoritative cached selection, one richer row for proven
 aliases, independently selectable same-name loads and an explicit refresh
@@ -1147,14 +1100,13 @@ On the CORE 1 lab controller, all installed suite drivers reported 2026111919
 after staging and updating the coordinated package set. Director retained
 project names, selections, bindings and saved programming, including the
 migrated Switch action. A read-only request to the installed Device Setup
-handlers found 13 Light choices and 6 Switch choices. The entryway relay ID
-found one enhanced wall switch in each list, the binary Porch light appeared in
-Light, and the unknown ID was absent from both. Explicit reload found the same
-enhanced choice. Native readback before and after browsing matched for both
-drivers.
+handlers found 13 Light choices and 6 Switch choices. The simulated relay ID
+found one enhanced wall switch in each list, the binary light appeared in Light,
+and the unknown ID was absent from both. Explicit reload found the same enhanced
+choice. Native readback before and after browsing matched for both drivers.
 
-The installed Light honored the retained 57% On preset and 64% custom preset.
-The saved Advanced Lighting scene drove the simulated dimmer to 100%. The saved
+The installed Light honored both its saved On preset and a custom preset. The
+saved Advanced Lighting scene drove the simulated dimmer to 100%. The saved
 Switch double-tap action then turned it off while the switch load stayed in its
 original state. The scene and programming were unchanged, and the dimmer was
 restored after testing.
@@ -1230,7 +1182,7 @@ the existing private seed before Docker writes. The regression verifies that a
 conflict preserves the original backup and creates no resources.
 
 A disposable Light V2 driver on CORE 1 played a looping flash through the
-simulated Porch light. The test observed six alternating HA state transitions,
+simulated binary light. The test observed six alternating HA state transitions,
 then verified that native Stop halted the loop and Remove prevented the scene
 from starting again. The first confirmed state arrived in 602 ms. Five observed
 transition intervals ranged from 704 to 786 ms, with a 757 ms median and 786 ms
@@ -1265,11 +1217,11 @@ Docker receipts.
 ## Revision 2026111922 Light reload checks
 
 On the CORE 1 lab controller, the installed canonical Light kept its 57% On
-preset and its Lab 64 preset. Using the native proxy, Home Assistant confirmed
-both levels on the simulated dimmer. The saved Advanced Lighting scene reached
-100%, and the existing Bottom double-tap program turned the light off. Native
-readback confirmed that the saved scene and programming stayed intact. The
-dimmer returned to its initial power and brightness.
+preset and its custom brightness preset. Using the native proxy, Home Assistant
+confirmed both levels on the simulated dimmer. The saved Advanced Lighting scene
+reached 100%, and the existing Bottom double-tap program turned the light off.
+Native readback confirmed that the saved scene and programming stayed intact.
+The dimmer returned to its initial power and brightness.
 
 The saved Prototype Light rehearsal updated in place from its earlier 2026111834
 rehearsal build to 2026111922. Director retained the same protocol and proxy

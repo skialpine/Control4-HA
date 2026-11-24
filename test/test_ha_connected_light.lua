@@ -125,6 +125,8 @@ local adapter = Adapter.new()
 adapter:start()
 Properties =
   { ["Button behavior"] = "Automatic", ["Manual entity ID"] = "", ["Driver Status"] = "", ["Next step"] = "" }
+Properties["Log Mode"], Properties["Log Level"] = "Off", "4 - Debug"
+require("ha.foundation").init("light")
 persist:delete("HA.DeviceSelection")
 persist:set("max_on_level", 50)
 local setup = Setup.new("light", nil, adapter)
@@ -811,10 +813,19 @@ clock.run(50)
 C4.SendUIRequest = sendUIRequest
 
 T.section("Linked trace reports decisions and observed feedback with a bounded opt-in capture")
+local function setLogMode(mode)
+  Properties["Log Mode"] = mode
+  OnPropertyChanged("Log Mode")
+end
+local function setLogLevel(level)
+  Properties["Log Level"] = level
+  OnPropertyChanged("Log Level")
+end
 local traces, originalPrint = {}, print
 print = function(message, ...)
-  if type(message) == "string" and message:find("Linked light trace | ", 1, true) == 1 then
-    traces[#traces + 1] = message
+  local start = type(message) == "string" and message:find("Linked light trace | ", 1, true)
+  if start then
+    traces[#traces + 1] = message:sub(start)
   else
     originalPrint(message, ...)
   end
@@ -826,7 +837,11 @@ proxy:send("DYNAMIC_OFF")
 observe(replacement, 1001, "53")
 observe(replacement, 1000, "true")
 T.eq("trace is silent by default", #traces, 0)
-adapter:setLinkedTrace(true)
+setLogMode("Print")
+setLogLevel("3 - Info")
+proxy:send("DYNAMIC_ON")
+T.eq("normal informational logs omit linked-activity diagnostics", #traces, 0)
+setLogLevel("4 - Debug")
 proxy:send("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = 0, LIGHT_BRIGHTNESS_TARGET_PRESET_ID = 2, RATE = 750 })
 T.eq(
   "trace distinguishes the incoming Off preset and actual native Off",
@@ -863,16 +878,17 @@ for _ = 1, 30 do
 end
 T.eq("tracing stops after 25 lines while commands continue", { #traces, #requests - beforeTraceRequest }, { 25, 30 })
 T.truthy("last line explains how to start a new capture", latestTrace():find("Limit reached", 1, true))
-adapter:setLinkedTrace(true)
+setLogMode("Print")
 proxy:send("DYNAMIC_ON")
-T.eq("writing Trace again does not reset the limit", #traces, 25)
-adapter:setLinkedTrace(false)
+T.eq("writing the same Log Mode again does not reset the limit", #traces, 25)
+setLogMode("Off")
 proxy:send("DYNAMIC_OFF")
 T.eq("trace can be turned off", #traces, 25)
-adapter:setLinkedTrace(true)
+setLogMode("Print")
+setLogLevel("4 - Debug")
 proxy:send("DYNAMIC_ON")
-T.eq("enabling Trace again begins a new capture", #traces, 26)
-adapter:setLinkedTrace(false)
+T.eq("enabling logging again begins a new capture", #traces, 26)
+setLogMode("Off")
 print = originalPrint
 clock.run(50)
 

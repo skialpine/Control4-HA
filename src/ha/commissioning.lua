@@ -31,6 +31,17 @@ local function validName(value)
   return type(value) == "string" and #value <= 128 and value:match("%S") ~= nil and not value:find("%c")
 end
 
+local function buttonChoice(row, gesture)
+  local choice = row.attributes.device_choice
+  return row.domain == "event"
+      and gesture
+      and choice
+      and choice.kind == "remote"
+      and contract.registryId(choice.device_id)
+      and choice
+    or nil
+end
+
 local function requested(input)
   if type(input) ~= "table" or not contract.catalogQuery(codec.object({ revision = input.revision })) then
     return nil
@@ -93,23 +104,26 @@ local function save(saved)
   persist:flush(KEY)
 end
 
-function Commissioning.new(catalog, configure)
+function Commissioning.new(catalog, configure, installation)
   assert(type(configure) == "function", "A commissioning configuration adapter is required")
-  return setmetatable({ catalog = catalog, configure = configure, serial = 0 }, Commissioning)
+  return setmetatable(
+    { catalog = catalog, configure = configure, installation = installation, serial = 0 },
+    Commissioning
+  )
 end
 
 function Commissioning:rooms()
   return project.rooms()
 end
 
-function Commissioning:existingChoices(page)
+function Commissioning:existingChoices(page, devices)
   if #page.entities == 0 then
     return {}, {}
   end
   local index = self.browseIndex
   if page.cursor == 1 or not index or index.revision ~= page.revision then
     local coordinator = tonumber(C4:GetDeviceID())
-    local devices = project.inventory()
+    devices = devices or project.inventory(true)
     local byId, named, endpoints = {}, {}, {}
     for _, device in ipairs(devices) do
       local key = project.roomAndName(device)
@@ -121,7 +135,7 @@ function Commissioning:existingChoices(page)
         end
       end
       local provider = device.legacy and device.legacy_provider or device.provider
-      if provider == coordinator or provider == 0 then
+      if not device.other_installation and (provider == coordinator or provider == 0 or device.same_installation) then
         byId[device.id] = device
         if type(device.selected) == "string" and device.selected ~= "" then
           endpoints[device.selected] = true
@@ -133,6 +147,7 @@ function Commissioning:existingChoices(page)
       coordinator = coordinator,
       devices = devices,
       endpoints = endpoints,
+      buttons = {},
       byId = byId,
       named = named,
       saved = receipts(),
@@ -143,7 +158,7 @@ function Commissioning:existingChoices(page)
   for _, row in ipairs(page.entities) do
     local _, keys = endpointKeys(row)
     local gesture = choices.gestureEntity(row)
-    local gestureMatch = gesture and self.catalog:gestureChoice(gesture) == row.entity_id and gesture or nil
+    local gestureMatch = gesture and self.catalog:gestureChoice(gesture, row) == row.entity_id and gesture or nil
     if gestureMatch and index.endpoints[gestureMatch] then
       existing[row.entity_id] = true
     end
@@ -156,6 +171,19 @@ function Commissioning:existingChoices(page)
         ambiguous = pending ~= nil
         pending = index.saved[key]
       end
+    end
+    local buttons = buttonChoice(row, gestureMatch)
+    if not existing[row.entity_id] and buttons then
+      if index.buttons[row.entity_id] == nil then
+        index.buttons[row.entity_id] = false
+        for _, device in pairs(index.byId) do
+          if project.buttonMatch(device, buttons, index.coordinator) then
+            index.buttons[row.entity_id] = true
+            break
+          end
+        end
+      end
+      existing[row.entity_id] = index.buttons[row.entity_id] or nil
     end
     if pending and not ambiguous then
       local candidate = pending.phase == "added" and index.byId[pending.device_id]
@@ -170,6 +198,7 @@ function Commissioning:existingChoices(page)
               keys = keys,
               legacy_gesture = gesture,
               gesture_match = gestureMatch,
+              button_choice = buttons,
             }
             local decision, id = project.decide(item, index.devices, pending, index.coordinator)
             if decision == "resume" and id == candidate.id then
@@ -183,6 +212,23 @@ function Commissioning:existingChoices(page)
     end
   end
   return existing, staged
+end
+
+function Commissioning:browseChoices(page)
+  local function match(devices)
+    if self.destroyed then
+      return failure("retired")
+    end
+    local existing, staged = self:existingChoices(page, devices)
+    return { existing = existing, staged = staged }
+  end
+  local index = self.browseIndex
+  return deferred.new():resolve():next(function()
+    if #page.entities == 0 or (page.cursor ~= 1 and index and index.revision == page.revision) then
+      return match()
+    end
+    return self:_inventory(true):next(match)
+  end)
 end
 
 function Commissioning:_item(choice, rooms, devices, saved)
@@ -201,13 +247,18 @@ function Commissioning:_item(choice, rooms, devices, saved)
   end
   local canonical, keys = endpointKeys(row)
   local gesture = choices.gestureEntity(row)
+  local gestureMatch = gesture and self.catalog:gestureChoice(gesture, row) == row.entity_id and gesture or nil
   local item = {
     choice = choice,
     domain = row.domain,
     endpoint = canonical,
+    ha_device = (physical and physical.device_id) or row.device_id,
+    ha_registry = (physical and physical.source_load and physical.source_load.registry_id)
+      or choices.standaloneRegistry(row),
     keys = keys,
     legacy_gesture = gesture,
-    gesture_match = gesture and self.catalog:gestureChoice(gesture) == row.entity_id and gesture or nil,
+    gesture_match = gestureMatch,
+    button_choice = buttonChoice(row, gestureMatch),
     source_name = (physical and physical.name) or row.name,
     name = name,
     room_id = choice.room_id,
@@ -258,8 +309,23 @@ local function view(item)
   }
 end
 
-function Commissioning:_items(input)
-  local rooms, devices, saved = self:rooms(), project.inventory(), receipts()
+function Commissioning:_inventory(browsing)
+  local work = deferred.new()
+  local devices = project.inventory(true)
+  if not self.installation then
+    work:resolve(devices)
+    return work
+  end
+  return self.installation:prepare(devices):next(function(evidence)
+    -- Browse is read-only. Preview and apply re-read after async route evidence
+    -- so project changes cannot invalidate a check before a write.
+    local current = not browsing and evidence.requested and project.inventory(true) or devices
+    return self.installation:classify(current, evidence)
+  end)
+end
+
+function Commissioning:_items(input, devices)
+  local rooms, saved = self:rooms(), receipts()
   local items, selected, proposed = {}, {}, {}
   for _, choice in ipairs(input.choices) do
     local item, problem = self:_item(choice, rooms, devices, saved)
@@ -298,17 +364,22 @@ function Commissioning:preview(input)
     if metadata.revision ~= safe.revision then
       return failure("revision_changed")
     end
-    local items, problem = self:_items(safe)
-    if not items then
-      return failure(problem)
-    end
-    local id = C4:Hash("SHA256", tostring(self) .. ":" .. C4:GetTime() .. ":" .. sequence)
-    local rows = {}
-    for _, item in ipairs(items) do
-      rows[#rows + 1] = view(item)
-    end
-    self.plan = { id = id, input = safe, items = items }
-    return { id = id, items = rows }
+    return self:_inventory():next(function(devices)
+      if self.destroyed or self.serial ~= sequence then
+        return failure("retired")
+      end
+      local items, problem = self:_items(safe, devices)
+      if not items then
+        return failure(problem)
+      end
+      local id = C4:Hash("SHA256", tostring(self) .. ":" .. C4:GetTime() .. ":" .. sequence)
+      local rows = {}
+      for _, item in ipairs(items) do
+        rows[#rows + 1] = view(item)
+      end
+      self.plan = { id = id, input = safe, items = items }
+      return { id = id, items = rows }
+    end)
   end)
   return pending:next(function(result)
     metrics:finish(span, "ok")
@@ -322,6 +393,8 @@ end
 local function sameSelection(approved, actual)
   return actual
     and approved.endpoint == actual.endpoint
+    and approved.ha_device == actual.ha_device
+    and approved.ha_registry == actual.ha_registry
     and approved.domain == actual.domain
     and approved.source_name == actual.source_name
     and approved.legacy_gesture == actual.legacy_gesture
@@ -463,11 +536,13 @@ function Commissioning:_deploy(item, operation)
             return attention("light_add_unverified")
           end
         end
-        local current = self:_item(item.choice, self:rooms(), project.inventory(), receipts())
-        if not sameSelection(item, current) or current.decision ~= "resume" or current.device_id ~= deviceId then
-          return attention("preview_changed")
-        end
-        return self:_bind(item, need, deviceId, metadata.revision)
+        return self:_inventory():next(function(devices)
+          local current = self:_item(item.choice, self:rooms(), devices, receipts())
+          if not sameSelection(item, current) or current.decision ~= "resume" or current.device_id ~= deviceId then
+            return attention("preview_changed")
+          end
+          return self:_bind(item, need, deviceId, metadata.revision)
+        end)
       end, function(err)
         return attention(failureKind(err))
       end)
@@ -521,14 +596,11 @@ function Commissioning:execute(id)
   end
   self.plan, self.running = nil, true
   local span = metrics:start("commissioning.execute")
-  local pending = self.catalog:refresh(true):next(function(metadata)
+  local function deployVerified(devices)
     if self.destroyed then
       return failure("retired")
     end
-    if metadata.revision ~= plan.input.revision then
-      return failure("revision_changed")
-    end
-    local actual = self:_items(plan.input)
+    local actual = self:_items(plan.input, devices)
     for index, approved in ipairs(plan.items) do
       if not actual or not same(approved, actual[index]) then
         return failure("preview_changed")
@@ -550,9 +622,14 @@ function Commissioning:execute(id)
           verified = deferred.new()
           verified:resolve(actual[1])
         else
-          verified = self.catalog:refresh(true):next(function()
-            return self:_item(approved.choice, self:rooms(), project.inventory(), receipts())
-          end)
+          verified = self.catalog
+            :refresh(true)
+            :next(function()
+              return self:_inventory()
+            end)
+            :next(function(devices)
+              return self:_item(approved.choice, self:rooms(), devices, receipts())
+            end)
         end
         return verified
           :next(function(item)
@@ -576,6 +653,15 @@ function Commissioning:execute(id)
       :next(function(result)
         return { items = result, complete = not stopped }
       end)
+  end
+  local pending = self.catalog:refresh(true):next(function(metadata)
+    if self.destroyed then
+      return failure("retired")
+    end
+    if metadata.revision ~= plan.input.revision then
+      return failure("revision_changed")
+    end
+    return self:_inventory():next(deployVerified)
   end)
   return pending:next(function(result)
     self.running = false

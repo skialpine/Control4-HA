@@ -642,6 +642,7 @@
   Kit.connectDriver({
     handlers: {
       HA_ADD_CONNECTED: refreshWaitingConnection,
+      HA_ADD_DISCONNECTED: readState,
       HA_ADD_STATE: receive,
       HA_ADD_PAGE: recvPage,
       HA_ADD_PREVIEWED: receive,

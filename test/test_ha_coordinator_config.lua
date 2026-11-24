@@ -21,7 +21,7 @@ end
 Properties["HA URL"], Properties["HA Token"], Properties["CA Certificate Path"] = "", "", ""
 Properties["HA Host"], Properties["HA Protocol"], Properties["HA Port"] = "", "HTTP", ""
 Properties["Driver Status"], Properties["Driver Version"], Properties["Last action"] = "", "", ""
-Properties.Status, Properties["HA Version"], Properties["Debug Print"] = "Disconnected", "", "Off"
+Properties.Status, Properties["HA Version"], Properties["Debug Print"] = "Disconnected", "", "On"
 Properties["Latency Diagnostics"] = "Off"
 local visibility = {}
 function C4:SetPropertyAttribs(name, attribs)
@@ -69,7 +69,14 @@ T.eq(
   source:find("<name>Show advanced settings</name>", 1, true),
   nil
 )
-for _, name in ipairs({ "Driver Version", "Debug Print", "Log Level", "Log Mode", "Latency Diagnostics" }) do
+T.eq("Debug Print is absent from the native manifest", source:find("<name>Debug Print</name>", 1, true), nil)
+T.eq("a saved Debug Print property from an older driver is hidden", visibility["Debug Print"], 1)
+T.excludes(
+  "the saved Debug Print selection does not trigger diagnostics on startup",
+  table.concat(output, "\n"),
+  "Home Assistant connection |"
+)
+for _, name in ipairs({ "Driver Version", "Log Level", "Log Mode", "Latency Diagnostics" }) do
   T.eq(name .. " visible without a separate action", visibility[name], 0)
 end
 T.eq("empty CA path waits for HTTPS", visibility["CA Certificate Path"], 1)
@@ -81,7 +88,8 @@ T.eq("saved logging comes on without raw HA dumps", {
   DEBUG_RFN,
   DEBUG_URL,
   DEBUG_WEBSOCKET,
-}, { true, true, "4 - Debug", false, false, false })
+}, { true, true, "5 - Trace", false, false, false })
+T.eq("Trace is the highest choice the Coordinator offers", log:getLogLevelNames()[6], "5 - Trace")
 clock.run(2 * ONE_HOUR)
 Properties["Log Mode"] = "Print"
 OnPropertyChanged("Log Mode")
@@ -89,6 +97,10 @@ T.eq("live mode changes output immediately", { log:isPrintEnabled(), log:isC4Log
 Properties["Log Level"] = "2 - Warning"
 OnPropertyChanged("Log Level")
 T.eq("live level changes the logger immediately", log:getLogLevel(), log.LogLevel.WARN)
+Properties["Log Level"] = "5 - Trace"
+OnPropertyChanged("Log Level")
+log:trace("coordinator trace available")
+T.contains("choosing Trace emits normal driver diagnostics", table.concat(output, "\n"), "coordinator trace available")
 Properties["Log Level"] = "6 - Ultra"
 OnPropertyChanged("Log Level")
 T.eq("a live Ultra value is clamped before enabling network dumps", {
@@ -96,7 +108,7 @@ T.eq("a live Ultra value is clamped before enabling network dumps", {
   DEBUG_RFN,
   DEBUG_URL,
   DEBUG_WEBSOCKET,
-}, { log.LogLevel.DEBUG, false, false, false })
+}, { log.LogLevel.TRACE, false, false, false })
 clock.run(ONE_HOUR)
 T.eq("the latest mode change replaces the previous expiry", Properties["Log Mode"], "Print")
 clock.run(2 * ONE_HOUR)
@@ -140,6 +152,9 @@ end
 T.eq("protected property debug suppressed", OPC.suppressDebug["HA Token"], true)
 
 T.section("property dispatcher never logs token or rejected URL")
+Properties["Log Mode"], Properties["Log Level"] = "Print and Log", "5 - Trace"
+OnPropertyChanged("Log Mode")
+OnPropertyChanged("Log Level")
 DEBUGPRINT = true
 Properties["HA Token"] = "private-coordinator-token"
 Properties["HA URL"] = "https://private-url-token@ha.test"
@@ -449,9 +464,11 @@ do
     bindings, getDevices, getData, getProvider, getProperties
 end
 socket.Send = send
-T.section("installed Coordinator diagnostic actions and private debug mode")
+T.section("installed Coordinator diagnostic actions and Log Mode")
 T.eq("original address programming variable", Variables["HA URL"], "secure.test:8123")
 T.eq("original address variable leaves new URL property alone", Properties["HA URL"], "")
+Properties["Log Mode"] = "Off"
+OnPropertyChanged("Log Mode")
 local before = #output
 ExecuteCommand("LUA_ACTION", { ACTION = "PrintDiagnostics" })
 local report = table.concat(output, "\n", before + 1)
@@ -463,13 +480,17 @@ T.excludes("diagnostic action excludes host", report, "secure.test")
 before = #output
 ExecuteCommand("LUA_ACTION", { ACTION = "PRINT_ENTITY_TABLE" })
 T.check("no linked IDs is clear", table.concat(output, "\n", before + 1):find("Linked Home Assistant IDs: 0", 1, true))
-Properties["Debug Print"] = "On"
-OnPropertyChanged("Debug Print")
-T.eq("compatibility debug does not turn on raw WebSocket logging", DEBUG_WEBSOCKET, false)
 local transitions = #fired
+before = #output
 EC.WS_DISCONNECT()
 EC.WS_DISCONNECT()
 clock.run(60000)
+T.excludes("Log Mode Off suppresses transport messages", table.concat(output, "\n", before + 1), "HA transport:")
+T.excludes(
+  "the retired setting no longer prints connection changes",
+  table.concat(output, "\n", before + 1),
+  "Home Assistant connection |"
+)
 T.eq("user disconnect stays offline and fires once", { Properties.Status, #fired }, { "Disconnected", transitions + 1 })
 T.eq(
   "manual disconnect reports how it stopped",
@@ -478,8 +499,6 @@ T.eq(
 )
 ExecuteCommand("Call Service", { Service = "script.evening" })
 T.check("offline action explains recovery", Properties["Last action"]:find("Connect to Home Assistant", 1, true))
-clock.run(36000000)
-T.eq("original debug option switches off after ten hours", Properties["Debug Print"], "Off")
 T.section("Director 3.4.3 restores the Yes/No TLS list as boolean text")
 for _, case in ipairs({ { "False", "ws", 1 }, { "TRUE", "wss", 0 }, { "nO", "ws", 1 }, { "yes", "wss", 0 } }) do
   Properties["Use SSL"] = case[1]

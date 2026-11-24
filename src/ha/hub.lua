@@ -5,12 +5,15 @@ local contract = require("ha.contract")
 local operations = require("ha.operations")
 local indicators = require("ha.indicators")
 local lifetime = require("ha.lifetime")
+local log = require("lib.logging")
 local Catalog = require("ha.catalog")
 local catalogNames = require("ha.catalog-names")
 local Choices = require("ha.choices")
 local metrics = require("ha.performance").shared
 local Selection = require("ha.selection")
 local Transfer = require("ha.commission-transfer")
+local Installation = require("ha.installation-scope")
+local SnapshotQueue = require("ha.snapshot-queue")
 require("lib.utils")
 local programmedService = require("ha.programmed-service")
 local Hub = {}
@@ -18,6 +21,7 @@ Hub.__index = Hub
 local serial = 0
 local integer = contract.integer
 local MAX_FAILURES = 3
+local SWITCH_WAIT_LIMIT, SWITCH_WAIT_MS = 4, 4000
 
 function Hub.new(connection, emit)
   serial = serial + 1
@@ -28,6 +32,8 @@ function Hub.new(connection, emit)
     leases = {},
     entities = {},
     pending = {},
+    snapshotQueue = SnapshotQueue.new(),
+    switchServices = {},
     serial = 0,
     epoch = 0,
     prefix = "HA.Hub." .. serial .. ".",
@@ -35,6 +41,7 @@ function Hub.new(connection, emit)
     boot = lifetime.next("HA.Hub.Session"),
   }, Hub)
   self.transfer = Transfer.new(self)
+  self.installation = Installation.new(self)
   local function catalogRequest(message, callback)
     return self:_request(message, callback)
   end
@@ -60,8 +67,8 @@ function Hub.new(connection, emit)
   return self
 end
 
-function Hub:_owns(device)
-  local ok, provider = pcall(contract.provider, device)
+function Hub:_owns(device, outputs)
+  local ok, provider = pcall(contract.provider, device, outputs)
   return ok and provider == C4:GetDeviceID()
 end
 
@@ -98,13 +105,17 @@ function Hub:_members(entry, kind, data, legacyStamp)
   end
 end
 
+local function available(state)
+  return state ~= nil and state.state ~= "unavailable" and state.state ~= "unknown"
+end
+
 function Hub:_readiness(entry, consumer)
   local data = {
     entity_id = entry.entity,
     transport = self.online,
     subscription = entry.ready == true,
     snapshot = entry.state ~= nil,
-    available = entry.state ~= nil and entry.state.state ~= "unavailable" and entry.state.state ~= "unknown",
+    available = available(entry.state),
   }
   if consumer then
     self:_emit(consumer, "readiness", data)
@@ -124,15 +135,27 @@ function Hub:_request(message, callback, register, timeout, timingName)
     or message.service == "get_devices" and "catalog.page"
     or "service.round_trip"
   local span = metrics:start(operation)
+  local tracing = log:isEnabled() and log:getLogLevel() >= log.LogLevel.TRACE
+  if tracing then
+    pcall(log.trace, log, "HA request %d started: %s", id, operation)
+  end
   if span then
     self.pendingTimings = self.pendingTimings or {}
     self.pendingTimings[id] = span
+  end
+  if span or tracing then
     local done = callback
     callback = function(ok, result)
-      self.pendingTimings[id] = nil
       local kind = type(result) == "table" and result.kind
       local outcome = (kind == "timeout" or kind == "disconnected" or kind == "retired") and kind or "rejected"
-      metrics:finish(span, ok and "accepted" or outcome)
+      outcome = ok and "accepted" or outcome
+      if span then
+        self.pendingTimings[id] = nil
+        metrics:finish(span, outcome)
+      end
+      if tracing then
+        pcall(log.trace, log, "HA request %d completed: %s", id, outcome)
+      end
       return done(ok, result)
     end
   end
@@ -166,15 +189,27 @@ function Hub:programmedService(params, done)
   if not request then
     return done(false, problem)
   end
-  self:_request(request, function(ok, result)
-    if ok then
+  local function complete(status)
+    if status == "accepted" then
       done(true)
-    elseif result.kind == "disconnected" or result.kind == "timeout" then
+    elseif status == "disconnected" or status == "timeout" then
       done(false, "Home Assistant did not confirm the saved action. Check the device before running it again.")
     else
       done(false, "Home Assistant declined the saved action. Check Service, Entity ID, Data and account permissions.")
     end
-  end)
+  end
+  local entity = request.target and request.target.entity_id
+  if
+    request.domain == "switch"
+    and contract.loadDomain(entity) == "switch"
+    and (request.service == "turn_on" or request.service == "turn_off" or request.service == "toggle")
+  then
+    self:_switchService(request, complete)
+  else
+    self:_request(request, function(ok, result)
+      complete(ok and "accepted" or result.kind)
+    end)
+  end
 end
 
 -- BP service packets have no request ID or response callback. Use the same
@@ -190,38 +225,68 @@ function Hub:_read(entry)
     return
   end
   entry.reading = true
-  local epoch, revision, stamp = self.epoch, entry.revision, entry.legacy
-  self.connection:readState(entry.entity):next(function(state)
-    if self.destroyed or self.epoch ~= epoch or self.entities[entry.entity] ~= entry then
-      return
-    end
-    entry.reading = false
-    if entry.revision ~= revision then
-      return
-    end
-    if not contract.state(state, entry.entity) then
-      self:_readFailed(entry, "invalid_state")
-      return
-    end
-    -- Pushed evidence that arrived while the read was in flight is newer.
-    if entry.revision == revision then
-      entry.state = state
-      entry.readFailures = 0
-      self:_members(entry, "snapshot", state, stamp)
-      self:_readiness(entry)
-      if entry.legacy and entry.legacy ~= stamp and self.entities[entry.entity] == entry then
-        self:_read(entry)
+  local epoch, queuedRevision = self.epoch, entry.revision
+  local queued, ready = metrics:start("snapshot.queue"), metrics:start("snapshot.ready")
+  local function current()
+    return not self.destroyed and self.epoch == epoch and self.entities[entry.entity] == entry
+  end
+  local function discard(outcome)
+    metrics:finish(queued, outcome)
+    metrics:finish(ready, outcome)
+    if current() then
+      entry.reading = false
+      if outcome == "failed" and not entry.state then
+        self:_readFailed(entry, "read_failed")
       end
     end
-  end, function(failure)
-    if self.destroyed or self.epoch ~= epoch or self.entities[entry.entity] ~= entry then
-      return
+  end
+  self.snapshotQueue:push(function(release)
+    if not current() then
+      discard("retired")
+      return release()
     end
-    entry.reading = false
-    if not entry.state then
-      self:_readFailed(entry, failure.kind)
+    if entry.revision ~= queuedRevision and entry.state and (not entry.legacy or entry.legacyInitialized) then
+      discard("accepted")
+      return release()
     end
-  end)
+    metrics:finish(queued, "ok")
+    local revision, stamp = entry.revision, entry.legacy
+    self.connection
+      :readState(entry.entity)
+      :next(function(state)
+        if not current() then
+          return metrics:finish(ready, "retired")
+        end
+        entry.reading = false
+        if entry.revision ~= revision then
+          return metrics:finish(ready, "retired")
+        end
+        if not contract.state(state, entry.entity) then
+          metrics:finish(ready, "rejected")
+          return self:_readFailed(entry, "invalid_state")
+        end
+        local publish = metrics:start("snapshot.publish")
+        entry.state = state
+        entry.readFailures = 0
+        self:_members(entry, "snapshot", state, stamp)
+        self:_readiness(entry)
+        metrics:finish(publish, "ok")
+        metrics:finish(ready, "ok")
+        if entry.legacy and entry.legacy ~= stamp and self.entities[entry.entity] == entry then
+          self:_read(entry)
+        end
+      end, function(failure)
+        if not current() then
+          return metrics:finish(ready, "retired")
+        end
+        entry.reading = false
+        metrics:finish(ready, failure.kind)
+        if not entry.state then
+          self:_readFailed(entry, failure.kind)
+        end
+      end)
+      :next(release, release)
+  end, discard)
 end
 
 function Hub:_retryTimer(entry, boundary, work, failures)
@@ -412,6 +477,106 @@ function Hub:_readLoad(entity, active, finish)
   end, function(failure)
     done(nil, failure.kind)
   end)
+end
+
+local function finishWaitingSwitches(lane, status)
+  local waiting = lane.waiting
+  lane.waiting = {}
+  for _, job in ipairs(waiting) do
+    job.finish(status)
+  end
+end
+
+function Hub:_advanceSwitch(entity, lane)
+  if self.switchServices[entity] ~= lane then
+    return
+  end
+  while not lane.active and #lane.waiting > 0 do
+    table.remove(lane.waiting, 1).start()
+  end
+  if not lane.active and self.switchServices[entity] == lane then
+    self.switchServices[entity] = nil
+  end
+end
+
+function Hub:_switchService(rpc, reply, consumer, requestId)
+  local entity = rpc.target.entity_id
+  local lane = self.switchServices[entity]
+  if not lane then
+    lane = { waiting = {} }
+    self.switchServices[entity] = lane
+  end
+  if #lane.waiting >= SWITCH_WAIT_LIMIT then
+    return reply("busy")
+  end
+  local job = {}
+  local key = "switch." .. (consumer and (consumer.device .. "." .. requestId) or tostring(job))
+  local timer = self.prefix .. key
+  local waiting = lane.active and metrics:start("service.switch_queue") or nil
+  local queued = lane.active
+  if consumer then
+    consumer.requests[key] = true
+  end
+  function job.finish(status)
+    metrics:finish(waiting, status == "timeout" and "timeout" or "retired")
+    pcall(CancelTimer, timer)
+    if consumer then
+      if not consumer.requests[key] then
+        return
+      end
+      consumer.requests[key] = nil
+    end
+    reply(status)
+  end
+  function job.start()
+    if
+      consumer
+      and (
+        not consumer.requests[key]
+        or self.consumers[consumer.device] ~= consumer
+        or (queued and not self:_owns(consumer.device))
+      )
+    then
+      job.finish("retired")
+      return
+    end
+    if consumer and queued then
+      local entry = self.entities[entity]
+      if not entry or not entry.ready or not available(entry.state) then
+        return job.finish("unavailable")
+      end
+    end
+    pcall(CancelTimer, timer)
+    metrics:finish(waiting, "ok")
+    lane.active = true
+    -- Keep the lane reserved until the HA result even if the initiating
+    -- consumer reselects. Its expired lease cannot receive a reply.
+    self:_request(rpc, function(ok, result)
+      local status = ok and "accepted" or result.kind or "rejected"
+      if status == "timeout" or status == "disconnected" then
+        finishWaitingSwitches(lane, status)
+      end
+      job.finish(status)
+      lane.active = false
+      self:_advanceSwitch(entity, lane)
+    end, nil, nil, operations.timingName(rpc))
+  end
+  if
+    lane.active
+    and not SetTimer(timer, SWITCH_WAIT_MS, function()
+      for index, queued in ipairs(lane.waiting) do
+        if queued == job then
+          table.remove(lane.waiting, index)
+          job.finish("timeout")
+          break
+        end
+      end
+    end)
+  then
+    return job.finish("busy")
+  end
+  lane.waiting[#lane.waiting + 1] = job
+  self:_advanceSwitch(entity, lane)
 end
 
 function Hub:_operation(consumer, message)
@@ -621,6 +786,10 @@ function Hub:_operation(consumer, message)
       reply("indicator_unavailable")
       return true
     end
+  end
+  if message.operation == "service" and rpc.domain == "switch" then
+    self:_switchService(rpc, reply, consumer, message.request_id)
+    return true
   end
   local id
   self:_request(rpc, function(ok, result)
@@ -855,18 +1024,27 @@ function Hub:_message(message)
           and type(message.event.variables.trigger) == "table"
           and message.event.variables.trigger.to_state
         if contract.state(state, entry.entity) then
-          local kind = entry.state and "state" or "snapshot"
+          local previous = entry.state
+          local kind = previous and "state" or "snapshot"
           entry.revision = entry.revision + 1
           entry.state = state
           entry.readFailures = 0
           pcall(CancelTimer, self.prefix .. "read." .. entry.entity)
           self:_members(entry, kind, state, entry.legacy)
-          self:_readiness(entry)
+          if not previous or available(previous) ~= available(state) then
+            self:_readiness(entry)
+          end
+          if not available(state) and self.switchServices[entry.entity] then
+            finishWaitingSwitches(self.switchServices[entry.entity], "unavailable")
+          end
         elseif state == codec.null then
           entry.revision, entry.state = entry.revision + 1, nil
           pcall(CancelTimer, self.prefix .. "read." .. entry.entity)
           self:_members(entry, "failure", { entity_id = entry.entity, boundary = "entity", kind = "removed" })
           self:_readiness(entry)
+          if self.switchServices[entry.entity] then
+            finishWaitingSwitches(self.switchServices[entry.entity], "unavailable")
+          end
         end
         break
       end
@@ -883,6 +1061,13 @@ function Hub:_transport(online)
   end
   self.online = online
   self.epoch = self.epoch + 1
+  self.snapshotQueue:clear()
+  self.snapshotQueue = SnapshotQueue.new()
+  local switches = self.switchServices
+  self.switchServices = {}
+  for _, lane in pairs(switches) do
+    finishWaitingSwitches(lane, "disconnected")
+  end
   self.catalog:invalidate()
   local pending = self.pending
   self.pending = {}
@@ -958,30 +1143,49 @@ function Hub:retry()
   end
 end
 
-function Hub:prune()
+function Hub:prune(outputs)
+  outputs = outputs or {}
   for _, consumer in pairs(self.consumers) do
-    if not self:_owns(consumer.device) then
+    if not self:_owns(consumer.device, outputs) then
       self:_release(consumer)
+      -- Releasing a subscription can call into the transport.
+      for provider in pairs(outputs) do
+        outputs[provider] = nil
+      end
     end
   end
 end
 
-function Hub:announce(missingOnly)
+function Hub:resetConsumer(device, outputs)
+  if not self.destroyed and self:_owns(device, outputs) then
+    pcall(self.emit, device, {
+      version = ids.api,
+      coordinator = C4:GetDeviceID(),
+      boot = self.boot,
+      epoch = self.epoch,
+      kind = "reset",
+    })
+  end
+end
+
+function Hub:announce(missingOnly, outputs)
   if self.destroyed then
     return
   end
-  local me = C4:GetDeviceID()
-  local binding = GetDeviceBindings(me, nil, true, nil, ids.coordinatorClass)[ids.coordinatorBinding]
+  outputs = outputs or {}
+  local binding = contract.coordinatorOutput(C4:GetDeviceID(), outputs)
   for _, peer in pairs(binding and binding.boundconsumers or {}) do
     local device = tonumber(peer.deviceid)
-    if (not missingOnly or not self.consumers[device]) and self:_owns(device) then
-      pcall(
-        self.emit,
-        device,
-        { version = ids.api, coordinator = me, boot = self.boot, epoch = self.epoch, kind = "reset" }
-      )
+    if not missingOnly or not self.consumers[device] then
+      self:resetConsumer(device, outputs)
     end
   end
+end
+
+function Hub:reconcileBindings()
+  local outputs = {}
+  self:prune(outputs)
+  self:announce(false, outputs)
 end
 
 function Hub:destroy()

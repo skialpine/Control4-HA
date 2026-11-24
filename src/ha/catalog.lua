@@ -4,11 +4,14 @@ local codec = require("ha.codec")
 local deferred = require("deferred")
 local contract = require("ha.contract")
 local Choices = require("ha.choices")
+local NativeCatalog = require("ha.native-catalog")
+local operations = require("ha.operations")
 local metrics = require("ha.performance").shared
 require("lib.utils")
 local Catalog = {}
 Catalog.__index = Catalog
-local MAX_ROWS, MAX_BYTES, MAX_PAGES, PAGE_BYTES = 5000, 1048576, 64, 16384
+local MAX_ROWS, MAX_BYTES, MAX_PAGES, PAGE_BYTES = 5000, 4194304, 256, 16384
+local NATIVE_BROWSE_MS = 30000
 local function integer(value, maximum)
   return type(value) == "number" and value >= 0 and value == math.floor(value) and value <= maximum
 end
@@ -74,8 +77,11 @@ function Catalog:refresh(force)
   end
   local pending = deferred.new()
   if not force and self.snapshot and self.snapshot.source == "native" and self.verified == self.generation then
-    pending:resolve(self:_metadata())
-    return pending
+    local age = C4:GetTime() - self.snapshot.checkedAt
+    if age >= 0 and age < NATIVE_BROWSE_MS then
+      pending:resolve(self:_metadata())
+      return pending
+    end
   end
   pending.refresh_native = force == true
   self.pending = pending
@@ -92,7 +98,7 @@ function Catalog:refresh(force)
       pending:reject({ kind = kind, boundary = "catalog" })
     end
   end
-  local function append(values)
+  local function append(values, limit)
     if not codec.isArray(values) then
       return false
     end
@@ -105,7 +111,7 @@ function Catalog:refresh(force)
         return false
       end
       bytes = bytes + size
-      if #rows >= MAX_ROWS or bytes > MAX_BYTES then
+      if #rows >= (limit or MAX_ROWS) or bytes > MAX_BYTES then
         return false
       end
       seen[value.entity_id] = true
@@ -115,6 +121,7 @@ function Catalog:refresh(force)
   end
   local function complete()
     self.verified, self.pending = generation, nil
+    self.snapshot.checkedAt = C4:GetTime()
     metrics:finish(self.timing, "ok")
     pending:resolve(self:_metadata())
   end
@@ -128,7 +135,7 @@ function Catalog:refresh(force)
       if not active() then
         return
       end
-      if not codec.isArray(values) or #values > MAX_ROWS then
+      if not codec.isArray(values) or #values > NativeCatalog.maxCandidates then
         fail("invalid_filtered_catalog")
         return
       end
@@ -155,24 +162,33 @@ function Catalog:refresh(force)
       fail(failure.kind or "filtered_registry_failed")
     end)
   end
-  local function publish(source, upstreamRevision, pages, eligibilityVersion)
+  local function requestPage(index, known, callback)
+    local sent = pcall(self.request, {
+      type = "call_service",
+      domain = "ha_gesture_bridge",
+      service = "get_devices",
+      service_data = { page = index, revision = known or nil },
+      return_response = true,
+    }, callback)
+    if not sent then
+      fail("request_failed")
+    end
+  end
+  local function publish(source, upstreamRevision, pages, eligibilityVersion, nativeRevision)
     if not active() then
       return
     end
-    local function publishValues(values)
+    local function publishValues(values, nativeValues)
       if not active() then
         return
       end
       local indices = { all = {}, light = {}, switch = {}, quick_lighting = {}, quick_light = {}, quick_switch = {} }
-      if #values > MAX_ROWS then
-        fail("invalid_endpoint_metadata")
-        return
-      end
       table.sort(values, function(a, b)
         return a.entity_id < b.entity_id
       end)
-      local bytes, revisionRows, gestureChoices = 0, {}, {}
+      local bytes, revisionRows, gestureChoices, buttonChoices, byId = 0, {}, {}, {}, {}
       for index, item in ipairs(values) do
+        byId[item.entity_id] = index
         local encoded = codec.encode(item)
         local size = #encoded
         bytes = bytes + size
@@ -185,11 +201,28 @@ function Catalog:refresh(force)
           indices[family][#indices[family] + 1] = index
         end
         if #item.families > 0 then
+          if #indices.all == MAX_ROWS then
+            fail("invalid_endpoint_metadata")
+            return
+          end
           indices.all[#indices.all + 1] = index
           local gesture = Choices.gestureEntity(item)
           if gesture then
-            -- A shared gesture can describe more than one independent load.
-            gestureChoices[gesture] = gestureChoices[gesture] == nil and item.entity_id or false
+            -- A button-only companion row and a native load are two ways to
+            -- find one control, even when the companion hides its load.
+            local choices = item.domain == "event" and buttonChoices or gestureChoices
+            local previous = choices[gesture]
+            if previous == nil then
+              choices[gesture] = item
+            elseif previous then
+              local canonical = Choices.endpointKeys(item)
+              local _, keys = Choices.endpointKeys(previous)
+              if not keys[canonical] then
+                choices[gesture] = false
+              elseif item.attributes.device_choice and not previous.attributes.device_choice then
+                choices[gesture] = item
+              end
+            end
           end
           local preferred = Choices.suggestedFamily(item)
           if preferred == "light" or preferred == "switch" then
@@ -207,14 +240,24 @@ function Catalog:refresh(force)
         self.snapshot = {
           source = source,
           gestureChoices = gestureChoices,
+          buttonChoices = buttonChoices,
           revision = fingerprint,
           indices = indices,
+          byId = byId,
           eligibilityVersion = eligibilityVersion,
         }
       end
       self.snapshot.rows, self.snapshot.upstreamRows, self.snapshot.pages =
         values, upstreamRevision and rows or nil, pages
+      local hiddenLoads = {}
+      for _, item in ipairs(nativeValues or {}) do
+        if Choices.hiddenMigrationLoad(item) then
+          hiddenLoads[item.entity_id] = item
+        end
+      end
+      self.snapshot.hiddenLoads = hiddenLoads
       self.snapshot.upstreamRevision = upstreamRevision
+      self.snapshot.nativeRevision = nativeRevision
       complete()
     end
     local function ready(values)
@@ -224,13 +267,44 @@ function Catalog:refresh(force)
       if source == "companion" and self.supplement then
         readNative(function(nativeRows)
           decorate(nativeRows, function(filtered)
-            if active() then
-              publishValues(Choices.merge(values, filtered))
+            if not active() then
+              return
             end
+            local function finish()
+              publishValues(Choices.merge(values, filtered), filtered)
+            end
+            if not nativeRevision then
+              return finish()
+            end
+            -- The helper's proof must surround the native state and registry reads.
+            requestPage(1, upstreamRevision, function(ok, result)
+              if not active() then
+                return
+              end
+              if not ok then
+                return fail(result.kind or "rejected")
+              end
+              local proof = codec.isObject(result) and result.response
+              if
+                not codec.isObject(proof)
+                or proof.version ~= 1
+                or proof.eligibility_version ~= eligibilityVersion
+                or proof.page ~= 1
+                or proof.revision ~= upstreamRevision
+                or proof.native_revision ~= nativeRevision
+                or proof.pages ~= pages
+                or proof.total ~= #rows
+                or proof.unchanged ~= true
+                or proof.entities ~= nil
+              then
+                return fail("revision_changed")
+              end
+              finish()
+            end)
           end, true)
         end)
       else
-        publishValues(values)
+        publishValues(values, source == "native" and values or nil)
       end
     end
     if eligibilityVersion == 1 then
@@ -246,14 +320,14 @@ function Catalog:refresh(force)
   end
   local function native()
     readNative(function(values)
-      if not append(values) then
+      if not append(values, NativeCatalog.maxCandidates) then
         fail("invalid_filtered_catalog")
         return
       end
       publish("native")
     end)
   end
-  local expected, total, pages, eligibilityVersion
+  local expected, total, pages, eligibilityVersion, nativeRevision
   local function page(index, full)
     if not active() then
       return
@@ -264,13 +338,7 @@ function Catalog:refresh(force)
         and self.snapshot.source == "companion"
         and self.snapshot.upstreamRevision
       or expected
-    local sent = pcall(self.request, {
-      type = "call_service",
-      domain = "ha_gesture_bridge",
-      service = "get_devices",
-      service_data = { page = index, revision = known or nil },
-      return_response = true,
-    }, function(ok, result)
+    requestPage(index, known, function(ok, result)
       if not active() then
         return
       end
@@ -296,6 +364,7 @@ function Catalog:refresh(force)
         or not integer(response.pages, MAX_PAGES)
         or type(response.unchanged) ~= "boolean"
         or (response.eligibility_version ~= nil and not contract.integer(response.eligibility_version))
+        or (response.native_revision ~= nil and not revision(response.native_revision))
       then
         fail("invalid_catalog")
         return
@@ -321,13 +390,26 @@ function Catalog:refresh(force)
         end
         if
           response.eligibility_version == 1
-          and (not self.supplement or (not pending.refresh_native and self.verified == generation))
+          and (
+            not self.supplement
+            or (
+              self.verified == generation
+              and (
+                (response.native_revision ~= nil and response.native_revision == self.snapshot.nativeRevision)
+                or (
+                  response.native_revision == nil
+                  and self.snapshot.nativeRevision == nil
+                  and not pending.refresh_native
+                )
+              )
+            )
+          )
         then
           complete()
           return
         end
         rows = self.snapshot.upstreamRows or self.snapshot.rows
-        publish("companion", known, self.snapshot.pages, response.eligibility_version)
+        publish("companion", known, self.snapshot.pages, response.eligibility_version, response.native_revision)
         return
       end
       if index == 1 then
@@ -340,14 +422,15 @@ function Catalog:refresh(force)
         then
           self.verified = nil
         end
-        expected, total, pages, eligibilityVersion =
-          response.revision, response.total, response.pages, response.eligibility_version
+        expected, total, pages, eligibilityVersion, nativeRevision =
+          response.revision, response.total, response.pages, response.eligibility_version, response.native_revision
       end
       if
         response.revision ~= expected
         or response.total ~= total
         or response.pages ~= pages
         or response.eligibility_version ~= eligibilityVersion
+        or response.native_revision ~= nativeRevision
         or (total == 0 and (pages ~= 0 or index ~= 1))
         or (total > 0 and (pages < 1 or pages > total))
         or not append(response.entities)
@@ -362,23 +445,33 @@ function Catalog:refresh(force)
       elseif #rows ~= total then
         fail("incomplete_catalog")
       else
-        publish("companion", expected, pages, eligibilityVersion)
+        publish("companion", expected, pages, eligibilityVersion, nativeRevision)
       end
     end)
-    if not sent then
-      fail("request_failed")
-    end
   end
   page(1)
   return pending
 end
-function Catalog:hasVerifiedSnapshot()
-  return self.snapshot ~= nil and self.verified == self.generation
+function Catalog:hasVerifiedSnapshot(expectedRevision)
+  return self.snapshot ~= nil
+    and self.verified == self.generation
+    and (expectedRevision == nil or self.snapshot.revision == expectedRevision)
 end
 
-function Catalog:gestureChoice(gesture)
+function Catalog:gestureChoice(gesture, row)
   if self:hasVerifiedSnapshot() then
-    return self.snapshot.gestureChoices[gesture] or nil
+    local match = self.snapshot.gestureChoices[gesture]
+    if row and row.domain == "event" or not row and match == nil then
+      local buttons = self.snapshot.buttonChoices
+      match = buttons and buttons[gesture]
+    end
+    if match and not row then
+      return match.entity_id
+    elseif match then
+      local canonical = Choices.endpointKeys(row)
+      local _, keys = Choices.endpointKeys(match)
+      return keys[canonical] and row.entity_id or nil
+    end
   end
 end
 
@@ -419,13 +512,45 @@ function Catalog:choice(id, family, expectedRevision)
   if expectedRevision and expectedRevision ~= self.snapshot.revision then
     return nil, "revision_changed"
   end
-  for _, index in ipairs(self.snapshot.indices[family] or {}) do
-    local row = self.snapshot.rows[index]
-    if row.entity_id == id then
-      return row
+  local row = self.snapshot.rows[self.snapshot.byId[id]]
+  if row then
+    for _, eligible in ipairs(row.families) do
+      if eligible == family then
+        return row
+      end
     end
   end
   return nil, "unsupported_endpoint"
+end
+
+-- Resolve a saved legacy target using the same verified visible light wrapper
+-- preferred by discovery when it fits the installed driver's family.
+function Catalog:exactLoadChoice(entity, family)
+  if not self:hasVerifiedSnapshot() or not contract.loadDomain(entity) then
+    return
+  end
+  local hidden = self.snapshot.hiddenLoads[entity]
+  local eligibility = hidden and Choices.hiddenMigrationLoad(hidden)
+  if eligibility and eligibility[family] then
+    local wrapper = eligibility.wrappers and eligibility.wrappers[family]
+    if wrapper then
+      return wrapper, wrapper.entity_id, Choices.standaloneRegistry(wrapper)
+    end
+    return hidden
+  end
+  local match
+  for _, index in ipairs(self.snapshot.indices[family] or {}) do
+    local row = self.snapshot.rows[index]
+    local device = row.attributes.device_choice
+    local load = device and device.source_load
+    if (load and load.entity_id == entity) or (not device and row.entity_id == entity) then
+      if match then
+        return
+      end
+      match = row
+    end
+  end
+  return match
 end
 
 function Catalog:legacySwitchChoice(device, event, revision)
@@ -474,21 +599,62 @@ function Catalog:endpointKeys(identities)
   return keys
 end
 
--- Use labels only for the exact proposed load, including a linked load that
--- differs from the device whose button events we are migrating.
-function Catalog:loadDetails(entity)
+-- Use the exact load. The fourth result distinguishes a registry miss from
+-- a row without verified registry evidence.
+function Catalog:loadDetails(entity, includeHidden)
   if not self:hasVerifiedSnapshot() then
     return
+  end
+  local hidden = includeHidden and self.snapshot.hiddenLoads[entity]
+  if hidden then
+    local registry, observed = Choices.standaloneRegistry(hidden)
+    return hidden.name, hidden.area_name, registry, observed
   end
   for _, row in ipairs(self.snapshot.rows) do
     local choice = row.attributes.device_choice
     local source = choice and choice.source_load
     if row.entity_id == entity and not choice then
-      return row.name, row.area_name
+      local registry, observed = Choices.standaloneRegistry(row)
+      return row.name, row.area_name, registry, observed
     elseif source and source.entity_id == entity then
-      return source.name, choice.area, source.registry_id
+      local registry = contract.registryId(source.registry_id) and source.registry_id or nil
+      return source.name, choice.area, registry, registry ~= nil
     end
   end
+end
+
+function Catalog:verifyLoadRegistry(entity, registry, unregistered, sourceEntity, sourceRegistry)
+  local result = deferred.new()
+  local generation = self.generation
+  if
+    not contract.loadDomain(entity)
+    or (unregistered == true and registry ~= nil)
+    or (unregistered ~= true and not contract.registryId(registry))
+    or (
+      sourceEntity
+      and (unregistered or not contract.loadDomain(sourceEntity) or not contract.registryId(sourceRegistry))
+    )
+  then
+    result:resolve(false)
+    return result
+  end
+  local args = { registry_id = registry, source_entity = sourceEntity, source_registry_id = sourceRegistry }
+  self.request(
+    { type = "config/entity_registry/get_entries", entity_ids = codec.array({ entity, sourceEntity }) },
+    function(ok, response)
+      local match = false
+      if ok and generation == self.generation and codec.isObject(response) then
+        if unregistered == true then
+          match = response[entity] == codec.null
+        else
+          match = operations.registryMatches(response, entity, args)
+            and (not sourceEntity or Choices.matchesLightWrapper(response[entity], sourceEntity, sourceRegistry))
+        end
+      end
+      result:resolve(match)
+    end
+  )
+  return result
 end
 
 return Catalog

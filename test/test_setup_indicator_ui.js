@@ -3,21 +3,18 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const elementLookup = require("./html-fixture");
 
 function setupPage() {
-  const elements = new Map();
   const document = {
-    getElementById(id) {
-      if (!elements.has(id)) elements.set(id, {
+    getElementById: elementLookup(() => ({
         dataset: {},
         parentElement: { hidden: false },
         contains() { return false; },
         querySelector() { return null; },
         addEventListener() {},
         focus() { document.activeElement = this; },
-      });
-      return elements.get(id);
-    },
+    }), "src/ha/setup.html", "src/ha/migration.html"),
   };
   let options;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/ha/setup.js"), "utf8"), {

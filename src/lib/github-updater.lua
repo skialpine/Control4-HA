@@ -173,13 +173,18 @@ function GitHubUpdater:reloadArchive(name, selfReload)
         promise:resolve("submitted")
       end
     end)
-    :OnRead(function()
+    :OnRead(function(_, reply)
       if closed then
         return
       end
       close()
       if not selfReload then
-        promise:resolve("replied")
+        local header = type(reply) == "string" and reply:match("<c4soap(%s[^>]+)>")
+        if header and header:match("%sname=['\"]UpdateProjectC4i['\"]") and header:match("%sresult=['\"]1['\"]") then
+          promise:resolve("replied")
+        else
+          promise:reject("Director did not acknowledge the driver reload")
+        end
       end
     end)
     :OnError(function(_, code, message)

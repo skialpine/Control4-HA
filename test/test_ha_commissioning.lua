@@ -215,6 +215,23 @@ T.eq("both consumers use original provider", {
   C4:GetBoundProviderDevice(configuration[2].id, 1),
 }, { me, me })
 T.eq("new links refresh Navigator", #nav.writes, 2)
+do
+  local getBindings, calls = GetDeviceBindings, {}
+  function GetDeviceBindings(device, ...)
+    calls[device] = (calls[device] or 0) + 1
+    return getBindings(device, ...)
+  end
+  local project = require("ha.commissioning-project")
+  project.inventory(true)
+  T.eq("one inventory reads both consumer inputs and their shared Coordinator output once", {
+    calls[configuration[1].id],
+    calls[configuration[2].id],
+    calls[me],
+  }, { 1, 1, 1 })
+  project.inventory(true)
+  T.eq("a fresh inventory reads the Coordinator output again", calls[me], 2)
+  GetDeviceBindings = getBindings
+end
 T.eq(
   "new light uses the canonical package",
   C4:GetDevices({ DeviceIds = tostring(configuration[1].id) })[configuration[1].id].driverFileName,
@@ -570,6 +587,128 @@ for _, version in ipairs({ "106", "107" }) do
   T.eq("did not add a second Switch", addCount, 0)
 end
 
+T.section("A separate legacy gateway can already own a Quick Setup load")
+do
+  local assessment = require("ha.migration-assessment")
+  local profile = require("ha.legacy-driver-profile")
+  local assess, gateway = assessment.assess, profile.gateway
+  local bound = 31
+  local file = "chowmain_homeassistant_switch.c4z"
+  commissioning = start({ [20] = { deviceName = "Legacy switch", driverFileName = file, roomId = 11 } })
+  assessment.assess = function(id, options)
+    if id == 20 then
+      return { id = id, file = file, family = "switch", interfaces = true, entity = "switch.b" }
+    end
+    return assess(id, options)
+  end
+  profile.gateway = function()
+    return bound
+  end
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("a known legacy owner requires review", preview.items[1].reason, "legacy_switch_match")
+  bound = nil
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("unknown gateway occupancy also needs review", preview.items[1].reason, "legacy_switch_unconfirmed")
+  bound = 0
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("a detached legacy instance leaves its saved target available", preview.items[1].decision, "add")
+  bound = 31
+  T.eq(
+    "a new legacy binding invalidates prior add approval",
+    await(commissioning:execute(preview.id)).error,
+    "preview_changed"
+  )
+  T.eq("no second driver was added", addCount, 0)
+
+  local scope = require("ha.installation-scope").new({
+    online = true,
+    epoch = 2,
+    connection = { config = { origin = "https://current.test" } },
+  })
+  local http = require("lib.http")
+  local get, networkAddresses, gatewayOrigin = http.get, profile.networkAddresses, profile.gatewayOrigin
+  local proof = string.rep("a", 64)
+  scope.hub._request = function(_, message, done)
+    T.eq("commissioning reuses the fixed proof command", message.type, "ha_gesture_bridge/installation_proof")
+    done(true, codec.object({ version = 1, nonce = string.rep("b", 32), proof = proof }))
+  end
+  profile.networkAddresses = function()
+    return {}
+  end
+  profile.gatewayOrigin = function(id)
+    return id == bound and "https://legacy.test:443" or nil
+  end
+  local alternate = string.rep("c", 64)
+  http.get = function()
+    local work = deferred.new()
+    if alternate then
+      work:resolve({
+        code = 200,
+        body = codec.encode(codec.object({
+          version = 1,
+          nonce = string.rep("b", 32),
+          proof = alternate,
+        })),
+      })
+    else
+      work:reject({ code = 404 })
+    end
+    return work
+  end
+  commissioning.installation = scope
+  local page = { cursor = 1, revision = revision, entities = { rows[A.choice_id], rows[B.choice_id] } }
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("verified separate installations can reuse the entity ID", preview.items[1].decision, "add")
+  T.eq(
+    "a same-name entity from a separate installation stays offered",
+    await(commissioning:browseChoices(page)).value.existing,
+    {}
+  )
+  alternate = proof
+  T.eq(
+    "a route becoming an alias invalidates add approval",
+    await(commissioning:execute(preview.id)).error,
+    "preview_changed"
+  )
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("a verified alias retains its legacy owner", preview.items[1].reason, "legacy_switch_match")
+  T.eq(
+    "a verified alias hides the already configured choice",
+    await(commissioning:browseChoices(page)).value.existing,
+    {
+      [B.choice_id] = true,
+    }
+  )
+  alternate = nil
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("a missing route proof still withholds addition", preview.items[1].decision, "review")
+  T.eq("neither changed nor uncertain scope added anything", addCount, 0)
+  alternate = string.rep("c", 64)
+  preview = await(commissioning:preview(request(B))).value
+  operation = await(commissioning:execute(preview.id))
+  T.eq("fresh separate evidence allows the approved add", addCount, 1)
+  alternate = proof
+  ShimAnswerAdds()
+  T.eq(
+    "a changed route after add is caught before configuring the new driver",
+    operation.value.items[1].reason,
+    "preview_changed"
+  )
+  T.eq("the added instance was not configured", #configuration, 0)
+  alternate = string.rep("c", 64)
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("stable separate evidence can resume the same instance", preview.items[1].decision, "resume")
+  operation = await(commissioning:execute(preview.id))
+  T.truthy("the separate installation permits configuration after readback", operation.value.complete)
+  T.eq(
+    "the verified add was reused and the legacy owner kept its binding",
+    { addCount, #configuration, bound },
+    { 1, 1, 31 }
+  )
+  http.get, profile.networkAddresses, profile.gatewayOrigin = get, networkAddresses, gatewayOrigin
+  assessment.assess, profile.gateway = assess, gateway
+end
+
 T.section("An already configured legacy Light is reviewed without taking ownership")
 -- BP v106 declared Entity ID and ENTITY_ID (native lab variable 1001).
 -- Prototype v1 declared the same property and put a selected gesture endpoint
@@ -709,6 +848,95 @@ gesturePage.entities[2] = rows[accent.choice_id]
 gestureChoices[gesture] = nil
 T.eq("an ambiguous shared gesture alone does not hide separate loads", commissioning:existingChoices(gesturePage), {})
 
+T.section("A connected Control4 light accounts for its selected button device")
+do
+  local physical = string.rep("a", 32)
+  local button = { choice_id = "device:" .. physical .. ":none", family = "switch", room_id = 11 }
+  local previous = "device:" .. physical .. ":" .. string.rep("b", 32)
+  commissioning = start({ [20] = { deviceName = "Existing Light", driverFileName = lightFile, roomId = 11 } })
+  selected[20] = previous
+  C4:Bind(me, 1, 20, ids.lightCoordinatorBinding, class)
+  local row = {
+    entity_id = button.choice_id,
+    name = "Wall Button",
+    domain = "event",
+    family = "switch",
+    families = { "light", "switch" },
+    attributes = { device_choice = { device_id = physical, gesture_entity_id = gesture, kind = "remote" } },
+  }
+  rows[button.choice_id] = row
+  gestureChoices[gesture] = button.choice_id
+  local identity = codec.object({
+    buttons = true,
+    device = physical,
+    gesture = gesture,
+    key = previous,
+    mode = "Connected Control4 light",
+    ready = true,
+    stable = true,
+  })
+  ShimSetUIRequest(function(id, command)
+    if id == 20 and command == "HA_SELECTION_IDENTITY" then
+      return "<selection>" .. C4:Base64Encode(codec.encode(identity)) .. "</selection>"
+    end
+    return ""
+  end)
+  local page = { cursor = 1, revision = revision, entities = { row, rows[A.choice_id] } }
+  T.eq(
+    "browse counts the exact existing button but leaves independent loads available",
+    commissioning:existingChoices(page),
+    { [button.choice_id] = true }
+  )
+  local matched = await(commissioning:preview(request(button))).value.items[1]
+  T.eq("review finds the existing connected Light without creating a duplicate", {
+    matched.decision,
+    matched.device_id,
+    matched.reason,
+  }, { "review", 20, "button_device_match" })
+  identity.buttons = false
+  T.eq("an inactive selection does not account for the buttons", commissioning:existingChoices(page), {})
+  identity.buttons, identity.gesture = true, "event.other_button"
+  T.eq("a different event never counts just because the physical ID matches", commissioning:existingChoices(page), {})
+  identity.gesture = gesture
+  C4:Unbind(20, ids.lightCoordinatorBinding)
+  T.eq("an unbound retained selection cannot hide the choice", commissioning:existingChoices(page), {})
+  T.eq("browse never adds or configures a driver", { addCount, #configuration }, { 0, 0 })
+end
+
+T.section("A native choice accounts for a load configured with a physical selection")
+do
+  local device, first, second = string.rep("a", 32), string.rep("b", 32), string.rep("c", 32)
+  commissioning = start({ [20] = { deviceName = "Existing Load", driverFileName = interimFile, roomId = 11 } })
+  selected[20] = "device:" .. device .. ":" .. first
+  C4:Bind(me, 1, 20, 1, class)
+  endpoint("switch.other_load", "switch", "Other load")
+  local source, entries = {}, {}
+  for id, registry in pairs({ [B.choice_id] = first, ["switch.other_load"] = second }) do
+    local row = rows[id]
+    row.device_id = device
+    source[#source + 1] = row
+    entries[id] = codec.object({
+      entity_id = id,
+      id = registry,
+      device_id = device,
+      platform = "test",
+      disabled_by = codec.null,
+      hidden_by = codec.null,
+      entity_category = codec.null,
+    })
+  end
+  local native = require("ha.choices").apply(source, entries, true)
+  for _, row in ipairs(native) do
+    rows[row.entity_id] = row
+  end
+  local page = { cursor = 1, revision = revision, entities = native }
+  T.eq("only the exact configured registry load is hidden", commissioning:existingChoices(page), {
+    [B.choice_id] = true,
+  })
+  preview = await(commissioning:preview(request(B))).value
+  T.eq("direct review still finds the owner under the old choice format", preview.items[1].device_id, 20)
+end
+
 T.section("Light adds validate the canonical identity using the project inventory")
 commissioning = start(nil, true)
 preview = await(commissioning:preview(request(A))).value
@@ -773,7 +1001,18 @@ preview = await(commissioning:preview(request(A))).value
 T.eq("restored eligibility can reuse the confirmed add", preview.items[1].decision, "resume")
 T.eq("recovery completes without a duplicate", await(commissioning:execute(preview.id)).value.complete, true)
 T.eq("exactly one device was added", addCount, 1)
-T.eq("no hidden timer errors", #clock.errors, 0)
+T.eq("no hidden timer errors", clock.errors, {})
+
+T.section("A new physical device under the same entity ID needs new approval")
+commissioning = start()
+rows["light.a"].device_id = string.rep("a", 32)
+preview = await(commissioning:preview(request(A))).value
+operation = await(commissioning:execute(preview.id))
+rows["light.a"].device_id, revision = string.rep("b", 32), secondRevision
+ShimAnswerAdds()
+T.eq("the replacement under the same name is withheld", operation.value.items[1].reason, "preview_changed")
+T.eq("the add receipt is retained without configuring it", { addCount, #configuration }, { 1, 0 })
+
 T.section("Quick Setup configures the created drivers over the real selection transfer")
 start()
 local hub = { online = true, catalog = catalog, prefix = "TestCommission.", consumers = {} }
@@ -814,4 +1053,8 @@ T.eq("the drivers store the selected catalog identities", {
   selected[transferResult.items[1].device_id],
   selected[transferResult.items[2].device_id],
 }, { "switch.b", "light.a" })
+local light = transferResult.items[2].device_id
+local binaryLoad = await(transfer:directLoad(light, "light", "switch.binary", "Binary load"))
+T.eq("the verified transfer can keep a switch entity in the Light family", selected[light], "switch.binary")
+T.falsy("the Light accepted the verified binary selection", binaryLoad.error)
 T.finish()

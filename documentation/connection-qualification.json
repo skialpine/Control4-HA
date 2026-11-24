@@ -13,7 +13,7 @@
     "openspec_strict_validation": "passed"
   },
   "pending": [
-    "Real HA lab fixtures and service checks: 1Password CLI authorization timeout",
+    "Live Home Assistant fixture and service checks were pending",
     "Real HA request/result/state matrix in task 3.6",
     "Director TLS trust and hostname verification qualification",
     "Public distribution remains gated on the recorded unresolved vendor reuse terms",

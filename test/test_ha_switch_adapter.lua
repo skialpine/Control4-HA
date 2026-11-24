@@ -100,7 +100,7 @@ for i, action in ipairs({ "toggle", "turn_on", "turn_off", "toggle" }) do
 end
 commands[1].promise:resolve({})
 commands[2].promise:reject({ kind = "timeout" })
-T.eq("accepted and failed requests are separate results", results, { "accepted", "timeout" })
+T.eq("earlier completions do not replace the latest result", results, {})
 T.eq("no icon or relay from acceptance and failure", #notes, 3)
 state("state", "on")
 T.eq("confirmed new icon", notes[4], icon("on", "On"))
@@ -124,9 +124,9 @@ T.eq("unavailable icon", notes[#notes], icon("unavailable", "Unavailable"))
 T.eq("native unavailable event", events[#events], ids.events.unavailable)
 T.eq("no guessed Off on loss", TestCondition("IS_OFF"), false)
 T.eq("no command on lost link", EC.TurnOff(), false)
-T.eq("late acceptance suppressed", #results, 2)
+T.eq("late acceptance suppressed", #results, 0)
 commands[3].promise:resolve({})
-T.eq("loss retired unresolved request result", #results, 2)
+T.eq("loss retired unresolved request result", #results, 0)
 
 state("snapshot", "off")
 current = false
@@ -198,6 +198,16 @@ for _, action in ipairs(savedActions) do
     action[2],
   })
 end
+
+T.section("An older success cannot replace the latest timeout")
+bind(target)
+state("snapshot", "off")
+EC.TurnOn()
+local older = commands[#commands].promise
+EC.TurnOff()
+commands[#commands].promise:reject({ kind = "timeout" })
+older:resolve({})
+T.eq("latest failure is the visible result", results[#results], "timeout")
 
 T.section("An accepted service with missing feedback gets one exact recovery read")
 bind(target)

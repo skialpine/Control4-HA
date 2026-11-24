@@ -5,6 +5,7 @@ local Color = require("lib.light.color")
 local Range = require("lib.light.range")
 local bit = require("bit")
 local capabilities = require("ha.light-capabilities")
+local compatibility = require("ha.light-compatibility")
 local codec = require("ha.codec")
 local contract = require("ha.contract")
 local ids = require("ha.identities")
@@ -19,6 +20,8 @@ local persist = require("lib.persist")
 
 local Adapter = {}
 Adapter.__index = Adapter
+Adapter.stageMigrationSettings = compatibility.stageMigration
+Adapter.verifyMigrationSettings = compatibility.sameStoredMigration
 
 local STEPS, TRANSITION = 255, 32
 local BP_SCENE_RETIREMENTS = "HA.Light.BPSceneRetirements"
@@ -32,21 +35,13 @@ local function inRange(value, low, high)
   return type(value) == "number" and value >= low and value <= high
 end
 
-local function kelvinRange(attrs)
-  local min, max = attrs.min_color_temp_kelvin, attrs.max_color_temp_kelvin
-  if min == nil and max == nil then
-    if inRange(attrs.min_mireds, 10, 1000000) and inRange(attrs.max_mireds, attrs.min_mireds, 1000000) then
-      min, max = Color.miredsToKelvin(attrs.max_mireds), Color.miredsToKelvin(attrs.min_mireds)
-    end
-  end
-  if inRange(min, 1, 99999) and inRange(max, min, 99999) then
-    return { minK = math.floor(min + 0.5), maxK = math.floor(max + 0.5) }
-  end
-end
-
-local function deviceFacts(entity, attrs)
+local function deviceFacts(entity, attrs, overrides)
   local modes = entity:match("^light%.") and attrs.supported_color_modes or nil
   local dims, color, cct = capabilities.fromModes(modes)
+  local kind = compatibility.kind(overrides)
+  if kind then
+    dims, color, cct = kind.dims == true, kind.color == true, kind.temperature == true
+  end
   local flags = attrs.supported_features
   local transition = dims
     and inRange(flags, 0, 2147483647)
@@ -64,7 +59,7 @@ local function deviceFacts(entity, attrs)
   return {
     dims = dims,
     color = color,
-    cct = cct and kelvinRange(attrs) or nil,
+    cct = cct and (compatibility.range(overrides.range) or compatibility.nativeRange(attrs)) or nil,
     colorWhileOff = "hold",
     fade = transition and { kind = "device", retimes = true } or {
       kind = "own",
@@ -73,8 +68,9 @@ local function deviceFacts(entity, attrs)
     feedback = { shows = "position", refresh = "deadline" },
     levelSteps = STEPS,
   },
-    rgb,
-    transition
+    color and (overrides.format or (rgb and "RGB" or "XY")) or nil,
+    transition,
+    cct
 end
 
 local function xy(x, y)
@@ -88,7 +84,9 @@ local function reportedColor(device, attrs)
     if k == nil and inRange(attrs.color_temp, 10, 1000000) then
       k = Color.miredsToKelvin(attrs.color_temp)
     end
-    if inRange(k, device.cct.minK, device.cct.maxK) then
+    -- Overrides limit outgoing commands. Feedback still follows the HA load.
+    local nativeRange = compatibility.nativeRange(attrs)
+    if inRange(k, 1, 99999) and (not nativeRange or inRange(k, nativeRange.minK, nativeRange.maxK)) then
       local x, y = Color.kelvinToXY(k)
       if xy(x, y) then
         return { x = x, y = y, mode = Color.CCT, kelvin = k }
@@ -260,13 +258,17 @@ function Adapter:lost(entity)
   end
   self:_clearEffects()
   self.generation = self.generation + 1
-  self.device, self.rgb, self.transition, self.reported = nil, nil, nil, nil
+  self.device, self.colorFormat, self.transition, self.reported = nil, nil, nil, nil
+  self.compatibilityState, self.hasTemperature = nil, nil
   if self.light.online then
     self.light:lost()
   end
 end
 
 function Adapter:bind(consumer, entity, onResult, connectedMode, feedbackChanged)
+  if entity ~= self.entity or connectedMode then
+    self.confirmedAvailable = nil
+  end
   self.feedbackUnavailable = nil
   self.feedbackChanged = feedbackChanged
   if self.connected.enabled or connectedMode then
@@ -274,7 +276,8 @@ function Adapter:bind(consumer, entity, onResult, connectedMode, feedbackChanged
       self:_clearEffects()
       self.connectedPicks:reset()
       self.generation = self.generation + 1
-      self.device, self.rgb, self.transition, self.reported = nil, nil, nil, nil
+      self.device, self.colorFormat, self.transition, self.reported = nil, nil, nil, nil
+      self.compatibilityState, self.hasTemperature = nil, nil
       if self.light.online then
         self.light:lost()
       end
@@ -287,6 +290,36 @@ function Adapter:bind(consumer, entity, onResult, connectedMode, feedbackChanged
   end
   self:lost()
   self.consumer, self.entity, self.onResult = consumer, contract.loadDomain(entity) and entity or nil, onResult
+  self.overrides = self.entity and self.entity:match("^light%.") and compatibility.read(self.entity) or {}
+end
+
+function Adapter:compatibilityProperties()
+  if self.entity and self.entity:match("^light%.") then
+    return compatibility.properties(self.overrides, self.device, self.hasTemperature)
+  end
+  return {}
+end
+
+function Adapter:loadDevice()
+  return self.device
+end
+
+function Adapter:setCompatibility(name, value)
+  local field = compatibility.field(name)
+  if not field then
+    return false
+  end
+  if not self.entity or not self.entity:match("^light%.") then
+    return true, "Choose a Home Assistant light first."
+  end
+  local failure, saved = compatibility.save(self.entity, self.overrides, field, value, self.device, self.hasTemperature)
+  if saved then
+    self.overrides = saved
+    if self.compatibilityState then
+      self:message("snapshot", self.compatibilityState)
+    end
+  end
+  return true, failure
 end
 
 function Adapter:unbind()
@@ -311,24 +344,36 @@ function Adapter:message(kind, data, reportKind)
   if kind ~= "snapshot" and kind ~= "state" then
     return
   end
+  local becameUnavailable = data.state == "unavailable" and self.confirmedAvailable == true
+  if becameUnavailable then
+    self.confirmedAvailable = false
+  end
   if data.state ~= "on" and data.state ~= "off" then
     if reportKind ~= "final" then
       self:lost()
     end
+    if becameUnavailable then
+      C4:FireEventByID(ids.lightUnavailableEvent)
+    end
     return
   end
-  local device, rgb, transition = deviceFacts(self.entity, data.attributes)
+  self.confirmedAvailable = true
+  local device, format, transition, temperature = deviceFacts(self.entity, data.attributes, self.overrides)
   local brightness = data.attributes.brightness
   local level = device.dims and inRange(brightness, 1, STEPS) and brightness / STEPS or nil
   -- A lit dimmer without evidence of its level must never acquire a guessed level.
   if device.dims and data.state == "on" and not level then
     if reportKind ~= "final" then
       self:lost()
+      self.feedbackUnavailable = true
+      self.compatibilityState = data
+      self.hasTemperature = temperature
     end
     return
   end
   self.feedbackUnavailable = nil
-  self.device, self.rgb, self.transition = device, rgb, transition
+  self.device, self.colorFormat, self.transition = device, format, transition
+  self.compatibilityState, self.hasTemperature = data, temperature
   local previous = self.effects
   self.effects = self.entity:match("^light%.") and Effects.read(data.attributes) or nil
   device.extras = self.effects ~= nil
@@ -417,10 +462,6 @@ function Adapter:bottomRampTarget()
   if bottom and target and target.controls and target.controls.ramp and self.connected:isAppTarget(bottom.device) then
     return target.name
   end
-end
-
-function Adapter:setLinkedTrace(enabled)
-  self.connected:setTrace(enabled)
 end
 
 function Adapter:_button(role, action, identity)
@@ -755,7 +796,7 @@ function Adapter:observeSceneStep()
   return observe("light.scene_step")
 end
 
-local function colorParameters(device, wantsRGB, color, parameters)
+local function colorParameters(device, format, color, parameters)
   if type(color) ~= "table" or not xy(color.x, color.y) then
     return nil
   end
@@ -767,12 +808,18 @@ local function colorParameters(device, wantsRGB, color, parameters)
     parameters.color_temp_kelvin = math.floor(math.max(device.cct.minK, math.min(device.cct.maxK, k)) + 0.5)
     return "light.cct"
   elseif device.color then
-    if wantsRGB then
+    if format == "RGB" then
       local r, g, b = Color.xyToRGB(color.x, color.y)
       if not (inRange(r, 0, 1) and inRange(g, 0, 1) and inRange(b, 0, 1)) then
         return nil
       end
       parameters.rgb_color = codec.array({ Range.step(r, STEPS), Range.step(g, STEPS), Range.step(b, STEPS) })
+    elseif format == "HS" then
+      local hue, saturation = C4:ColorXYtoHSV(color.x, color.y)
+      if not (inRange(hue, 0, 360) and inRange(saturation, 0, 100)) then
+        return nil
+      end
+      parameters.hs_color = codec.array({ hue, saturation })
     else
       parameters.xy_color = codec.array({ color.x, color.y })
     end
@@ -802,7 +849,7 @@ function Adapter:send(command)
     operation = "light.level"
   end
   if command.on and command.setsColor then
-    operation = colorParameters(device, self.rgb, command.color, parameters) or operation
+    operation = colorParameters(device, self.colorFormat, command.color, parameters) or operation
   end
   if command.kind == "stop" and not self.transition then
     return
@@ -811,7 +858,10 @@ function Adapter:send(command)
     parameters.transition = command.transitionMs / 1000
     operation = command.kind == "stop" and "light.stop" or "light.ramp"
   end
-  if not command.setsLevel and not (parameters.rgb_color or parameters.xy_color or parameters.color_temp_kelvin) then
+  if
+    not command.setsLevel
+    and not (parameters.rgb_color or parameters.xy_color or parameters.hs_color or parameters.color_temp_kelvin)
+  then
     return
   end
 

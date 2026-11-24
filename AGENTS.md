@@ -12,6 +12,14 @@ Never operate Composer directly or through computer automation. Prepare exact
 driver packages and ask the user to perform Composer steps. If `AGENTS.local.md`
 exists, read it before accessing a controller or staging a package.
 
+# Public project privacy
+
+Keep real installation data in local, ignored files outside public artifacts.
+Use synthetic names and configuration in source, test fixtures, documentation,
+screenshots, OpenSpec, and release packages. Record qualification outcomes
+without private project names, locations, addresses, device identifiers, or
+installation settings.
+
 # Shared driver behavior
 
 Every driver or behavior change must begin with a review of the pinned Finite

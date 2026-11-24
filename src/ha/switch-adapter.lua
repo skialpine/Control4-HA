@@ -85,7 +85,7 @@ end
 function Adapter:_commandResult(command, status)
   local generation = self.generation
   self.inFlight = self.inFlight - 1
-  if self.onResult then
+  if self.onResult and self.pending == command then
     self.onResult(status)
   end
   if generation ~= self.generation then

@@ -22,6 +22,7 @@ return {
   lightLinks = { top = 200, bottom = 201, toggle = 202 },
   links = { top = 300, toggle = 301, bottom = 302 },
   events = { stateOn = 1000, stateOff = 1001, unavailable = 1002 },
+  lightUnavailableEvent = 1099,
   conditions = { on = 1000, off = 1001, available = 1002 },
   -- Values allocates these in this order on first install and restores their IDs.
   variables = {

@@ -127,7 +127,13 @@ end
 --- levels. A level above Debug goes back to Debug with OnPropertyChanged, so the driver's handler sees it.
 --- @param allowed boolean Whether Trace and Ultra are allowed.
 function Log:allowTraceAndUltra(allowed)
-  self._maxLogLevel = allowed and self.LogLevel.ULTRA or self.LogLevel.DEBUG
+  self:setMaxLogLevel(allowed and self.LogLevel.ULTRA or self.LogLevel.DEBUG)
+end
+
+--- Sets the highest level the driver offers and clamps any saved selection.
+--- @param level LogLevel
+function Log:setMaxLogLevel(level)
+  self._maxLogLevel = level
   self._logLevel = math.min(self._logLevel, self._maxLogLevel)
   self:_setDumps()
   -- The value first, so the shorter list never lacks it.

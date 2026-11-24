@@ -4,8 +4,8 @@ Qualify the suite against an isolated project HA environment and reproducible si
 
 ## ADDED Requirements
 
-### Requirement: Dedicated Proxmox HA environment
-The project SHALL provision a dedicated HA Container on the user's Portainer-managed Linux Docker VM on Proxmox, subject to host capacity and a unique container/volume/LAN port. Configuration, credentials and backups MUST be separate from production. The lab MUST NOT copy production credentials or pair production devices. A dedicated 2 GiB HA OS VM is the user-approved fallback, subject to host resource checks.
+### Requirement: Dedicated Home Assistant environment
+The project SHALL provision a dedicated HA Container on an available Linux Docker host, subject to host capacity and a unique container/volume/LAN port. Configuration, credentials and backups MUST be separate from production. The lab MUST NOT copy production credentials or pair production devices. A dedicated HA OS VM is the fallback after confirming available host resources.
 
 #### Scenario: Start the development lab
 - **WHEN** its instance starts from the documented lab configuration

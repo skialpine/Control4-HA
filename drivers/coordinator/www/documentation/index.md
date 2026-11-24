@@ -57,9 +57,9 @@ drivers that use a different Control4 driver type from the new version, the
 section at the top lists them automatically. Save a project backup and review
 the listed changes before starting. Migration keeps your switches, names, and
 rooms. Test that each new driver turns its switch on and off and run any
-programming you changed. Return to Quick Setup and choose **Review old drivers
-for removal**. Confirm those tests, then choose **Check old drivers**. The
-wizard identifies which originals you can delete separately in Composer.
+programming you changed. Return to Quick Setup and choose **Confirm testing**.
+Confirm those tests, then choose **Check old drivers**. The wizard identifies
+which originals you can delete separately in Composer.
 
 When a switch needs programming changes, Quick Setup prepares a replacement and
 shows the driver name and its Control4 room. The original still controls the
@@ -118,8 +118,9 @@ the saved migration against the updated drivers.
 1. Test the new driver. Try the buttons you use and any on/off control,
    programming or scenes you changed. If you finished the transfer manually,
    select **Confirm testing** or **Apply original name**, as shown.
-1. Select **Review old drivers for removal**. Quick Setup checks the named
-   replacement again and lists the originals ready to delete in Composer.
+1. Choose **Review old drivers for removal** after you confirm testing. Quick
+   Setup checks the replacement again and lists the originals ready to delete in
+   Composer.
 
 If Quick Setup shows **Restore the project backup**, restore it before
 continuing with any switch in the batch. Return to Quick Setup and choose
@@ -158,11 +159,13 @@ the diagnostic report to Lua output and the Latency Report variable.
 For troubleshooting, open **Actions**. **Print connection diagnostics to Lua**
 shows connection status, pending requests, subscription and device counts.
 **Print linked Home Assistant IDs to Lua** lists the IDs selected by linked
-drivers. Use the **Lua** tab to read either report. In **Properties**, **Debug
-Print** prints a connection summary and subsequent connection changes to Lua. It
-turns off after ten hours.
+drivers. Use the **Lua** tab to read either report.
 
-Tokens and raw device payloads are excluded from routine logging. Do not enable
-raw WebSocket/network debug traces.
+For detailed Coordinator diagnostics, select **5 - Trace** under **Log Level**
+in **Properties**. Set **Log Mode** to **Print** for the **Lua** tab, **Log**
+for the controller log, or **Print and Log** for both. Trace reports request and
+response outcomes, including scene migration requests and verification. Raw
+network dumps stay disabled. Logs can contain local project information. Logging
+turns off after three hours.
 
 Source and notices: <https://github.com/skialpine/Control4-HA>.

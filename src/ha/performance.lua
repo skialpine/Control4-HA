@@ -6,12 +6,18 @@ local WINDOW = 64
 local OPERATIONS = {}
 for _, name in ipairs({
   "transport.connect",
+  "transport.port_probe",
   "transport.authenticate",
   "transport.decode",
   "subscription.confirm",
   "subscription.release",
   "snapshot.http",
+  "snapshot.headers",
+  "snapshot.body",
+  "snapshot.decode",
   "snapshot.publish",
+  "snapshot.queue",
+  "snapshot.ready",
   "service.round_trip",
   "request.light.on",
   "request.light.off",
@@ -27,22 +33,50 @@ for _, name in ipairs({
   "request.input_boolean.off",
   "request.input_boolean.toggle",
   "service.dispatch",
+  "service.switch_queue",
   "preparation.round_trip",
   "catalog.cold",
   "catalog.refresh",
   "catalog.page",
   "catalog.registry",
+  "catalog.names_http",
   "catalog.native_projection",
   "consumer.decode",
   "binding.validation",
+  "binding.output_read",
+  "binding.reconcile",
   "consumer.dispatch",
   "consumer.handler",
   "selection.commit",
   "selection.verify",
+  "commissioning.catalog_matches",
   "commissioning.preview",
   "commissioning.execute",
   "commissioning.add",
   "commissioning.bind",
+  "migration.availability",
+  "migration.status",
+  "migration.assess",
+  "migration.stage",
+  "migration.dependencies",
+  "migration.scene_move",
+  "migration.scene_verify",
+  "migration.scene_verify_all",
+  "migration.scene_read",
+  "migration.installation",
+  "migration.preflight_state",
+  "migration.preflight_registry",
+  "migration.preflight_installation",
+  "migration.post_cutover_registry",
+  "migration.post_cutover_installation",
+  "migration.cutover",
+  "migration.ownership",
+  "migration.ownership_read",
+  "migration.selection_readback",
+  "migration.feedback",
+  "migration.feedback_after_selection",
+  "migration.feedback_poll_interval",
+  "migration.restore",
   "startup.ready",
   "recovery.ready",
   "light.on",
@@ -127,8 +161,12 @@ function Metrics:reset()
   self.generation = self.generation + 1
   self.records, self.invalid = {}, 0
 end
-function Metrics:start(operation)
-  if not self.enabled or not OPERATIONS[operation] then
+function Metrics:start(operation, parent)
+  if
+    not self.enabled
+    or not OPERATIONS[operation]
+    or parent and (parent.owner ~= self or parent.generation ~= self.generation)
+  then
     return nil
   end
   local ok, stamp = pcall(self.clock)

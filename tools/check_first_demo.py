@@ -11,6 +11,7 @@ from zipfile import BadZipFile, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINES = ROOT / "provenance/first-demo-baselines.json"
+BASELINE_DIRECTORY = ROOT / ".cache/first-demo-baselines"
 INVENTORY = ROOT / "dist/oss/inventory.json"
 FAMILIES = ("coordinator", "light", "switch")
 CANDIDATE_NAMES = {
@@ -352,11 +353,7 @@ def compare(pins, baseline_directory, candidates, expected_version):
         family_issues = enforce(family, candidate, family_references)
         families[family] = {"candidate": candidate, "issues": family_issues}
         for reference in family_references:
-            path = (
-                baseline_directory / reference["id"] / reference["filename"]
-                if baseline_directory is not None
-                else ROOT / reference["local_path"]
-            )
+            path = baseline_directory / reference["id"] / reference["filename"]
             baseline = contract(path, reference["sha256"], reference["version"])
             drift = differences(baseline, candidate)
             for finding in drift:
@@ -368,15 +365,18 @@ def compare(pins, baseline_directory, candidates, expected_version):
                     and finding["candidate"] is None
                 ):
                     finding["status"] = "applicable_properties_always_visible"
+                elif (
+                    finding["scope"] == "property"
+                    and finding["key"]
+                    == ("Debug Print" if family == "coordinator" else "Debug Mode")
+                    and finding["candidate"] is None
+                ):
+                    finding["status"] = "superseded_by_log_mode"
                 elif family == "switch" and finding["status"] == "gap":
                     finding["status"] = "migration_mapping_required"
             comparisons.append(
                 {
-                    "reference": {
-                        key: value
-                        for key, value in reference.items()
-                        if key != "local_path"
-                    },
+                    "reference": reference,
                     "baseline": baseline,
                     "path": "explicit_migration" if family == "switch" else "in_place",
                     "differences": drift,
@@ -445,7 +445,8 @@ def main():
     parser.add_argument(
         "--baseline-dir",
         type=Path,
-        help="Private directory of pinned <reference-id>/<filename> archives",
+        default=BASELINE_DIRECTORY,
+        help="Directory of pinned <reference-id>/<filename> archives (default: .cache/first-demo-baselines)",
     )
     parser.add_argument("--version", help="Expected candidate driver XML version")
     for family in FAMILIES:

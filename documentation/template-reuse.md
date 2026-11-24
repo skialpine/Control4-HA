@@ -29,9 +29,25 @@ download/reload mechanisms; suite manifests and lifecycle recovery still need
 their own tests. A generic cache cannot replace revision checks for the shared
 HA catalog.
 
+The Coordinator saves migration state through `lib.persist`. Its cache can
+return a pending write, and `flush` dispatches pending values without confirming
+that Director stored them. The gateway cutover checkpoint includes the scene
+attempt so the same durable batch can verify the approved plan later. Before
+removing original scene members, migration verifies that plan and a separate
+removal intent in Director storage. The migration fixture covers a readback
+still showing the gateway checkpoint, an unavailable intent, a changed saved
+plan, and a restart during removal. A decoded checkpoint can lose the JSON
+object markers on empty scene and group maps. The proof canonicalizes those
+empty maps and still compares the remaining checkpoint data exactly.
+
 The HA connection waits for the template WebSocket deletion callback before
 reusing a probed URL. Virtual-clock tests cover automatic and manual port
 selection while exercising the template's socket cache.
+
+The GitHub updater extension stages archives and waits for Director to accept
+each child reload. The Coordinator checks the resulting revision by calling each
+child's live UIRequest handler through the template helper. The running
+Coordinator verifies its own revision after reload.
 
 Use the template test shim, virtual clocks, Light conformance kit and existing
 library tests. Translate prototype behavioral tests into adapter/contract tests
@@ -268,6 +284,18 @@ GitHub helpers. Its HA protocol and release-family selection remain suite
 responsibilities. Review the generic example for shared lifecycle and logging
 behavior on all drivers.
 
+The template HTTP helper operates on individual requests. The HA Coordinator
+limits background snapshot submissions before calling the HTTP helper because
+the queue belongs to the active HA connection and can use live subscription
+feedback. HTTP completion and error handling use the template's deferred
+callbacks. The Hub test exercises the queue, feedback and reconnect behavior.
+
+For calls to a Home Assistant switch, the Coordinator sequences requests for the
+same entity before passing them to the template WebSocket transport. It uses the
+template's one-shot timers for the queue deadline. The Hub tests exercise
+feedback arriving before the service reply, independent devices, selection
+changes and timeout handling.
+
 The suite uses the pinned GitHub updater's file writer and Director reload
 request. The local extension exposes those already-used operations so the
 Coordinator can hand over the manifest-verified archive bytes and resume from
@@ -276,9 +304,13 @@ same library and sends companions before its own reload. Tests cover its alias,
 write readback and reload order alongside the suite's recovery tests.
 
 The generic example's live **Log Mode** and **Log Level** changes and three-hour
-expiration now run once in the shared foundation used by all three drivers. The
-foundation caps levels that enable raw network dumps, and the separate legacy
-Coordinator **Debug Print** action retains its existing timer.
+expiration run in the shared foundation. The logger's level cap extension allows
+**Trace** for the Coordinator while keeping the template's Ultra packet dumps
+disabled. The template logger reports Coordinator connection changes. Light and
+Switch use its **Debug** level for bounded button-event diagnostics. Light also
+reports linked Control4 commands and feedback at this level. **Log Mode**
+replaces the old **Debug Print** and **Debug Mode** settings. The one-time
+diagnostics actions can be run from **Actions**.
 
 The Light example uses the library's refresh hook and reports a matching
 snapshot as final. The Home Assistant adapter uses the same hook, with the local

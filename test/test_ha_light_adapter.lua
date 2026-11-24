@@ -61,6 +61,34 @@ local function fixture(entity, proxyOptions)
   }
 end
 
+T.section("Light reports each confirmed loss of availability once")
+do
+  local f = fixture("light.lamp")
+  local fire, events = C4.FireEventByID, {}
+  function C4:FireEventByID(id)
+    events[#events + 1] = id
+  end
+  f.state("unavailable")
+  T.eq("startup unavailable has no prior available state", #events, 0)
+  f.state("off")
+  f.adapter:message("failure", { entity_id = "light.lamp" })
+  f.state("unknown")
+  f.state("unavailable", {}, "light.unselected")
+  T.eq("request failures and unrelated states do not emit the event", #events, 0)
+  f.state("unavailable")
+  f.state("unavailable")
+  T.eq("duplicate feedback emits once", events, { require("ha.identities").lightUnavailableEvent })
+  f.state("off")
+  f.state("unavailable")
+  T.eq("recovery rearms the event", #events, 2)
+  f.state("off")
+  f.adapter:bind(f.consumer, "light.replacement")
+  f.state("unavailable", {}, "light.replacement")
+  T.eq("a new target starts without availability history", #events, 2)
+  C4.FireEventByID = fire
+  f.done()
+end
+
 T.section("A binary light keeps its optional Control4 keypad links without claiming physical HA indicators")
 do
   local f = fixture("switch.lamp")
@@ -473,6 +501,112 @@ do
   f.state("on", attrs)
   T.eq("contradictory bounds do not advertise temperature", f.adapter.light.device.cct, nil)
   f.done()
+end
+
+T.section("Advanced Light overrides stay scoped to a selected load")
+do
+  local persist = require("lib.persist")
+  persist:set("HA.LightCompatibility.v1", codec.encode(codec.object({ entity = "light.saved", range = "2800-5000" })))
+  local f = fixture("light.compatibility")
+  local attrs = {
+    supported_color_modes = codec.array({ "xy", "color_temp" }),
+    brightness = 150,
+    min_color_temp_kelvin = 2600,
+    max_color_temp_kelvin = 6500,
+  }
+  f.state("on", attrs)
+  local function set(name, value)
+    local handled, failure = f.adapter:setCompatibility(name, value)
+    T.truthy("the compatibility field is recognized", handled)
+    return failure
+  end
+  local function send(x, y, mode, kelvin)
+    f.adapter:send({
+      kind = "change",
+      setsColor = true,
+      on = true,
+      transitionMs = 0,
+      color = { x = x, y = y, mode = mode, kelvin = kelvin },
+    })
+    return f.rpc().service_data
+  end
+  T.eq("default output remains xy", send(0.39, 0.33, "xy").xy_color, { 0.39, 0.33 })
+  T.eq("save HS override", set("Color format override", "HS"), nil)
+  local hue, saturation = C4:ColorXYtoHSV(0.39, 0.33)
+  T.eq("HS is sent through the validated HA operation", send(0.39, 0.33, "xy").hs_color, { hue, saturation })
+  T.eq("save explicit white range", set("White temperature limits (K)", "3000 - 5200"), nil)
+  T.truthy("refuse reversed bounds", set("White temperature limits (K)", "5200-3000"))
+  T.eq("effective limits remain the accepted values", f.adapter.device.cct, { minK = 3000, maxK = 5200 })
+  attrs.color_mode, attrs.color_temp_kelvin = "color_temp", 4200
+  f.state("on", attrs)
+  attrs.color_temp_kelvin = 5800
+  f.state("on", attrs)
+  T.eq("HA can report a valid Kelvin value above the outbound limit", (f.adapter.reported.color or {}).kelvin, 5800)
+  local reportedX, reportedY = color.kelvinToXY(5800)
+  local notification = f.proxy:last("LIGHT_COLOR_CHANGED") or {}
+  T.eq("the native proxy receives the actual white point", {
+    notification.LIGHT_COLOR_CURRENT_X,
+    notification.LIGHT_COLOR_CURRENT_Y,
+  }, { reportedX, reportedY })
+  T.eq(
+    "an outbound request at that white point still clamps",
+    send(reportedX, reportedY, "cct", 5800).color_temp_kelvin,
+    5200
+  )
+  attrs.color_temp_kelvin = 7000
+  f.state("on", attrs)
+  T.eq("a report beyond the native range remains unconfirmed", f.adapter.reported.color, nil)
+  attrs.color_mode, attrs.color_temp_kelvin = nil, nil
+  local x, y = color.kelvinToXY(2700)
+  T.eq("request respects the saved minimum", send(x, y, "cct", 2700).color_temp_kelvin, 3000)
+  f.adapter:bind(f.consumer, "light.other")
+  f.state("on", attrs, "light.other")
+  T.eq("a different light uses automatic color", send(0.39, 0.33, "xy").xy_color, { 0.39, 0.33 })
+  T.eq("save a separate range for that light", set("White temperature limits (K)", "3500-5800"), nil)
+  f.adapter:bind(f.consumer, "light.saved")
+  f.state("on", attrs, "light.saved")
+  T.eq("the previous storage format survives edits on other lights", f.adapter.device.cct, { minK = 2800, maxK = 5000 })
+  f.adapter:bind(f.consumer, "light.compatibility")
+  f.state("on", attrs)
+  T.eq("returning to the saved light restores its choices", f.adapter.compatibilityProperties and {
+    f.adapter:compatibilityProperties()[2].value,
+    f.adapter:compatibilityProperties()[3].value,
+  }, { "HS", "3000-5200" })
+  T.eq("set on/off behavior explicitly", set("Light type override", "On/off"), nil)
+  T.falsy("on/off behavior hides dimming", f.adapter.device.dims)
+  T.truthy("a binary light rejects a forced color format", set("Color format override", "RGB"))
+  T.truthy("a binary light rejects a temperature range", set("White temperature limits (K)", "3000-5200"))
+  T.eq("return to automatic light type", set("Light type override", "Automatic"), nil)
+  T.truthy("automatic restores confirmed dimming from the same target", f.adapter.device.dims)
+  T.eq("clear color override", set("Color format override", "Automatic"), nil)
+  T.eq("clear range override", set("White temperature limits (K)", ""), nil)
+  T.eq("detected temperature limits restored", f.adapter.device.cct, { minK = 2600, maxK = 6500 })
+  f.adapter:bind(f.consumer, "light.other")
+  f.state("on", attrs, "light.other")
+  T.eq("clearing one light keeps the other light’s range", f.adapter.device.cct, { minK = 3500, maxK = 5800 })
+  f.done()
+  persist:set("HA.LightCompatibility.v1", nil)
+  persist:set("HA.LightCompatibility.v2", nil)
+end
+
+T.section("Legacy Light overrides stay cleared after migration")
+do
+  local compatibility = require("ha.light-compatibility")
+  local persist = require("lib.persist")
+  local legacyKey, currentKey = "HA.LightCompatibility.v1", "HA.LightCompatibility.v2"
+  local field = compatibility.field("Light type override")
+  persist:set(legacyKey, codec.encode(codec.object({ entity = "light.legacy", kind = "Dimmable" })))
+  T.eq("v1 settings are readable before the first new save", compatibility.read("light.legacy").kind, "Dimmable")
+  T.eq("reading the v1 record leaves persistence untouched", persist:get(currentKey), nil)
+  T.eq(
+    "clearing the only legacy override succeeds",
+    compatibility.save("light.legacy", compatibility.read("light.legacy"), field, "Automatic"),
+    nil
+  )
+  T.eq("the removed legacy setting does not reappear", compatibility.read("light.legacy").kind, nil)
+  T.eq("an untouched target consumes no stored entry", persist:get(currentKey), "{}")
+  persist:set(legacyKey, nil)
+  persist:set(currentKey, nil)
 end
 
 T.section("RGB conversion uses the template color helper and no unadvertised transition")

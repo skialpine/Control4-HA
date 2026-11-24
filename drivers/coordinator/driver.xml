@@ -161,12 +161,6 @@
         <readonly>true</readonly>
       </property>
       <property>
-        <name>Debug Print</name>
-        <type>LIST</type>
-        <default>Off</default>
-        <items><item>Off</item><item>On</item></items>
-      </property>
-      <property>
         <name>Log Level</name>
         <type>DYNAMIC_LIST</type>
         <default>3 - Info</default>

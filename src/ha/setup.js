@@ -528,6 +528,8 @@
       { el: el("app-link-settings"), names: ["App Control Link"] },
       { el: el("indicator-settings"), names: ["LED Behavior"] },
       { el: el("indicator-source"), names: ["LED Feedback Source"] },
+      { el: el("light-compatibility-choices"), names: ["Light type override", "Color format override"] },
+      { el: el("light-compatibility-range"), names: ["White temperature limits (K)"], apply: "Apply" },
     ],
     labels: {
       "Discovery Catalog Entity ID": "Sensor for custom device names",
@@ -537,6 +539,8 @@
     },
     readouts: true,
     afterRender: function () {
+      el("light-compatibility").hidden =
+        el("light-compatibility-choices").parentElement.hidden && el("light-compatibility-range").parentElement.hidden;
       updateIndicatorSection();
       var settings = el("button-settings");
       var behavior = settings.querySelector("select");

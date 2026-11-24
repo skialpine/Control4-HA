@@ -7,6 +7,7 @@ local Legacy = require("ha.legacy-coordinator")
 local log = require("lib.logging")
 local persist = require("lib.persist")
 local codec = require("ha.codec")
+local metrics = require("ha.performance").shared
 local Commissioning = require("ha.commissioning")
 local commissionPage = require("ha.commission-page")
 local connection
@@ -19,14 +20,10 @@ require("ha.switch-upgrade-page").install(function()
   return hub
 end)
 local ready = false
-local resetReleaseCheck, startReleaseCheck = require("ha.release-check").installActions(function()
-  return ready
-end)
 local observedAddress = false
 local portSearch
 local DISCOVERED_PORT = "HA.DiscoveredPort"
 local APPLY_TIMER = "HA.Coordinator.Configure"
-local DEBUG_TIMER_NAME = "HA.Coordinator.DebugPrint"
 local CONNECTED_EVENT, DISCONNECTED_EVENT = 1, 2
 local connectionStatus = {
   connecting = "Connecting to Home Assistant…",
@@ -126,6 +123,21 @@ local function connectionSettings()
   return url, token, path("CA Certificate Path"), { cert = path("Certificate Path"), key = path("Private Key Path") }
 end
 
+local resetReleaseCheck, startReleaseCheck = require("ha.release-check").installActions(
+  function()
+    return ready
+  end,
+  require("ha.switch-upgrade").releaseBlocked,
+  function()
+    local url, _, ca, client = connectionSettings()
+    local _, scheme = Connection.authority(url)
+    local usesTrustFiles = (ca and ca ~= "") or (client and (client.cert or client.key))
+    return scheme == "https"
+      and usesTrustFiles
+      and (not legacySettings() or Properties["Directory Start Path"] == "Driver")
+  end
+)
+
 local function programmingAddress()
   if conflictingSettings() then
     return nil
@@ -175,9 +187,11 @@ local function updatePropertyVisibility()
     scheme = Properties["HA Protocol"] == "HTTPS" and "https" or "http"
   end
   SetPropertyVisible("Status", false)
-  -- Director can retain this status from the retired migration action after an update.
-  if Properties["Switch driver migration"] ~= nil then
-    SetPropertyVisible("Switch driver migration", false)
+  -- Director can retain retired properties after an in-place update.
+  for _, name in ipairs({ "Switch driver migration", "Debug Print" }) do
+    if Properties[name] ~= nil then
+      SetPropertyVisible(name, false)
+    end
   end
   SetPropertyVisible("HA Version", (Properties["HA Version"] or "") ~= "")
   SetPropertyVisible("HA URL", not split and (not legacy or conflictingSettings()))
@@ -197,7 +211,7 @@ local function updatePropertyVisibility()
     "CA Certificate Path",
     legacySecure or not legacy and (scheme == "https" or (Properties["CA Certificate Path"] or "") ~= "")
   )
-  for _, name in ipairs({ "Driver Version", "Debug Print", "Log Level", "Log Mode", "Latency Diagnostics" }) do
+  for _, name in ipairs({ "Driver Version", "Log Level", "Log Mode", "Latency Diagnostics" }) do
     SetPropertyVisible(name, true)
   end
 end
@@ -380,18 +394,6 @@ EC.PRINT_ENTITY_TABLE = function()
   end
 end
 
-OPC.Debug_Print = function()
-  CancelTimer(DEBUG_TIMER_NAME)
-  if ready and Properties["Debug Print"] == "On" then
-    EC.PrintDiagnostics()
-    -- Keep the original ten-hour limit. Generic handler and WebSocket
-    -- dumps can contain credentials or private state and remain separate.
-    SetTimer(DEBUG_TIMER_NAME, 36000000, function()
-      UpdateProperty("Debug Print", "Off")
-    end)
-  end
-end
-
 EC.suppressDebug["Call Service"] = true
 EC.suppressDebug.Call_Service = true
 EC.Call_Service = function(params)
@@ -438,13 +440,14 @@ EC.RetrySelected = function()
   end
 end
 OBC[1] = function()
+  local span = metrics:start("binding.reconcile")
   if legacy then
     legacy:bindingChanged()
   end
   if hub then
-    hub:prune()
-    hub:announce()
+    hub:reconcileBindings()
   end
+  metrics:finish(span, "ok")
 end
 
 function OnDriverInit()
@@ -456,7 +459,6 @@ function OnDriverInit()
     legacy = nil
   end
   pcall(CancelTimer, APPLY_TIMER)
-  pcall(CancelTimer, DEBUG_TIMER_NAME)
   if connection then
     if hub then
       hub:destroy()
@@ -526,14 +528,11 @@ function OnDriverLateInit()
         end
         pcall(legacy.connectionStatus, legacy, 1)
       end
-      if ready and hub == currentHub and Properties["Debug Print"] == "On" then
-        print("Home Assistant connection | " .. state)
-      end
       -- Use the Hub's state after it handles the transport transition. The
       -- load can retire or lose the socket while handling that transition.
       if ready and hub == currentHub and currentHub.online ~= reportedOnline then
         reportedOnline = currentHub.online
-        if reportedOnline and not pcall(commissionPage.connected) then
+        if not pcall(commissionPage.connectionChanged, reportedOnline) then
           log:warn("Could not notify Quick Setup about the Home Assistant connection")
         end
         local event = reportedOnline and CONNECTED_EVENT or DISCONNECTED_EVENT
@@ -544,9 +543,8 @@ function OnDriverLateInit()
     end
     hub.commissioning = Commissioning.new(hub.catalog, function(device, query)
       return hub.transfer:start(device, query)
-    end)
+    end, hub.installation)
     hub:announce()
-    OPC.Debug_Print()
     apply()
     startReleaseCheck()
   end
@@ -562,7 +560,6 @@ function OnDriverDestroyed()
     legacy = nil
   end
   pcall(CancelTimer, APPLY_TIMER)
-  pcall(CancelTimer, DEBUG_TIMER_NAME)
   if connection then
     if hub then
       hub:destroy()

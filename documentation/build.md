@@ -87,10 +87,14 @@ package require an installer-managed update. To update a lab manually, use exact
 matching packages, update installed children first and Coordinator last, then
 verify each original selection and binding.
 
-If an installation stops partway through, **Check for driver updates** with
-**Automatic Updates** on can resume the saved batch. If files or installed
-drivers changed, have the installer review the project and the same complete
-package set. Recheck selection, connections, control and feedback on each
-affected driver. If the update changed project settings or links and recovery
-cannot be verified, use the saved Control4 project backup and the corresponding
-driver packages to restore the working setup.
+If an installation stops partway through, **Driver update status** lists the
+pending packages first and shows which packages have completed. **Check for
+driver updates** with **Automatic Updates** on can resume the saved batch. If
+the pending batch is a prerelease, select **Pre-release** before running the
+check. An update saved before channel verification needs installer review.
+Turning **Automatic Updates** off stops further package writes. If files or
+installed drivers changed, have the installer review the project and the same
+complete package set. Recheck selection, connections, control and feedback on
+each affected driver. If the update changed project settings or links and
+recovery cannot be verified, use the saved Control4 project backup and the
+corresponding driver packages to restore the working setup.

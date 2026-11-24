@@ -57,6 +57,12 @@ permissions follow HA's documented
 [WebSocket API](https://contributors.home-assistant.io/core/internals/websocket-api/#subscribe-to-a-trigger);
 subscription refusal remains a separate failure from authentication.
 
+The configured CA file must remain readable after a Coordinator reload. If its
+path points inside the driver archive, the replacement and rollback archives
+must both carry that trust resource. A missing file can cause the WebSocket to
+retry while Home Assistant remains healthy. Check this dependency before
+replacing a package in a project that uses a custom CA.
+
 The Coordinator targets bound consumers with `version`, `coordinator`,
 `session`, `selection`, `boot`, `epoch`, `kind` and `data`. The initial kinds
 are:
@@ -160,25 +166,20 @@ also be exercised as those adapters are implemented.
 
 ## Built-package lab runner
 
-After building the three packages, run
-`.venv/bin/python lab/verify_transport.py --timings`. Omit `--timings` to keep
-latency sampling off. The runner verifies the allowlisted lab marker and HA
-version, reuses its private local token cache (or reads the dedicated API field
-once), and resets only the test fixture integration. It runs `driver.lua`
-extracted from the exact Coordinator `.c4z`; the Lua module path deliberately
-excludes the source runtime. The small `lab/transport_driver.lua` harness
-supplies Director properties/bindings and network/HTTP boundaries. Actual
-template WebSocket framing, authentication, selected HTTP reads, Hub
-subscriptions and service correlation execute from the package against real HA.
-The HTTP boundary forwards exact fixture reads. The native setup rehearsal also
-forwards the fixed discovery template. Each call verifies the lab identity.
+The lab runner verifies the allowlisted environment and its Home Assistant
+version. It uses dedicated lab credentials and resets only the test integration.
+It runs `driver.lua` extracted from the exact Coordinator `.c4z` and excludes
+the source runtime from the module path. The harness supplies Director
+properties, bindings and network boundaries. Actual template WebSocket framing,
+authentication, selected HTTP reads, Hub subscriptions and service correlation
+execute from the package against real HA. The HTTP boundary forwards exact
+fixture reads. The native setup rehearsal also forwards the fixed discovery
+template. Each call verifies the lab identity.
 
-A successful run writes `lab/transport-evidence.json` with the package hash, HA
-version, logging configuration, check names, service results and independently
-confirmed state observations. Private process pipes carry authentication and
-state in memory; they are never printed or saved in the evidence report. The
-runner uses separate matching pushed state as confirmation rather than treating
-a service result as state.
+The lab report records the package hash, HA version, logging configuration,
+check names, service results and independently confirmed state observations. The
+runner keeps credentials in memory and confirms changes with matching pushed
+state.
 
 Optional timings begin when Python writes a consumer request to the Lua process
 and end when Python receives the packaged Coordinator's targeted result or
@@ -188,11 +189,9 @@ button and load latency. They do not qualify native Director behavior. The
 report records sample count and the package's actual logging mode/level; logging
 is not changed by enabling timing collection.
 
-The recorded quiet run in `lab/transport-evidence.json` passed 323 checks on HA
-2026.11.1 with 152 service samples and logging Off / 3 - Info. Each evidence
-file identifies its exact package. The native setup rehearsal in
-`lab/native-setup-evidence.json` simulates only the missing helper service and
-uses real HA for scoped discovery, registry lookup and selected state. The
-helper comparison in `lab/companion-catalog-evidence.json` measures the same
-package before and after upgrading the helper. Prepared fixture selection and
-reuse appear separately in `lab/helper-setup-evidence.json`.
+The quiet run passed 323 checks on HA 2026.11.1 with 152 service samples and
+logging Off / 3 - Info. The report identifies the exact package. The native
+setup rehearsal simulates only the missing helper service and uses real HA for
+scoped discovery, registry lookup and selected state. The helper comparison
+measures the same package before and after upgrading the helper. Selection and
+reuse were measured separately.

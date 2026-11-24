@@ -6,6 +6,9 @@ local lightCapabilities = require("ha.light-capabilities")
 local deferred = require("deferred")
 require("lib.utils")
 local M = {}
+-- Registry evidence travels with the in-memory row without changing its wire format.
+local registryByRow = setmetatable({}, { __mode = "k" })
+local hiddenMigrationByRow = setmetatable({}, { __mode = "k" })
 M.setupTypes = {
   { id = "lighting", name = "Lights and switches" },
   { id = "light", name = "Lights" },
@@ -37,14 +40,33 @@ end
 
 function M.gestureEntity(row)
   local physical = row.attributes.device_choice
-  local gesture = physical and physical.gesture_entity_id
+  local gesture = physical and physical.gesture_entity_id or row.inferred_gesture_entity_id
   return contract.entity(gesture) and gesture:match("^event%.") and gesture or nil
+end
+
+function M.standaloneRegistry(row)
+  local observed = registryByRow[row]
+  return observed or nil, observed ~= nil
+end
+
+function M.hiddenMigrationLoad(row)
+  return hiddenMigrationByRow[row]
 end
 
 local function entity(value)
   return type(value) == "string" and value:match("^[a-z][a-z0-9_]*%.[a-z0-9_]+$") ~= nil
 end
 local registryId = contract.registryId
+local function wrapperTarget(entry)
+  if not codec.isObject(entry) or entry.platform ~= "switch_as_x" then
+    return
+  end
+  local options = codec.isObject(entry.options) and (entry.options.switch_as_x or entry.options.light)
+  if codec.isObject(options) and type(options.entity_id) == "string" then
+    return options.entity_id, options.invert
+  end
+end
+
 local function source(row)
   local choice = row.attributes.device_choice
   if choice then
@@ -55,13 +77,17 @@ local function source(row)
   end
   return row.entity_id
 end
-local function enabled(entry)
+local function enabled(entry, allowHidden)
   return codec.isObject(entry)
     and entry.disabled_by == codec.null
-    and entry.hidden_by == codec.null
+    and (entry.hidden_by == codec.null or allowHidden and (entry.hidden_by == "user" or entry.hidden_by == "integration"))
     and entry.entity_category == codec.null
     and type(entry.platform) == "string"
     and entry.platform ~= "control4"
+end
+function M.matchesLightWrapper(entry, entity, registry)
+  local target, invert = wrapperTarget(entry)
+  return enabled(entry) == true and target ~= nil and invert == false and (target == entity or target == registry)
 end
 -- A nil registry map means the supported companion projection already applied
 -- eligibility and alias policy. Family capability rules remain shared.
@@ -69,6 +95,7 @@ function M.apply(rows, entries, native)
   local projected = entries == nil
   entries = entries or {}
   local result, byEntity, byRegistry, wrappers, candidates = codec.array({}), {}, {}, {}, {}
+  local nativeGestures = {}
   for id, entry in pairs(entries) do
     if codec.isObject(entry) and registryId(entry.id) then
       byRegistry[entry.id] = id
@@ -80,6 +107,7 @@ function M.apply(rows, entries, native)
     local item = codec.object(CopyTable(row, true))
     item.attributes = row.attributes
     item.entity_aliases, item.families, item.source_entity_id = codec.array({}), codec.array({}), nil
+    item.bridge_gesture_entity_id, item.inferred_gesture_entity_id = nil, nil
     local choice, id = item.attributes.device_choice, source(item)
     local entry = id and entries[id]
     local eligible, dims = false, false
@@ -140,6 +168,35 @@ function M.apply(rows, entries, native)
       local modes = item.attributes.supported_color_modes
         or (codec.isObject(entry) and codec.isObject(entry.capabilities) and entry.capabilities.supported_color_modes)
       dims = lightCapabilities.fromModes(modes)
+      if
+        native
+        and not eligible
+        and enabled(entry, true)
+        and entry.entity_id == id
+        and registryId(entry.id)
+        and item.available == true
+        and item.c4_exported ~= true
+        and item.device_disabled ~= true
+        and contract.loadDomain(id)
+      then
+        hiddenMigrationByRow[item] = { light = true, switch = not dims }
+        eligible = true
+      end
+      if eligible and codec.isObject(entry) and entry.entity_id == id and registryId(entry.id) then
+        registryByRow[item] = entry.id
+        local gesture = row.bridge_gesture_entity_id
+        if
+          native
+          and registryId(entry.device_id)
+          and entry.device_id == item.device_id
+          and contract.entity(gesture)
+          and gesture:match("^event%.")
+        then
+          nativeGestures[item.device_id] = gesture
+        end
+      elseif eligible and entry == codec.null then
+        registryByRow[item] = false
+      end
     end
     -- Metadata is projected to explicit family eligibility, not whole-device
     -- equality. A dimmer does not appear as a normal Switch choice.
@@ -175,14 +232,22 @@ function M.apply(rows, entries, native)
   for _, item in ipairs(result) do
     local entry = entries[item.entity_id]
     if item.domain == "light" and not item.is_group and codec.isObject(entry) and entry.platform == "switch_as_x" then
-      local options = codec.isObject(entry.options) and (entry.options.switch_as_x or entry.options.light)
-      local target = codec.isObject(options) and options.entity_id
-      local base = type(target) == "string" and byEntity[byRegistry[target] or target]
+      local target, invert = wrapperTarget(entry)
+      local base = target and byEntity[byRegistry[target] or target]
       if base and (base.domain == "switch" or base.domain == "input_boolean") and not base.is_group then
         local baseEntry = entries[base.entity_id]
         if base.c4_exported == true or (codec.isObject(baseEntry) and baseEntry.platform == "control4") then
           item.families = codec.array({})
-        elseif options.invert == false then
+          hiddenMigrationByRow[item], registryByRow[item] = nil, nil
+        elseif invert == false and hiddenMigrationByRow[base] and item.available ~= true then
+          item.families = codec.array({})
+        elseif invert == false and hiddenMigrationByRow[item] and not hiddenMigrationByRow[base] then
+          for _, family in ipairs({ "light", "switch" }) do
+            if has(base, family) then
+              remove(item, family)
+            end
+          end
+        elseif invert == false and (not hiddenMigrationByRow[item] or hiddenMigrationByRow[base]) then
           local hiddenBase = codec.isObject(baseEntry)
             and baseEntry.disabled_by == codec.null
             and baseEntry.hidden_by ~= codec.null
@@ -193,7 +258,12 @@ function M.apply(rows, entries, native)
               candidates[key] = candidates[key] or {}
               candidates[key][#candidates[key] + 1] = item
               local previous = wrappers[key]
-              if not previous or item.entity_id < previous.entity_id then
+              local hidden, previousHidden = hiddenMigrationByRow[item] ~= nil, hiddenMigrationByRow[previous] ~= nil
+              if
+                not previous
+                or (previousHidden and not hidden)
+                or (hidden == previousHidden and item.entity_id < previous.entity_id)
+              then
                 wrappers[key] = item
               end
             end
@@ -203,18 +273,26 @@ function M.apply(rows, entries, native)
         -- A loaded Switch as X on supported HA publishes its target in the
         -- entity registry. An unproven wrapper cannot establish eligibility.
         item.families = codec.array({})
+        hiddenMigrationByRow[item], registryByRow[item] = nil, nil
       end
     end
   end
   for key, preferred in pairs(wrappers) do
     local family, id = key:match("^([^:]+):(.+)$")
     local base = byEntity[id]
+    local uniqueVisible = not hiddenMigrationByRow[preferred]
     remove(base, family)
     for _, duplicate in ipairs(candidates[key]) do
       if duplicate ~= preferred then
+        uniqueVisible = uniqueVisible and hiddenMigrationByRow[duplicate] ~= nil
         remove(duplicate, family)
         preferred.entity_aliases[#preferred.entity_aliases + 1] = duplicate.entity_id
       end
+    end
+    local hidden = hiddenMigrationByRow[base]
+    if hidden and uniqueVisible and preferred.available == true and registryByRow[preferred] then
+      hidden.wrappers = hidden.wrappers or {}
+      hidden.wrappers[family] = preferred
     end
     local seen = false
     for _, alias in ipairs(preferred.entity_aliases) do
@@ -226,12 +304,39 @@ function M.apply(rows, entries, native)
       preferred.entity_aliases[#preferred.entity_aliases + 1] = id
     end
   end
+  local loadByDevice = {}
   for _, item in ipairs(result) do
+    if native then
+      -- A prepared device and a native choice can represent the same exact
+      -- registry load even when only the native choice is currently offered.
+      for index = 0, #item.entity_aliases do
+        local id = item.entity_aliases[index] or item.entity_id
+        local candidate = byEntity[id]
+        local registry = candidate and registryByRow[candidate]
+        local entry = entries[id]
+        if registryId(registry) and registryId(candidate.device_id) and entry.device_id == candidate.device_id then
+          item.entity_aliases[#item.entity_aliases + 1] = "device:" .. candidate.device_id .. ":" .. registry
+          if #item.families > 0 and item.is_group ~= true then
+            local existing = loadByDevice[candidate.device_id]
+            loadByDevice[candidate.device_id] = (existing == nil or existing == item) and item or false
+          end
+        end
+      end
+    end
     table.sort(item.entity_aliases)
     for index = #item.entity_aliases, 2, -1 do
       if item.entity_aliases[index] == item.entity_aliases[index - 1] then
         table.remove(item.entity_aliases, index)
       end
+    end
+  end
+  -- A button event accounts for a device in the installer list only when the
+  -- registered source has one eligible load after resolving exact aliases.
+  for device, gesture in pairs(nativeGestures) do
+    local item = loadByDevice[device]
+    if item then
+      local existing = item.inferred_gesture_entity_id
+      item.inferred_gesture_entity_id = (existing == nil or existing == gesture) and gesture or false
     end
   end
   return result
@@ -256,6 +361,7 @@ function M.merge(preferred, native)
     local item = codec.object(CopyTable(row, true))
     item.attributes = row.attributes
     item.families, item.entity_aliases = row.families, codec.array({})
+    registryByRow[item] = registryByRow[row]
     for _, id in ipairs(row.entity_aliases or {}) do
       item.entity_aliases[#item.entity_aliases + 1] = id
     end
@@ -279,8 +385,12 @@ function M.merge(preferred, native)
           end
         end
         if matched then
+          matched.inferred_gesture_entity_id = matched.inferred_gesture_entity_id or row.inferred_gesture_entity_id
           if type(row.available) == "boolean" and not matched.attributes.device_choice then
             matched.available = row.available
+          end
+          if matched.entity_id == row.entity_id and not matched.attributes.device_choice then
+            registryByRow[matched] = registryByRow[row]
           end
           local have = { [matched.entity_id] = true }
           for _, entity in ipairs(names(matched)) do

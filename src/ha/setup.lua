@@ -1,7 +1,6 @@
 -- Shared setup lifecycle. Committed records own routing. Pending picker and
 -- manual edits hold no routing authority, including on boot.
 local Consumer = require("ha.consumer")
-local lightCapabilities = require("ha.light-capabilities")
 local Selection = require("ha.selection")
 local Prototype = require("ha.prototype-selection")
 local EventSelection = require("ha.event-selection")
@@ -20,6 +19,7 @@ local indicators = require("ha.indicators")
 local indicatorPrograms = require("ha.indicator-programs")
 local catalogNames = require("ha.catalog-names")
 local migration = require("ha.switch-migration")
+local foundation = require("ha.foundation")
 local log = require("lib.logging")
 local Setup = {}
 Setup.__index = Setup
@@ -28,6 +28,12 @@ local CLEARED = "false"
 local LEGACY_DEFAULT = "light.table_lamp"
 local function saveRecord(record)
   persist:set(KEY, codec.encode(record), true)
+end
+
+function Setup:hasSavedSelection()
+  local ok, raw = pcall(C4.PersistGetValue, C4, KEY, true)
+  local saved = ok and codec.storedObject(raw)
+  return not not (self.config and saved and codec.encode(saved) == codec.encode(self.config))
 end
 local AUTO, NATIVE, LOCAL, BUTTONS = "Automatic", "Home Assistant device", "Connected Control4 light", "Buttons only"
 local LOAD_ONLY, LOAD_BUTTONS = "Control linked device only", "Control device and report presses"
@@ -78,15 +84,14 @@ end
 
 function Setup.new(family, publish, adapter)
   local self = setmetatable({ family = family, publish = publish, adapter = adapter, generation = 0 }, Setup)
-  self.gestureCount, self.debugLines = 0, 0
+  self.gestureCount = 0
   self.gestures = Gestures.new({
     onDelivered = function(event, sequence)
       self.gestureCount = self.gestureCount + 1
       UpdateProperty("Last Gesture", event)
       UpdateProperty("Gesture Count", tostring(self.gestureCount))
-      if Properties["Debug Mode"] == "On" and self.debugLines < 25 then
-        self.debugLines = self.debugLines + 1
-        print("Button event " .. sequence .. " delivered to Control4")
+      if foundation.canLogDiagnostic("Button events") then
+        foundation.logDiagnostic("Button events", "Button event " .. sequence .. " delivered to Control4")
       end
     end,
     savedLightEvents = family == "light" and function()
@@ -128,7 +133,18 @@ function Setup.new(family, publish, adapter)
         and not self.config
         and (not self.pending or self.pending.choice_id == key)
     end,
-    applyCommission = function(config)
+    stageLightSettings = adapter and adapter.stageMigrationSettings,
+    applyCommission = function(config, lightSettings)
+      if
+        lightSettings ~= nil
+        and (
+          not adapter
+          or not adapter.verifyMigrationSettings
+          or not adapter.verifyMigrationSettings(config.key, lightSettings)
+        )
+      then
+        return false
+      end
       self:commit(config, "")
       return true
     end,
@@ -670,21 +686,8 @@ function Setup:message(kind, data)
         end
       end
       self.loadFeatures = nil
-      if data.state == "on" or data.state == "off" then
-        local features = { "On and off" }
-        if self.family == "light" and config.controlled_load.domain == "light" then
-          local brightness, color, temperature = lightCapabilities.fromModes(attrs.supported_color_modes)
-          if brightness then
-            features[#features + 1] = "Brightness"
-          end
-          if color then
-            features[#features + 1] = "Color"
-          end
-          if temperature then
-            features[#features + 1] = "White temperature"
-          end
-        end
-        self.loadFeatures = features
+      if self.family == "switch" and (data.state == "on" or data.state == "off") then
+        self.loadFeatures = { "On and off" }
       end
     elseif data.entity_id == config.gesture_entity_id then
       -- An EventEntity has no timestamp before the first press. Its authenticated
@@ -753,6 +756,19 @@ function Setup:message(kind, data)
   end
 end
 
+local function addLoadCapabilities(list, device)
+  list[#list + 1] = "On and off"
+  if device.dims then
+    list[#list + 1] = "Brightness"
+  end
+  if device.color then
+    list[#list + 1] = "Color"
+  end
+  if device.cct then
+    list[#list + 1] = "White temperature"
+  end
+end
+
 function Setup:connectedView(state)
   local target = self.adapter and self.adapter.targetState and self.adapter:targetState() or {}
   state.target = setupPage.friendlyName(target.name) or "Connected Control4 light"
@@ -761,16 +777,7 @@ function Setup:connectedView(state)
   state.capabilities = state.capabilities or {}
   if target.ready then
     state.status, state.detail = "Device connected", "The app uses the connected Control4 light."
-    state.capabilities[#state.capabilities + 1] = "On and off"
-    if target.device.dims then
-      state.capabilities[#state.capabilities + 1] = "Brightness"
-    end
-    if target.device.color then
-      state.capabilities[#state.capabilities + 1] = "Color"
-    end
-    if target.device.cct then
-      state.capabilities[#state.capabilities + 1] = "White temperature"
-    end
+    addLoadCapabilities(state.capabilities, target.device)
     if not self.config and state.can_browse then
       state.detail = "Choose a Home Assistant device if you also want to use its buttons."
     end
@@ -805,8 +812,15 @@ function Setup:deviceView()
   state.title = setupPage.basicNames(config, mode, self.loadName)
   state.capabilities = {}
   if mode == NATIVE then
-    for _, feature in ipairs(self.loadFeatures or {}) do
-      state.capabilities[#state.capabilities + 1] = feature
+    if self.family == "light" then
+      local device = self.adapter and self.adapter:loadDevice()
+      if device then
+        addLoadCapabilities(state.capabilities, device)
+      end
+    else
+      for _, feature in ipairs(self.loadFeatures or {}) do
+        state.capabilities[#state.capabilities + 1] = feature
+      end
     end
   end
   if self:usesButtons() then

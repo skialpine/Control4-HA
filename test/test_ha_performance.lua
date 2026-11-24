@@ -68,6 +68,17 @@ at = at + 10
 metrics:finish(span, "ok")
 T.eq("reset retires earlier spans", metrics:report().operations, {})
 T.eq("reset preserves enabled state", metrics:report().enabled, true)
+T.section("Quick Setup reports the Control4 work after fetching a catalog page")
+span = metrics:start("commissioning.catalog_matches")
+at = at + 18
+metrics:finish(span, "ok")
+row = metrics:report().operations["commissioning.catalog_matches"]
+T.eq("catalog matching records its own elapsed time", row and row.p50_ms, 18)
+span = metrics:start("transport.port_probe")
+at = at + 25
+metrics:finish(span, "ok")
+row = metrics:report().operations["transport.port_probe"]
+T.eq("port discovery exports elapsed time", row and row.p50_ms, 25)
 local broken = Performance.new({
   clock = function()
     error("private-clock-detail")

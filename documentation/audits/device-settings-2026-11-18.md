@@ -83,12 +83,12 @@ establish editing, hardware response or preservation of saved programming.
 
 ### CORE 1 observations
 
-Director confirmed revision 2026111808 on existing Coordinator 42 and Light 52,
-and on suite Switch 54. Original Switch 51 reported version 106. None of the
+Director confirmed revision 2026111808 on the existing Coordinator, Light
+and suite Switch. The original Switch remained at revision 106. None of the
 three updated devices reported the retired visibility switch as visible. The
 separate Docker test completed 1,109 family checks on the packaged code.
 
-Light 52 reported the paddle entity in its saved programming variable, an older
+Light reported the paddle entity in its saved programming variable, an older
 binary light in its legacy property, and “Not selected” in Device Setup. The HA
 paddle currently advertises brightness. This is a failed native
 selection-recovery check. A dimmer editor screenshot on this instance cannot
@@ -96,7 +96,7 @@ qualify the selected-device workflow until recovery is understood.
 
 ### Follow-up with the saved selection and the built-in status light
 
-Revision 09 recovered the selected wall dimmer on the same Light 52 after a cold
+Revision 09 recovered the selected wall dimmer on the same Light after a cold
 reload. Director had returned the persisted JSON object as a Lua table. The old
 selection reader required text. The shared storage reader now accepts both forms
 and still validates the decoded record. Tests exercise cold selection reads,
@@ -113,7 +113,7 @@ information on both families at narrow and wide sizes.
 
 The lab dimmer initially had no indicator mapping. The supported test mapping
 now exposes its status light without changing its existing color, brightness or
-power. Director confirmed the channel on Light 52. This is a simulated device in
+power. Director confirmed the channel on Light. This is a simulated device in
 Home Assistant, not a physical Zooz hardware observation.
 
 The user's Composer traceback on revision 09 also reproduced a packaging
@@ -131,7 +131,7 @@ dropdown. In the five-button lab fixture, the original ordering put Bottom
 triple tap last among eight Bottom rows.
 
 Revision 12 uses a short button name and numeric tap count in both drivers. The
-independent review reproduced the sorted list from the actual Entryway fixture.
+independent review reproduced the sorted list from the simulated switch fixture.
 Bottom triple tap moved from row eight to row three and the total visible Switch
 events went from 43 to 33. A separate Light test verified that the standard
 Bottom triple tap still maps to native action 4 with no new dynamic duplicate.
@@ -150,12 +150,25 @@ Composer showed the default music-and-film symbol in its device tree. Revision
 2026112002 declares packaged rocker-switch icons for Composer's device tree and
 driver list. The independent preview review checked the 16-pixel icon on both
 normal and selected rows and the 32-pixel list icon. The packaged GIFs match
-those assets. CORE 5 served both expected GIFs after the in-place update.
-Director verified that Fireplace Switch in Patio kept its display name, selected
-Home Assistant device and relay connection, and that the Coordinator, Switch and
-all 19 Lights returned connected. The existing row's icon in Composer still
-showed the default icon on CORE 5 with revision 2026112006. Revision 2026112007
+those assets. Director served both expected GIFs after the in-place update and preserved
+the existing Switch name, selection and relay connection. The installed suite
+reconnected. Composer still showed the default icon for the existing row on
+revision 2026112006. Revision 2026112007
 explicitly declares the proxy count shown in the DriverWorks single-proxy icon
 example. The rocker artwork and proxy identity are unchanged. Composer still
 needs to verify the existing row with this revision.
 [DriverWorks icon management](https://control4.github.io/docs-driverworks-fundamentals/#single-proxy-drivers)
+
+### Setup recovery review, November 24
+
+An independent browser review used the packaged page sources and synthetic
+Director replies at 1000×550 and 320×300. Quick Setup recovery discarded stale
+catalog replies, restored the edited name and room after reconnect, and kept
+Review and Create reachable from the keyboard. Light setup returned focus to
+Refresh after a failed state read. A valid report restored the connected
+status, and the On/off override removed Brightness from the capabilities list.
+The migration save error left the retry and status controls reachable.
+
+Some text in the small picker inputs clips at 320 px in both versions. The
+review pane shows the complete values. Composer tab order, native override
+readback and physical feedback are pending native verification.

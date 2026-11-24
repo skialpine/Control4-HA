@@ -293,6 +293,10 @@ function M.build(operation, entity, arguments)
       if not tuple(value, 2, 0, 1) then
         return nil
       end
+    elseif key == "hs_color" then
+      if not tuple(value, 2, 0, 360) or value[2] > 100 then
+        return nil
+      end
     else
       return nil
     end

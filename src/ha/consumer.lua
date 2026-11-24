@@ -67,7 +67,7 @@ function Consumer:_cancelRejoin()
 end
 
 function Consumer:_scheduleRejoin()
-  if self.rejoin or not self.provider or not self.wanted or next(self.wanted) == nil then
+  if self.rejoin or not self.provider or not self.wanted then
     return
   end
   local recovery = {}
@@ -327,6 +327,9 @@ function Consumer:receive(message)
       self.readiness:select(self.wanted, true)
     end
     self.boot, self.bootFloor, self.epoch = message.boot, message.boot, message.epoch
+    if next(self.wanted) == nil then
+      self:_cancelRejoin()
+    end
     return true
   end
   if message.boot ~= self.boot or not contract.integer(message.epoch) or message.epoch < self.epoch then
@@ -344,18 +347,43 @@ function Consumer:receive(message)
       return false
     end
     if message.kind == "commission_offer" then
-      local accept = self.options.mayCommission(data.family, data.key)
-      self.commissionOffer = accept and { ticket = data.ticket, choice_id = data.key, family = data.family } or nil
+      local stage = data.stage_settings == true
+      local accept = (not stage or data.family == "light" and self.options.stageLightSettings ~= nil)
+        and self.options.mayCommission(data.family, data.key)
+      self.commissionOffer = accept
+          and { ticket = data.ticket, choice_id = data.key, family = data.family, stageSettings = stage }
+        or nil
       return self:_send("commission_claim", { request_id = data.ticket, arguments = { accept = accept } })
     end
     local offer = self.commissionOffer
     self.commissionOffer = nil
-    if not offer or offer.ticket ~= data.ticket or not Selection.valid(data.config, offer) then
+    if
+      not offer
+      or offer.ticket ~= data.ticket
+      or (offer.stageSettings and (data.config ~= nil or not codec.isObject(data.light_settings)))
+      or (not offer.stageSettings and not Selection.valid(data.config, offer))
+    then
       return false
     end
-    local applied = self.options.mayCommission(offer.family, offer.choice_id)
-      and self.options.applyCommission(data.config)
-    return self:_send("commission_ack", { request_id = data.ticket, arguments = { applied = applied == true } })
+    local function acknowledge(applied)
+      return self:_send("commission_ack", { request_id = data.ticket, arguments = { applied = applied == true } })
+    end
+    if not self.options.mayCommission(offer.family, offer.choice_id) then
+      return acknowledge(false)
+    end
+    if offer.stageSettings then
+      return self.options.stageLightSettings(offer.choice_id, data.light_settings, function(applied)
+        if
+          self.selection == message.selection
+          and self.boot == message.boot
+          and self.epoch == message.epoch
+          and self:_current()
+        then
+          return acknowledge(applied and self.options.mayCommission(offer.family, offer.choice_id))
+        end
+      end)
+    end
+    return acknowledge(self.options.applyCommission(data.config, data.light_settings))
   end
   local operation = message.data.operation
   local setup = operation == "catalog" or operation == "resolve" or operation == "verify_target"

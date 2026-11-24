@@ -2,6 +2,8 @@
 local contract = require("ha.contract")
 local ids = require("ha.identities")
 local assessment = require("ha.migration-assessment")
+local legacyProfile = require("ha.legacy-driver-profile")
+local selection = require("ha.migration-selection")
 local prototype = require("ha.prototype-selection")
 local M = {}
 local light, interimLight, switch = ids.packages.light, ids.packages.interimLight, ids.packages.switch
@@ -55,22 +57,15 @@ local function stringVariable(id, name)
   return selected
 end
 
-local function identified(id, row)
+local function identified(id, row, outputs)
   local package = packages[row.driverFileName]
   if not package or C4:GetDeviceData(id, "model") ~= package.model then
     return nil
   end
-  local input, binding = contract.consumerInput(id)
+  local input, provider = contract.consumerBinding(id, outputs)
   local expected = package == light and ids.lightCoordinatorBinding or ids.coordinatorBinding
   if input ~= expected then
     return nil
-  end
-  local provider = tonumber(C4:GetBoundProviderDevice(id, input))
-  if provider ~= 0 then
-    -- Missing, one-directional or foreign-looking ownership is never free.
-    provider = contract.provider(id) or false
-  elseif binding.isbound or (binding.boundprovider and binding.boundprovider.bound) then
-    provider = false
   end
   return {
     id = id,
@@ -128,21 +123,39 @@ function M.device(id)
   return row and not assessment.source(id, row) and identified(id, row) or nil
 end
 
-function M.inventory()
-  local devices = {}
-  local found = C4:GetDevices({ C4iNames = projectFiles })
+local function additionalLegacyDevice(id, row)
+  local report = assessment.assess(id, { skipPrograms = true, skipLighting = true })
+  local provider = report and report.interfaces and legacyProfile.gateway(report) or nil
+  return {
+    id = id,
+    name = row.deviceName,
+    room = row.roomName,
+    room_id = tonumber(row.roomId),
+    file = row.driverFileName,
+    family = report and report.family,
+    selected = provider == 0 and "" or provider and report.entity or nil,
+    legacy_provider = provider,
+    legacy = true,
+    provider = false,
+  }
+end
+
+function M.inventory(includeAdditionalLegacy)
+  local devices, outputs = {}, {}
+  local names = includeAdditionalLegacy and (projectFiles .. "," .. legacyProfile.files()) or projectFiles
+  local found = C4:GetDevices({ C4iNames = names })
   assert(type(found) == "table")
   for raw, row in pairs(found) do
     local id = tonumber(raw)
-    if
-      contract.integer(id)
-      and (packages[row.driverFileName] or row.driverFileName == "HA.Switch.c4z")
-      and not (type(row.protocol) == "table" and next(row.protocol))
-    then
-      local origin = assessment.source(id, row)
-      local device = origin and legacyDevice(id, row, origin) or identified(id, row)
-      devices[#devices + 1] = device
-        or { id = id, file = row.driverFileName, room_id = tonumber(row.roomId), name = row.deviceName }
+    if contract.integer(id) and not (type(row.protocol) == "table" and next(row.protocol)) then
+      if packages[row.driverFileName] or row.driverFileName == "HA.Switch.c4z" then
+        local origin = assessment.source(id, row)
+        local device = origin and legacyDevice(id, row, origin) or identified(id, row, outputs)
+        devices[#devices + 1] = device
+          or { id = id, file = row.driverFileName, room_id = tonumber(row.roomId), name = row.deviceName }
+      elseif includeAdditionalLegacy and legacyProfile.contains(row.driverFileName) then
+        devices[#devices + 1] = additionalLegacyDevice(id, row)
+      end
     end
   end
   return devices
@@ -166,6 +179,25 @@ function M.roomAndName(device)
   end
 end
 
+function M.buttonMatch(device, choice, coordinator)
+  if
+    not choice
+    or device.legacy
+    or device.provider ~= coordinator
+    or type(device.selected) ~= "string"
+    or device.selected:match("^device:([a-f0-9]+):[a-f0-9]+$") ~= choice.device_id
+  then
+    return false
+  end
+  local current = selection.read(device.id)
+  return current
+    and current.stable
+    and current.buttons
+    and current.key == device.selected
+    and current.device == choice.device_id
+    and current.gesture == choice.gesture_entity_id
+end
+
 function M.unfinished(candidate, receipt, coordinator, selectedKeys)
   return candidate
     and not candidate.legacy
@@ -182,16 +214,22 @@ end
 
 function M.decide(item, devices, receipt, coordinator)
   local selected, named, unreadable, recorded = {}, {}, {}, nil
+  local buttonMatches = {}
   local roomAndName = M.roomAndName(item)
   for _, device in ipairs(devices) do
-    if device.selected == nil then
-      unreadable[#unreadable + 1] = device
-    elseif
-      item.keys[device.selected]
-      or (device.legacy and device.selected == item.legacy_gesture)
-      or (device.selected == item.gesture_match and (device.provider == coordinator or device.provider == 0))
-    then
-      selected[#selected + 1] = device
+    if not device.other_installation then
+      if device.selected == nil then
+        unreadable[#unreadable + 1] = device
+      elseif
+        item.keys[device.selected]
+        or (device.legacy and device.selected == item.legacy_gesture)
+        or (device.selected == item.gesture_match and (device.provider == coordinator or device.provider == 0))
+      then
+        selected[#selected + 1] = device
+      elseif M.buttonMatch(device, item.button_choice, coordinator) then
+        selected[#selected + 1] = device
+        buttonMatches[device] = true
+      end
     end
     if M.roomAndName(device) == roomAndName then
       named[#named + 1] = device
@@ -206,7 +244,7 @@ function M.decide(item, devices, receipt, coordinator)
   elseif match then
     if match.legacy then
       return "review", match.id, "legacy_" .. match.family .. "_match"
-    elseif not item.keys[match.selected] and match.selected == item.gesture_match then
+    elseif buttonMatches[match] or not item.keys[match.selected] and match.selected == item.gesture_match then
       -- A shared physical control accounts for the button device in the
       -- picker, but does not establish that the installed driver owns its load.
       return "review", match.id, "button_device_match"
@@ -252,7 +290,12 @@ function M.decide(item, devices, receipt, coordinator)
       return "resume", candidate.id, not recorded and "recovered_candidate" or nil
     end
     return "review", nil, "unresolved_add"
-  elseif #unreadable == 1 and unreadable[1].legacy and (#named == 0 or (#named == 1 and named[1] == unreadable[1])) then
+  elseif
+    #unreadable == 1
+    and unreadable[1].legacy
+    and unreadable[1].family
+    and (#named == 0 or (#named == 1 and named[1] == unreadable[1]))
+  then
     return "review", unreadable[1].id, "legacy_" .. unreadable[1].family .. "_unconfirmed"
   elseif #named > 0 then
     return "review", nil, "name_in_use"

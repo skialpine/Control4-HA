@@ -356,9 +356,9 @@ function Connection:recover()
 end
 
 -- Both exact state reads and scoped discovery share the template HTTP policy.
-function Connection:_privateRead(path, body, maxBytes)
+function Connection:_privateRead(path, body, maxBytes, operation)
   local result = deferred.new()
-  local timing = metrics:start(body and "catalog.native_projection" or "snapshot.http")
+  local timing = metrics:start(operation)
   if self.destroyed or self.state ~= "connected" or not self.config then
     metrics:finish(timing, "disconnected")
     result:reject({ kind = "disconnected" })
@@ -388,14 +388,30 @@ function Connection:_privateRead(path, body, maxBytes)
     options.ssl_key = config.clientTLS.key
   end
   local headers = { Authorization = "Bearer " .. config.token }
+  local toHeaders, transferBody
+  if timing and operation == "snapshot.http" then
+    toHeaders = metrics:start("snapshot.headers", timing)
+    options.onHeaders = function(code)
+      if not self.destroyed and self.generation == generation and toHeaders then
+        metrics:finish(toHeaders, code >= 200 and code < 300 and "ok" or "rejected")
+        toHeaders = nil
+        transferBody = metrics:start("snapshot.body", timing)
+      end
+    end
+  end
+  local function finish(outcome)
+    metrics:finish(timing, outcome)
+    metrics:finish(transferBody, outcome)
+    toHeaders = nil
+  end
   local work = body and http:post(config.origin .. path, body, headers, options)
     or http:get(config.origin .. path, headers, options)
   work:next(function(response)
     if self.destroyed or self.generation ~= generation then
-      metrics:finish(timing, "retired")
+      finish("retired")
       result:reject({ kind = "retired" })
     else
-      metrics:finish(timing, "ok")
+      finish("ok")
       result:resolve(response.body)
     end
   end, function(failure)
@@ -405,10 +421,10 @@ function Connection:_privateRead(path, body, maxBytes)
       or failure.code == 404 and "not_found"
       or (failure.code == 401 or failure.code == 403) and "permission_denied"
       or "read_failed"
-    metrics:finish(timing, (kind == "retired" or kind == "timeout") and kind or "failed")
+    finish((kind == "retired" or kind == "timeout") and kind or "failed")
     result:reject({ kind = kind })
   end)
-  return result
+  return result, timing
 end
 
 function Connection:readCatalogNames(sensor)
@@ -418,7 +434,7 @@ function Connection:readCatalogNames(sensor)
     result:reject({ kind = "invalid_entity" })
     return result
   end
-  self:_privateRead("/api/states/" .. sensor, nil, 2097152):next(function(raw)
+  self:_privateRead("/api/states/" .. sensor, nil, 2097152, "catalog.names_http"):next(function(raw)
     local ok, parsed = pcall(codec.decode, raw)
     local map = ok and names.parse(parsed, sensor)
     if map then
@@ -438,9 +454,13 @@ function Connection:readState(entity)
     result:reject({ kind = "invalid_entity" })
     return result
   end
-  self:_privateRead("/api/states/" .. entity, nil, 262144):next(function(raw)
+  local work, httpTiming = self:_privateRead("/api/states/" .. entity, nil, 262144, "snapshot.http")
+  work:next(function(raw)
+    local timing = httpTiming and metrics:start("snapshot.decode", httpTiming)
     local ok, state = pcall(codec.decode, raw)
-    if ok and contract.state(state, entity) then
+    local valid = ok and contract.state(state, entity)
+    metrics:finish(timing, valid and "ok" or "rejected")
+    if valid then
       result:resolve(state)
     else
       result:reject({ kind = "invalid_state" })
@@ -453,16 +473,77 @@ end
 
 function Connection:readCatalog()
   local result = deferred.new()
-  self:_privateRead("/api/template", { template = nativeCatalog }, 1048576):next(function(raw)
-    local ok, rows = pcall(codec.decode, raw)
-    if ok and codec.isArray(rows) then
-      result:resolve(rows)
-    else
-      result:reject({ kind = "invalid_filtered_catalog" })
-    end
-  end, function(failure)
-    result:reject(failure)
-  end)
+  local total, revision, rows, ids = nil, nil, codec.array({}), nil
+  local offset, generation = 0, self.generation
+  local function reject()
+    result:reject({ kind = "invalid_filtered_catalog" })
+  end
+  local function read(page)
+    self
+      :_privateRead(
+        "/api/template",
+        { template = nativeCatalog.template(page, offset) },
+        262144,
+        "catalog.native_projection"
+      )
+      :next(function(raw)
+        local ok, response = pcall(codec.decode, raw)
+        if not ok or generation ~= self.generation then
+          return reject()
+        end
+        if not page then
+          if
+            not codec.isObject(response)
+            or not codec.isArray(response.ids)
+            or type(response.total) ~= "number"
+            or response.total % 1 ~= 0
+            or response.total < offset
+            or response.total > nativeCatalog.maxCandidates
+            or (response.total > nativeCatalog.indexSize and (type(response.revision) ~= "string" or #response.revision ~= 64 or not response.revision:match(
+              "^[a-f0-9]+$"
+            ) or (revision and revision ~= response.revision)))
+            or (total and total ~= response.total)
+            or #response.ids ~= math.min(nativeCatalog.indexSize, response.total - offset)
+          then
+            return reject()
+          end
+          local previous = #rows > 0 and rows[#rows].entity_id or ""
+          for _, id in ipairs(response.ids) do
+            if not nativeCatalog.entity(id) or id <= previous then
+              return reject()
+            end
+            previous = id
+          end
+          total, revision, ids, response = response.total, response.revision, response.ids, response.rows
+        end
+        local size = math.min(nativeCatalog.pageSize, #ids - (#rows - offset))
+        if not codec.isArray(response) or #response > size or (size > 0 and #response == 0) then
+          return reject()
+        end
+        for _, row in ipairs(response) do
+          if not contract.catalogRow(row) or row.entity_id ~= ids[#rows - offset + 1] then
+            return reject()
+          end
+          rows[#rows + 1] = row
+        end
+        if #rows == total then
+          result:resolve(rows)
+        elseif #rows - offset == #ids then
+          offset = #rows
+          read()
+        else
+          local nextPage = codec.array({})
+          local current = #rows - offset
+          for index = current + 1, math.min(#ids, current + nativeCatalog.pageSize) do
+            nextPage[#nextPage + 1] = ids[index]
+          end
+          read(nextPage)
+        end
+      end, function(failure)
+        result:reject(failure)
+      end)
+  end
+  read()
   return result
 end
 

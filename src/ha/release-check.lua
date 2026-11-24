@@ -391,7 +391,13 @@ local function check(channel, retainBytes)
       if not installationMatches(installed, installedSuite.read()) then
         return reject("installed_changed")
       end
-      return { kind = "available", installed = summary, revision = target, assets = retainBytes and qualified or nil }
+      return {
+        kind = "available",
+        installed = summary,
+        revision = target,
+        assets = retainBytes and qualified or nil,
+        prerelease = release.prerelease,
+      }
     end, function(error)
       local result = type(error) == "table" and error or { kind = error }
       result.revision = target
@@ -429,23 +435,41 @@ local problems = {
   unreachable = "Couldn’t reach GitHub. Try again in a few minutes.",
 }
 
-function M.installActions(isReady)
+function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
   local running
-  local installer = Installer.new()
+  local installer = Installer.new(usesDriverLocalTrust)
+  local migrationMessage = "Finish the current migration in Quick Setup before installing driver updates."
   local function enabled()
     return Properties[AUTOMATIC] == "On" and Installer.isOwner()
   end
-  local function installStatus(status, revision)
+  local function installStatus(status, revision, progress)
     if status == "updated" then
       return "Installed version " .. revision .. " on all suite drivers."
     end
+    if status == "prerelease_channel" then
+      return "A prerelease update is pending. Set Update channel to Pre-release in Properties, then choose Check for driver updates in Actions."
+    end
+    if status == "unverified_channel" then
+      return "This saved update needs to be checked before it can continue. Ask your installer to finish it."
+    end
+    if status == "driver_local_trust" then
+      return "This Coordinator uses a certificate file stored with its driver. Ask your installer to update it."
+    end
+    if status == "migration_pending" then
+      return migrationMessage
+    end
+    local action = enabled() and "Check for driver updates." or "Turn on Automatic Updates."
     if status == "blocked" then
-      return "The saved update files or installed drivers have changed. Ask your installer to review the suite."
+      action = "Ask your installer."
     end
-    if enabled() then
-      return "The suite update needs attention. Use Check for driver updates to retry it, or ask your installer."
+    if progress and #progress.pending > 0 then
+      local completed = #progress.completed > 0 and " Updated " .. table.concat(progress.completed, ", ") .. "." or ""
+      return table.concat(progress.pending, ", ") .. " pending. " .. action .. completed
     end
-    return "The suite update needs attention. Turn on Automatic Updates and check again, or ask your installer."
+    if status == "blocked" then
+      return "Saved files or installed drivers changed. " .. action
+    end
+    return "The suite update needs attention. " .. action
   end
   local function ownerMessage(owner)
     local name = C4:GetDeviceData(owner, "name")
@@ -474,6 +498,10 @@ function M.installActions(isReady)
       UpdateProperty(STATUS, ownerMessage(owner))
       return
     end
+    if enabled() and migrationPending and migrationPending() then
+      UpdateProperty(STATUS, migrationMessage)
+      return
+    end
     local channel = Properties[CHANNEL] == "Pre-release" and "Pre-release" or "Production"
     local request = {}
     running = request
@@ -487,11 +515,26 @@ function M.installActions(isReady)
       end
     end
     local apply = enabled()
+    local function mayWrite(job)
+      if running ~= request or request.stale or not isReady() or not enabled() then
+        return false
+      end
+      if migrationPending and migrationPending() then
+        return false, "migration_pending"
+      end
+      if type(job.prerelease) ~= "boolean" then
+        return false, "unverified_channel"
+      end
+      if job.prerelease and channel == "Production" then
+        return false, "prerelease_channel"
+      end
+      return true
+    end
     if installer:pending() then
       UpdateProperty(STATUS, "Checking the saved suite update…")
       if
-        not installer:runPending(apply, function(status, revision)
-          complete(installStatus(status, revision), true)
+        not installer:runPending(apply and mayWrite or nil, function(status, revision, progress)
+          complete(installStatus(status, revision, progress), true)
         end)
       then
         complete(installStatus("attention"), true)
@@ -508,6 +551,10 @@ function M.installActions(isReady)
       local current = " Installed: " .. result.installed .. "."
       if result.kind == "available" then
         if apply and running == request and isReady() and not request.stale and enabled() then
+          if migrationPending and migrationPending() then
+            complete(migrationMessage)
+            return
+          end
           local staged, accepted, problem = pcall(installer.prepare, installer, result)
           if not staged or not accepted then
             complete(staged and problem or "Could not prepare the suite update. Ask your installer.", true)
@@ -515,8 +562,8 @@ function M.installActions(isReady)
           end
           UpdateProperty(STATUS, "Installing suite version " .. result.revision .. "…")
           if
-            not installer:runPending(true, function(status, revision)
-              complete(installStatus(status, revision), true)
+            not installer:runPending(mayWrite, function(status, revision, progress)
+              complete(installStatus(status, revision, progress), true)
             end)
           then
             complete(installStatus("attention"), true)
@@ -570,9 +617,9 @@ function M.installActions(isReady)
       UpdateProperty(STATUS, ownerMessage(owner))
     end
     if installer:pending() then
-      installer:runPending(false, function(status, revision)
+      installer:runPending(nil, function(status, revision, progress)
         if isReady() then
-          UpdateProperty(STATUS, installStatus(status, revision))
+          UpdateProperty(STATUS, installStatus(status, revision, progress))
         end
       end)
     end

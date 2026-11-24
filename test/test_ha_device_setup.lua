@@ -234,7 +234,241 @@ local function fixture(driverFamily, beforeInit)
   end
   OnDriverInit()
   OnDriverLateInit()
-  return connection
+  return connection, hub
+end
+
+T.section("suite updater can identify the executing revision even when unconfigured")
+for _, driver in ipairs({ "light", "switch" }) do
+  fixture(driver, function()
+    T.eq(driver .. " does not report a running revision before initialization", UIR.HA_SUITE_RUNNING_VERSION(), nil)
+  end)
+  T.eq(
+    driver .. " reports its executing revision after startup",
+    UIR.HA_SUITE_RUNNING_VERSION(),
+    "<version>20261117</version>"
+  )
+  OnDriverDestroyed()
+  T.eq(driver .. " retired Lua does not report a running revision", UIR.HA_SUITE_RUNNING_VERSION(), nil)
+end
+
+T.section("A staged Light reads back settings before it accepts a selection")
+do
+  local connection, hub = fixture("light")
+  local compatibility = require("ha.light-compatibility")
+  local entity = "light.migration_color"
+  local planned = wire({ kind = "Color and white temperature", format = "HS", range = "2700-5500" })
+  local key = "HA.LightCompatibility.v2"
+  local other = "light.other_migration_target"
+  persist:set(key, codec.encode(codec.object({ [other] = codec.object({ kind = "Dimmable" }) })))
+  ShimPersistLand()
+  local outcome
+  local function observe(work)
+    work:next(function()
+      outcome = true
+    end, function(failure)
+      outcome = failure.kind
+    end)
+  end
+  local write = C4.PersistSetValue
+  C4.PersistSetValue = function(self, name, ...)
+    if name ~= key then
+      return write(self, name, ...)
+    end
+  end
+  at(coordinator, function()
+    observe(hub.transfer:stageLightSettings(consumer, entity, planned))
+  end)
+  T.eq("a queued write has not been accepted", outcome, nil)
+  clock.run(100)
+  C4.PersistSetValue = write
+  T.eq("a storage failure rejects staging", outcome, "configuration_unconfirmed")
+  T.eq("failed staging leaves the child unselected", { #connection.sent, persist:get(saved, nil, true) }, { 0 })
+  outcome = nil
+  at(coordinator, function()
+    observe(hub.transfer:stageLightSettings(consumer, entity, planned))
+  end)
+  T.eq("the receipt waits for Director storage", outcome, nil)
+  ShimPersistLand()
+  clock.run(100)
+  T.eq("the same transfer can retry a failed write", outcome, true)
+  T.truthy("storage has the exact approved settings", compatibility.sameStoredMigration(entity, planned))
+  T.eq("the write preserves settings for other targets", compatibility.read(other).kind, "Dimmable")
+  T.eq("successful staging does not subscribe or select", { #connection.sent, persist:get(saved, nil, true) }, { 0 })
+  local mismatch = wire({ kind = "Color and white temperature", format = "XY", range = "2700-5500" })
+  at(coordinator, function()
+    observe(hub.transfer:directLoad(consumer, "light", entity, "Migration light", mismatch))
+  end)
+  T.eq("selection rejects settings that differ from staged storage", outcome, "configuration_unconfirmed")
+  T.eq("a mismatched selection did not subscribe", #connection.sent, 0)
+  at(coordinator, function()
+    observe(hub.transfer:directLoad(consumer, "light", entity, "Migration light", planned))
+  end)
+  T.eq("verified selection can now subscribe", outcome, true)
+  connection:snapshot(entity, "off", {
+    supported_color_modes = codec.array({ "rgb", "color_temp" }),
+    min_color_temp_kelvin = 2000,
+    max_color_temp_kelvin = 6500,
+  })
+  T.eq("the replacement becomes ready with genuine HA feedback", view().status, "Device connected")
+end
+
+T.section("A blank replacement can recover a missed selection reply or commissioning offer")
+for _, missed in ipairs({ "select", "selected", "commission_offer" }) do
+  local connection, hub = fixture("light")
+  local deliver, dropped, applications = hub.emit, false, 0
+  hub.emit = function(device, message)
+    if not dropped and message.kind == missed then
+      dropped = true
+      return
+    end
+    if message.kind == "commission_apply" then
+      applications = applications + 1
+    end
+    deliver(device, message)
+  end
+  if missed == "select" then
+    local send = SendSecretToDevice
+    function SendSecretToDevice(device, command, params)
+      if not dropped and codec.decode(params.PAYLOAD).op == "select" then
+        dropped = true
+        return
+      end
+      return send(device, command, params)
+    end
+  end
+  if missed ~= "commission_offer" then
+    at(consumer, restart)
+  end
+  local result, gatewayReleased
+  at(coordinator, function()
+    hub.transfer
+      :directLoad(consumer, "light", "switch.fixture", "Fixture", nil, {
+        beforeApply = function()
+          T.eq("the gate runs before applying the selection", applications, 0)
+          gatewayReleased = true
+          return true
+        end,
+      })
+      :next(function(value)
+        result = value
+      end)
+  end)
+  T.eq(missed .. " loss leaves the first attempt waiting without releasing the gateway", {
+    dropped,
+    applications,
+    gatewayReleased,
+  }, { true, 0 })
+  at(coordinator, function()
+    clock.run(250)
+  end)
+  T.eq(
+    missed .. " is recovered by the first targeted retry",
+    { result, gatewayReleased, applications, #connection.sent },
+    { true, true, 1, 1 }
+  )
+  at(coordinator, function()
+    clock.run(5500)
+  end)
+  T.eq("a successful claim never reapplies the selection", applications, 1)
+end
+
+T.section("A replacement selection must be durable as well as ready")
+do
+  local connection, hub = fixture("light")
+  local migrationSelection = require("ha.migration-selection")
+  local function readIdentity(expectedSettings)
+    return at(consumer, function()
+      local original = C4.SendUIRequest
+      C4.SendUIRequest = function(_, _, command, params)
+        return UIR[command](params)
+      end
+      local result = migrationSelection.read(consumer, expectedSettings, true)
+      C4.SendUIRequest = original
+      return assert(result)
+    end)
+  end
+  ShimPersistLater(true)
+  at(coordinator, function()
+    hub.transfer:directLoad(consumer, "light", "switch.fixture", "Fixture")
+  end)
+  -- Native feedback can arrive before the deferred selection write is visible.
+  connection:snapshot("switch.fixture", "off")
+  local identity = readIdentity()
+  T.eq("runtime feedback alone is not a saved selection", { identity.ready, identity.saved }, { true, false })
+  ShimPersistLand()
+  identity = readIdentity()
+  T.eq(
+    "the exact selection is verified after native persistence lands",
+    { identity.ready, identity.saved },
+    { true, true }
+  )
+  T.eq(
+    "a different expected setting fails readback",
+    readIdentity(codec.object({ kind = "Dimmable" })).settings_verified,
+    false
+  )
+end
+
+T.section("A dropped registration update or apply acknowledgment recovers without replay")
+for _, lost in ipairs({ "select", "commission_ack" }) do
+  local connection, hub = fixture("light")
+  local send, deliver = SendSecretToDevice, hub.emit
+  local dropped, applications = false, 0
+  function SendSecretToDevice(device, command, params)
+    if not dropped and codec.decode(params.PAYLOAD).op == lost then
+      dropped = true
+      return
+    end
+    return send(device, command, params)
+  end
+  function hub.emit(device, data)
+    if data.kind == "commission_apply" then
+      applications = applications + 1
+    end
+    return deliver(device, data)
+  end
+  if lost == "select" then
+    local stale = hub.consumers[consumer]
+    at(consumer, function()
+      OBC[ids.lightCoordinatorBinding](ids.lightCoordinatorBinding)
+    end)
+    T.eq("a missed same-binding update leaves the old registration in the Coordinator", hub.consumers[consumer], stale)
+  end
+  local result
+  at(coordinator, function()
+    hub.transfer
+      :directLoad(consumer, "light", "switch.fixture", "Fixture", nil, {
+        beforeApply = function()
+          return true
+        end,
+        applied = function()
+          return at(consumer, function()
+            local response = UIR.HA_SELECTION_IDENTITY({ VERIFY_SAVED = "true" })
+            local payload = assert(response:match("^<selection>(.+)</selection>$"))
+            local identity = codec.decode(C4:Base64Decode(payload))
+            return identity.key == "switch.fixture" and identity.stable and identity.saved
+          end)
+        end,
+      })
+      :next(function(value)
+        result = value
+      end)
+    if lost == "select" then
+      clock.run(2000)
+    end
+  end)
+  T.truthy(lost .. " was lost on the real wire", dropped)
+  T.eq("the replacement receives a single apply", applications, 1)
+  if lost == "commission_ack" then
+    T.falsy("the transfer waits for exact saved selection when the acknowledgment is lost", result)
+    ShimPersistLand()
+  end
+  at(coordinator, function()
+    clock.run(6000)
+  end)
+  T.eq("verified selection hands off to readiness even while state is delayed", { result, applications }, { true, 1 })
+  connection:snapshot("switch.fixture", "off")
+  T.eq("late feedback confirms the replacement is usable", view().status, "Device connected")
 end
 
 local device = string.rep("d", 32)
@@ -359,6 +593,30 @@ for _, accepted in ipairs({ false, true }) do
   T.truthy("a stale refresh cannot take the setup retry route", last("HA_SETUP_RESULT", "feedback-stale").error)
 end
 
+T.section("Light readiness and capabilities follow the native adapter")
+do
+  local c = fixture("light")
+  setProperty("Manual entity ID", "light.recovery")
+  c:completeRead("light.recovery", "off")
+  local attrs = { supported_color_modes = codec.array({ "brightness" }) }
+  c:snapshot("light.recovery", "on", attrs)
+  T.eq("unusable brightness feedback is unavailable on both surfaces", {
+    view().status,
+    advanced()["Device feedback"].value,
+    view().feedback_retry,
+  }, { "Device unavailable", "Device unavailable", true })
+  attrs.brightness = 102
+  request("HA_SETUP_RETRY", { request = "brightness-recovery", feedback = true })
+  c:completeRead("light.recovery", "on", attrs)
+  T.eq("usable feedback restores dimming and clears the recovery action", {
+    view().status,
+    view().capabilities,
+    view().feedback_retry,
+  }, { "Device connected", { "On and off", "Brightness" } })
+  setProperty("Light type override", "On/off")
+  T.eq("the native override changes the displayed capabilities immediately", view().capabilities, { "On and off" })
+end
+
 T.section("A chooser handler failure answers its own tab without waiting for the browser timer")
 do
   local c = fixture("light")
@@ -444,6 +702,7 @@ for _, kind in ipairs({ "light", "switch" }) do
   for _, savedNo in ipairs({ false, true }) do
     fixture(kind, function()
       Properties["Show advanced settings"] = savedNo and "No" or nil
+      Properties["Debug Mode"] = savedNo and "On" or nil
     end)
     T.eq(kind .. " exposes applicable settings immediately", {
       attribs["Manual entity ID"],
@@ -451,6 +710,9 @@ for _, kind in ipairs({ "light", "switch" }) do
       attribs["Latency Diagnostics"],
       attribs["Button behavior"],
     }, { 0, 0, 0, constants.HIDE_PROPERTY })
+    T.excludes(kind .. " omits the retired logging control from its manifest", config, "<name>Debug Mode</name>")
+    T.eq(kind .. " Advanced omits the retired logging control", advanced()["Debug Mode"], nil)
+    T.eq(kind .. " native Properties hides a saved Debug Mode value", attribs["Debug Mode"], savedNo and 1 or nil)
   end
 end
 
@@ -2262,7 +2524,18 @@ do
   double.bridge_update_kind, double.event_type, double.button_id = "gesture", "press", "top"
   double.gesture_id, double.press_count, double.gesture_session_id = "press_2", 2, "initial"
   double.gesture_sequence, double.gesture_event_id, double.gesture_occurred_at = 1, "initial:1", "2026-11-17T12:00:01Z"
-  push(double, "2026-11-17T12:00:01Z")
+  Properties["Log Mode"], Properties["Log Level"] = "Print", "4 - Debug"
+  OnPropertyChanged("Log Mode")
+  OnPropertyChanged("Log Level")
+  local logged, _, gestureOutput = T.capture(function()
+    push(double, "2026-11-17T12:00:01Z")
+  end)
+  T.check(
+    "the shared logger prints the delivered button event",
+    logged and gestureOutput:find("Button event 1 delivered to Control4", 1, true)
+  )
+  Properties["Log Mode"] = "Off"
+  OnPropertyChanged("Log Mode")
   T.eq("verified old manual event emits its native double press", Properties["Gesture Count"], "1")
   local relinked = wire(attrs)
   relinked.bridge_load.entity_id = "light.another"
@@ -2323,7 +2596,7 @@ do
     local oldRead = C4.GetDevices
     local reads = 0
     function C4:GetDevices(filter)
-      if filter.C4iNames == "HA.Switch.c4z,HA.Light.c4z" then
+      if type(filter.C4iNames) == "string" and filter.C4iNames:find("HA.Switch.c4z,HA.Light.c4z", 1, true) then
         reads = reads + 1
         return {}
       end

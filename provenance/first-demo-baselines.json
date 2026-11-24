@@ -15,7 +15,6 @@
       "filename": "HA.Coordinator.c4z",
       "version": "113",
       "sha256": "a4a4b6f687bcc5ceb69edb77f5f43038eb38c4bb2e389f53cd99b6b86a510064",
-      "local_path": "../HA/Control4-HA-Coordinator/dist/stock/HA.Coordinator.c4z",
       "runtime_surfaces": ["HA URL variable", "HA_GET_STATE/HA_CALL_SERVICE", "RECEIEVE_STATE/RECEIEVE_EVENT"]
     },
     {
@@ -26,7 +25,6 @@
       "filename": "HA.Coordinator.c4z",
       "version": "114",
       "sha256": "76098ef38a3b8ca6c2918c363fc8ae2b1ab2a8e4d6ee95c900bf2af18f4d8cfb",
-      "local_path": "../HA/Control4-HA-Coordinator/dist/HA.Coordinator.c4z",
       "runtime_surfaces": ["HA URL variable", "legacy state and service messages", "scoped discovery and shared picker", "subscription and connection status", "device preparation"]
     },
     {
@@ -37,7 +35,6 @@
       "filename": "HA.Light.c4z",
       "version": "106",
       "sha256": "b9a3e17a46deef5a9155db9741071fbd4697cb73c07e0105f391e484a58e32ee",
-      "local_path": ".cache/original-bp-drivers/v1.0.6/HA.Light.c4z",
       "runtime_surfaces": ["ENTITY_ID variable", "light proxy programming, scenes and button behavior"]
     },
     {
@@ -49,7 +46,6 @@
       "filename": "HA.Light.c4z",
       "version": "1",
       "sha256": "3c6d6578016520bca69088ae1b6aa95e0e73686b1cde89e4bd658a3b60c71537",
-      "local_path": "../HA/Control4-HA-Switch/dist/HA.Light.c4z",
       "runtime_surfaces": ["dynamic gesture event IDs", "persisted DimmerGestureEventIDs, LEDColors, LightScenes, ControllerModeOverride and DeviceSelection", "connected Light, gestures and Device Setup"]
     },
     {
@@ -60,7 +56,6 @@
       "filename": "HA.Switch.c4z",
       "version": "106",
       "sha256": "21484e7aea9da52691df7951458385649a4116e5085471cc34cfb6f54d327f82",
-      "local_path": ".cache/original-bp-drivers/v1.0.6/HA.Switch.c4z",
       "runtime_surfaces": ["ENTITY_ID variable", "Turn On and Turn Off behavior", "relay and Button Links"]
     },
     {
@@ -71,7 +66,6 @@
       "filename": "HA.Switch.c4z",
       "version": "107",
       "sha256": "699de8d70593db5f49c5b6600a7e1288d85a48a346a6fe5b22538a8c58042aa9",
-      "local_path": "../HA/Control4-HA-Switch/dist/HA.Switch.c4z",
       "runtime_surfaces": ["ENTITY_ID variable", "dynamic gesture event IDs", "persisted GestureEventIDs, LEDColors and DeviceSelection", "control, discovery, gestures and LEDs"]
     }
   ]

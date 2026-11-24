@@ -227,8 +227,8 @@
         {
           "path": ".gitignore",
           "source_path": "template/.gitignore",
-          "sha256": "4c1fa8a2dbcf5c34a59ed04fe1ea4f93e692f7102b6de6ec07844927cd6ed6cc",
-          "changes": "Keep local caches, household lab evidence and logs outside publication while preserving CI fixtures"
+          "sha256": "8afe5696fd9f8abd43098b9a19728b25331a7ade8c8d96297f7dc2044e73af09",
+          "changes": "Keep local caches, household lab evidence and logs outside publication while preserving CI fixtures and synthetic benchmark adapters."
         },
         {
           "path": "Makefile",
@@ -527,8 +527,8 @@
         {
           "path": "test/c4_fixtures.lua",
           "source_path": "template/test/c4_fixtures.lua",
-          "sha256": "59e32fd3f7c876876cb4295bdd5df27a0ea15d9ca43d3a372278576779100a02",
-          "changes": "Simulate Director returning a persisted JSON object as a Lua table after a cold reload."
+          "sha256": "8c4de4cbdb12439f6f5f6383459bc8092c7703d51fffcd58a2da9d5d0eae113b",
+          "changes": "Simulate stored JSON as a Lua table after reload and allow specific Director replies in the TCP fixture."
         },
         {
           "path": "test/test_bindings_unnamed.lua",
@@ -707,8 +707,8 @@
         {
           "path": "src/lib/github-updater.lua",
           "source_path": "template/src/lib/github-updater.lua",
-          "sha256": "b03670ab50a9ca5449b2494c6fab7e968348d4b719a69b89a6a8d94e7ec27047",
-          "changes": "Preserve newer installed driver versions; expose the template release-list request with bounded transfers and pagination. Expose the existing archive writer and Director reload request for verified suite batches."
+          "sha256": "0e17d6c1639349c59140a86a597f12b21fd7e9e2db83e03c23e0f79d4aa3db2a",
+          "changes": "Preserve newer installed versions. Expose bounded release listing, the archive writer and Director reload for verified suite batches. Reject unsuccessful Director replies."
         },
         {
           "path": "src/lib/drivercentral.lua",
@@ -785,8 +785,8 @@
         {
           "path": "src/lib/logging.lua",
           "source_path": "template/src/lib/logging.lua",
-          "sha256": "7e3d188ece9eed583d0f182f29e3c6f483740348224c17e50da0150b14c0daf0",
-          "changes": "Unmodified copy"
+          "sha256": "cb6af7617e6a4696ed4a8e27bd7b98c76c325ace33bfeb4ab47fca3748f46cb1",
+          "changes": "Expose a per-driver maximum log level so the Coordinator can use Trace without exposing raw Ultra packet dumps."
         },
         {
           "path": "src/lib/persist.lua",
@@ -1007,8 +1007,8 @@
         {
           "path": ".github/workflows/release.yml",
           "source_path": "template/.github/workflows/release.yml",
-          "sha256": "6f149f13b730e953b2ec31b468d213ffa14b06b16124dff3b8975d330800df7f",
-          "changes": "Publish from a verified GitHub draft with exact suite manifest and inventory, resume missing uploads, and verify public reruns without writes. Preserve permission scope and numeric prerelease promotion."
+          "sha256": "a4f182ace960a650291820928a1e0d5430a76939f319a7b103052ce104bc1e6d",
+          "changes": "Verify exact suite assets in a draft. Use the returned draft ID for uploads, including before the list refreshes. Verify public reruns without writes and retain prerelease promotion."
         },
         {
           "path": ".github/workflows/build.yml",

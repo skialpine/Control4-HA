@@ -30,11 +30,24 @@ function M.matches(expected, current)
   return true
 end
 
-function M.encode(owner)
+function M.encode(owner, params)
   if not owner then
     return
   end
   local value = M.identity(owner.config, Properties["Button behavior"], owner:mode())
+  if params and params.VERIFY_SAVED == "true" then
+    value.saved = owner:hasSavedSelection()
+  end
+  local settings = params and params.LIGHT_SETTINGS
+  if type(settings) == "string" and #settings <= 2048 then
+    local expected = codec.storedObject(settings)
+    value.settings_verified = not not (
+      expected
+      and owner.adapter
+      and owner.adapter.verifyMigrationSettings
+      and owner.adapter.verifyMigrationSettings(value.key, expected)
+    )
+  end
   local status = Properties["Driver Status"]
   value.stable = not (owner.working or owner.pending or owner.error)
   value.buttons = not not owner:usesButtons()
@@ -46,9 +59,17 @@ function M.encode(owner)
   return XMLTag("selection", C4:Base64Encode(codec.encode(codec.object(value))))
 end
 
-function M.read(id)
+function M.read(id, settings, verifySaved)
   local ok, value = pcall(function()
-    local body = SendUIRequest(id, "HA_SELECTION_IDENTITY", {})
+    -- The template's traced wrapper includes the request parameters.
+    local params =
+      { VERIFY_SAVED = verifySaved and "true" or nil, LIGHT_SETTINGS = settings and codec.encode(settings) }
+    local body
+    if settings then
+      body = C4:SendUIRequest(id, "HA_SELECTION_IDENTITY", params)
+    else
+      body = SendUIRequest(id, "HA_SELECTION_IDENTITY", params)
+    end
     local payload = type(body) == "string"
       and #body <= 2048
       and body:match("^<selection>([A-Za-z0-9+/]+=*)</selection>$")

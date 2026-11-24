@@ -54,11 +54,8 @@ function M.install(family, makeAdapter)
     if name == "App Control Link" then
       return setup and setup:hasAppLinkChoices() and setup:mode() == "Connected Control4 light"
     end
-    if name == "Debug Mode" and family == "light" then
-      return setup and (setup.linked or setup:usesButtons() or Properties[name] ~= "Off")
-    end
-    if name == "Last Gesture" or name == "Gesture Count" or name == "Last Sequence" or name == "Debug Mode" then
-      return setup and (setup:usesButtons() or Properties["Debug Mode"] == "On")
+    if name == "Last Gesture" or name == "Gesture Count" or name == "Last Sequence" then
+      return setup and setup:usesButtons()
     end
     return name == "Discovery Catalog Entity ID"
       or name == "Manual entity ID"
@@ -133,9 +130,26 @@ function M.install(family, makeAdapter)
           { name = "Controlled device ID", readonly = true, value = setup.config.controlled_load.entity_id }
       end
     end
+    if family == "light" and adapter and adapter.compatibilityProperties then
+      for _, property in ipairs(adapter:compatibilityProperties()) do
+        result[#result + 1] = property
+      end
+    end
     return result
   end
   function properties:set(name, value)
+    if family == "light" and adapter and adapter.setCompatibility then
+      local handled, failure = adapter:setCompatibility(name, value)
+      if handled then
+        if not failure then
+          UIR._GET_PROPERTIES()
+          if setup then
+            setup:render()
+          end
+        end
+        return failure
+      end
+    end
     if not offered(name) then
       return "This setting is unavailable for this device."
     end
@@ -213,7 +227,6 @@ function M.install(family, makeAdapter)
       "Last Gesture",
       "Gesture Count",
       "Last Sequence",
-      "Debug Mode",
       "Button behavior",
     }) do
       SetPropertyVisible(name, (name ~= "Button behavior" or not legacyButtonMode) and offered(name) or false)
@@ -282,6 +295,14 @@ function M.install(family, makeAdapter)
   local register = setupPage.commands(function()
     return setup
   end)
+  UIR.HA_SUITE_RUNNING_VERSION = function()
+    if setup then
+      local version = tostring(C4:GetDriverConfigInfo("version"))
+      if version:match("^%d+$") then
+        return "<version>" .. version .. "</version>"
+      end
+    end
+  end
   require("ha.switch-migration").install(register, family, function()
     return setup
   end)
@@ -360,15 +381,6 @@ function M.install(family, makeAdapter)
       end
     end
   end
-  OPC.Debug_Mode = function()
-    if family == "light" and adapter then
-      adapter:setLinkedTrace(Properties["Debug Mode"] == "Trace")
-    end
-    if setup then
-      setup.debugLines = 0
-      setup:render()
-    end
-  end
   OPC.Button_behavior = OPC.Manual_entity_ID
   -- A mixed project can leave these receivers on the original broadcast
   -- wire. Ignore both BP payloads before the general handler can debug-log
@@ -384,8 +396,8 @@ function M.install(family, makeAdapter)
     return "<legacy_wire>ignore-v1</legacy_wire>"
   end
   UIR.suppressDebug.HA_SELECTION_IDENTITY = true
-  UIR.HA_SELECTION_IDENTITY = function()
-    return migrationSelection.encode(setup)
+  UIR.HA_SELECTION_IDENTITY = function(params)
+    return migrationSelection.encode(setup, params)
   end
   EC.suppressDebug.HA_SUITE_V1 = true
   EC.HA_SUITE_V1 = function(params)
@@ -449,12 +461,12 @@ function M.install(family, makeAdapter)
   function OnDriverLateInit()
     retireOwner()
     if foundation.lateInit() then
+      if Properties["Debug Mode"] ~= nil then
+        SetPropertyVisible("Debug Mode", false)
+      end
       events:restoreEvents()
       setup = Setup.new(family, publish, adapter)
       if adapter then
-        if family == "light" then
-          adapter:setLinkedTrace(Properties["Debug Mode"] == "Trace")
-        end
         adapter:start()
       end
       setup:start()

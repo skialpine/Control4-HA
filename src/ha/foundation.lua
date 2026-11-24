@@ -10,16 +10,37 @@ local metrics = require("ha.performance").shared
 local M = {}
 local LOG_TIMER = "HA.LogMode"
 local loggingActive = false
+local DIAGNOSTIC_LIMIT = 25
+local diagnosticLines = {}
 
 local function applyLogMode(mode)
   CancelTimer(LOG_TIMER)
   log:setLogMode(mode)
-  if log:isEnabled() then
+  if not log:isEnabled() then
+    diagnosticLines = {}
+  else
     SetTimer(LOG_TIMER, 3 * ONE_HOUR, function()
       if loggingActive then
         UpdateProperty("Log Mode", "Off", true)
       end
     end)
+  end
+end
+
+function M.canLogDiagnostic(label)
+  return log:isEnabled()
+    and log:getLogLevel() >= log.LogLevel.DEBUG
+    and (diagnosticLines[label] or 0) < DIAGNOSTIC_LIMIT
+end
+
+function M.logDiagnostic(label, message)
+  if M.canLogDiagnostic(label) then
+    local count = (diagnosticLines[label] or 0) + 1
+    diagnosticLines[label] = count
+    local suffix = count == DIAGNOSTIC_LIMIT
+        and " | Limit reached. Turn Log Mode off and back on, then set Log Level to 4 - Debug."
+      or ""
+    pcall(log.debug, log, "%s | %s%s", label, message, suffix)
   end
 end
 
@@ -61,9 +82,11 @@ function M.init(family, address)
   C4:AllowExecute(true)
   loggingActive = false
   log:setLogMode("Off")
+  diagnosticLines = {}
   log:setLogName(C4:GetDeviceData(C4:GetDeviceID(), "name"))
-  -- Ultra with Print enables raw DriverWorks dumps, including HA traffic.
-  log:allowTraceAndUltra(false)
+  -- Trace describes Coordinator operations. Ultra with Print enables raw
+  -- DriverWorks dumps, including HA traffic.
+  log:setMaxLogLevel(family == "coordinator" and log.LogLevel.TRACE or log.LogLevel.DEBUG)
   loggingActive = true
   log:setLogLevel(Properties["Log Level"])
   applyLogMode(Properties["Log Mode"])

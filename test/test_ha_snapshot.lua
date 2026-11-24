@@ -126,6 +126,56 @@ do
   metrics:reset()
 end
 
+T.section("snapshot timing observes headers, transfer completion and decode independently")
+do
+  local metrics = require("ha.performance").shared
+  local clock = require("c4_fixtures").virtualClock()
+  local c = connection()
+  local body = '{"entity_id":"light.lab","state":"on","attributes":{}}'
+  local result = read(c, "light.lab")
+  T.eq("disabled collection does not attach a header observer", requests[#requests].options.onHeaders, nil)
+  answer(body)
+  metrics:reset()
+  metrics:setEnabled(true)
+  result = read(c, "light.lab")
+  local onHeaders = requests[#requests].options.onHeaders
+  clock.run(7100)
+  T.eq("observing headers leaves HTTP policy untouched", onHeaders(200), nil)
+  clock.run(30)
+  onHeaders(200)
+  clock.run(10)
+  answer(body)
+  T.eq("measurement leaves result intact", result.state.state, "on")
+  local operations = metrics:report().operations
+  T.eq("single intervals report distinct boundaries", {
+    operations["snapshot.http"].max_ms,
+    operations["snapshot.headers"].max_ms,
+    operations["snapshot.body"].max_ms,
+    operations["snapshot.decode"].count,
+  }, { 7140, 7100, 40, 1 })
+
+  result = read(c, "light.lab")
+  clock.run(10000)
+  requests[#requests].promise:reject({ timedOut = true })
+  operations = metrics:report().operations
+  T.eq("no-header timeout stays visible only in the full read", {
+    result.failure.kind,
+    operations["snapshot.http"].outcomes,
+    operations["snapshot.headers"].count,
+    operations["snapshot.body"].count,
+  }, { "timeout", { ok = 1, timeout = 1 }, 1, 1 })
+
+  result = read(c, "light.lab")
+  metrics:reset()
+  requests[#requests].options.onHeaders(200)
+  answer(body)
+  T.eq("reset retires all phases of the in-flight sample", metrics:report().operations, {})
+  T.eq("reset leaves the read intact", result.state.state, "on")
+  metrics:setEnabled(false)
+  metrics:reset()
+  clock.restore()
+end
+
 T.section("invalid identifiers never reach HTTP")
 for _, entity in ipairs({ "light.lab/../../api/states", "light.lab?token=secret", "light.lab\n", "light.", "LIGHT.lab" }) do
   local count = #requests
@@ -147,14 +197,16 @@ do
     result.failure = failure.kind
   end)
   T.eq("read-only fixed template endpoint", posted.url, "https://ha.test:8123/api/template")
-  T.eq("native projection is fixed shared source", posted.body.template, require("ha.native-catalog"))
+  local native = require("ha.native-catalog")
+  T.eq("native index is fixed shared source", posted.body.template, native.template())
   T.eq("same protected authentication", posted.headers.Authorization, "Bearer private-snapshot-token")
-  T.eq(
-    "bounded raw private redirect refusal",
-    { posted.options.maxBytes, posted.options.rawBody, posted.options.privateRequest, posted.options.rejectRedirects },
-    { 1048576, true, true, true }
-  )
-  posted.promise:resolve({ body = "[]" })
+  T.eq("bounded raw private redirect refusal", {
+    posted.options.maxBytes,
+    posted.options.rawBody,
+    posted.options.privateRequest,
+    posted.options.rejectRedirects,
+  }, { 262144, true, true, true })
+  posted.promise:resolve({ body = '{"ids":[],"rows":[],"total":0}' })
   T.truthy("successful empty native catalog retains array identity", codec.isArray(result.rows))
   c:readCatalog():next(nil, function(failure)
     result.failure = failure.kind
@@ -166,6 +218,102 @@ do
   end)
   posted.promise:reject({ code = 403 })
   T.eq("filtered permission failure retained", result.failure, "permission_denied")
+  local function respond(ids, count)
+    local rows = codec.array({})
+    for index = 1, count do
+      rows[index] = { entity_id = ids[index], domain = "switch", name = ids[index], attributes = codec.object({}) }
+    end
+    posted.promise:resolve({ body = codec.encode({ ids = ids, total = #ids, rows = rows }) })
+  end
+  local ids = codec.array({})
+  for index = 1, native.pageSize + 1 do
+    ids[index] = ("switch.lab_%05d"):format(index)
+  end
+  result = {}
+  c:readCatalog():next(function(rows)
+    result.rows = rows
+  end, function(failure)
+    result.failure = failure.kind
+  end)
+  respond(ids, native.pageSize)
+  T.eq("follow-up sends only the bounded exact ID list", posted.body.template, native.template({ ids[#ids] }))
+  T.eq("only a bounded projection body is permitted for an exact page", posted.options.maxBytes, 262144)
+  posted.promise:resolve({
+    body = '[{"entity_id":"' .. ids[#ids] .. '","domain":"switch","name":"Last","attributes":{}}]',
+  })
+  T.eq("all exact results are assembled in one snapshot", #result.rows, #ids)
+
+  for _, changes in ipairs({ false, true }) do
+    local all, first = codec.array({}), codec.array({})
+    for index = 1, 513 do
+      all[index] = ("switch.lab_%05d"):format(index)
+      if index <= 512 then
+        first[index] = all[index]
+      end
+    end
+    local function rows(from, to)
+      local page = codec.array({})
+      for index = from, to do
+        page[#page + 1] = {
+          entity_id = all[index],
+          domain = "switch",
+          name = all[index],
+          attributes = codec.object({}),
+        }
+      end
+      return page
+    end
+    local revision = string.rep("a", 64)
+    result = {}
+    c:readCatalog():next(function(value)
+      result.rows = value
+    end, function(failure)
+      result.failure = failure.kind
+    end)
+    T.truthy("the initial index selects the first 512 IDs", posted.body.template:find("ids[0:512]", 1, true))
+    posted.promise:resolve({
+      body = codec.encode({ ids = first, total = 513, revision = revision, rows = rows(1, 128) }),
+    })
+    for offset = 129, 385, 128 do
+      T.truthy("the exact page starts at the next ID", posted.body.template:find(all[offset], 1, true))
+      posted.promise:resolve({ body = codec.encode(rows(offset, offset + 127)) })
+    end
+    T.truthy("the next index skips the first 512 IDs", posted.body.template:find("ids[512:1024]", 1, true))
+    posted.promise:resolve({
+      body = codec.encode({
+        ids = codec.array({ all[513] }),
+        total = 513,
+        revision = changes and string.rep("b", 64) or revision,
+        rows = rows(513, 513),
+      }),
+    })
+    if changes then
+      T.eq(
+        "same-count membership drift rejects the whole snapshot",
+        { result.failure, result.rows },
+        { "invalid_filtered_catalog" }
+      )
+    else
+      T.eq("stable membership publishes all IDs in exact order", #result.rows, #all)
+      T.eq("the final ID is retained", result.rows[513].entity_id, all[513])
+    end
+  end
+
+  c:readCatalog():next(nil, function(failure)
+    result.failure = failure.kind
+  end)
+  respond(ids, native.pageSize)
+  posted.promise:resolve({ body = "[]" })
+  T.eq(
+    "an entity removed mid-discovery prevents publishing a partial catalog",
+    result.failure,
+    "invalid_filtered_catalog"
+  )
+  c:readCatalog():next(nil, function(failure)
+    result.failure = failure.kind
+  end)
+  respond(codec.array({ "sensor.unsupported" }), 0)
+  T.eq("IDs outside the supported scope are rejected before interpolation", result.failure, "invalid_filtered_catalog")
   http.post = originalPost
 end
 

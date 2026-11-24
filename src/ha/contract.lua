@@ -107,23 +107,54 @@ local function retainedPair(device, provider)
   return matches(device, ids.packages.light) and matches(provider, ids.packages.coordinator)
 end
 
+-- Share the native binding projection within one synchronous inspection.
+function M.coordinatorOutput(provider, outputs)
+  local binding = outputs and outputs[provider]
+  if binding == nil then
+    local span = metrics:start("binding.output_read")
+    binding = GetDeviceBindings(provider, nil, true, nil, ids.coordinatorClass)[ids.coordinatorBinding] or false
+    metrics:finish(span, binding and "ok" or "rejected")
+    if outputs then
+      outputs[provider] = binding
+    end
+  end
+  return binding
+end
+
+local function outputPeers(binding, provider, device, outputs)
+  local peers = binding and binding.boundconsumers or {}
+  if not outputs then
+    return peers
+  end
+  outputs.peers = outputs.peers or {}
+  local byDevice = outputs.peers[provider]
+  if not byDevice then
+    byDevice = {}
+    for _, peer in pairs(peers) do
+      local id = type(peer) == "table" and tonumber(peer.deviceid)
+      if id then
+        local matches = byDevice[id] or {}
+        matches[#matches + 1] = peer
+        byDevice[id] = matches
+      end
+    end
+    outputs.peers[provider] = byDevice
+  end
+  return byDevice[device] or {}
+end
+
 -- Both ends must declare the suite class and agree on the exact peer and edge.
 -- The canonical upgraded pair may retain its reciprocal legacy-class edge.
-local function provider(device)
-  local inputId, input = M.consumerInput(device)
-  if not inputId then
-    return nil
-  end
-  local provider = tonumber(C4:GetBoundProviderDevice(device, inputId))
+local function verifiedProvider(device, inputId, input, provider, outputs)
   if not M.integer(provider) or provider == device then
     return nil
   end
-  local binding = GetDeviceBindings(provider, nil, true, nil, ids.coordinatorClass)[ids.coordinatorBinding]
+  local binding = M.coordinatorOutput(provider, outputs)
   local bound = input.boundprovider and input.boundprovider.bound
   local suite = peerMatches(bound, provider, ids.coordinatorBinding, ids.coordinatorClass)
   local legacy = inputId == ids.lightCoordinatorBinding
     and peerMatches(bound, provider, ids.coordinatorBinding, ids.legacyCoordinatorClass)
-  for _, peer in pairs(binding and binding.boundconsumers or {}) do
+  for _, peer in pairs(outputPeers(binding, provider, device, outputs)) do
     if suite and peerMatches(peer, device, inputId, ids.coordinatorClass) then
       return provider
     elseif
@@ -138,11 +169,26 @@ local function provider(device)
   end
 end
 
-function M.provider(device)
+-- Outputs may be shared by callers building one synchronous project inventory.
+function M.consumerBinding(device, outputs)
   local span = metrics:start("binding.validation")
-  local result = provider(device)
-  metrics:finish(span, result and "ok" or "rejected")
-  return result
+  local inputId, input = M.consumerInput(device)
+  local owner
+  if inputId then
+    local provider = tonumber(C4:GetBoundProviderDevice(device, inputId))
+    if provider == 0 and not (input.isbound or Select(input, "boundprovider", "bound")) then
+      owner = 0
+    else
+      owner = verifiedProvider(device, inputId, input, provider, outputs) or false
+    end
+  end
+  metrics:finish(span, M.integer(owner) and "ok" or "rejected")
+  return inputId, owner
+end
+
+function M.provider(device, outputs)
+  local _, owner = M.consumerBinding(device, outputs)
+  return M.integer(owner) and owner or nil
 end
 
 local function catalogRevision(value)

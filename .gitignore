@@ -21,6 +21,8 @@ plans/
 !/lab/client.py
 !/lab/provision.py
 !/lab/install_companion.py
+!/lab/snapshot_benchmark.lua
+!/lab/switch_overlap.lua
 !/lab/seed/
 /lab/seed/*
 !/lab/seed/configuration.yaml

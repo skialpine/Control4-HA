@@ -386,6 +386,7 @@ if arg[1] then
   result = outcome("Production", { preview, previous }, check.prepare)
   T.eq("changing from Pre-release to Production downloads no older assets", { result.kind, #requested }, { "ahead", 1 })
   result = outcome("Production", { preview, previous, release }, check.prepare)
+  local downloaded = result
   T.eq("all built C4Zs qualify for installation", { result.kind, #result.assets }, { "available", 3 })
   for index, name in ipairs(names) do
     T.truthy(
@@ -406,8 +407,11 @@ if arg[1] then
     root[name] = "existing " .. name
   end
   Properties["Update channel"], Properties["Automatic Updates"] = "Production", "Off"
+  local stagedMigration = true
   local endActions, startActions = check.installActions(function()
     return true
+  end, function()
+    return stagedMigration
   end)
   local tcp = F.captureTcpClient({ holdReplies = true })
   EC.CheckDriverUpdates()
@@ -415,11 +419,75 @@ if arg[1] then
   Properties["Automatic Updates"] = "On"
   startActions()
   ShimFireTimers()
+  T.eq("automatic checks defer when migration is staged", #tcp.writes, 0)
+  T.contains(
+    "the update status explains the deferral",
+    Properties["Driver update status"],
+    "Finish the current migration"
+  )
+  local realPrepare = check.prepare
+  local inFlight = require("deferred").new()
+  check.prepare = function()
+    return inFlight
+  end
+  stagedMigration = false
+  EC.CheckDriverUpdates()
+  stagedMigration = true
+  inFlight:resolve(downloaded)
+  T.eq("a migration staged during download prevents file writes", #tcp.writes, 0)
+  T.eq("the original driver archive remains installed", root[names[2]], "existing " .. names[2])
+  T.contains(
+    "the completed check reports why installation is deferred",
+    Properties["Driver update status"],
+    "Quick Setup"
+  )
+  check.prepare = realPrepare
+  stagedMigration = false
+  Properties["Update channel"] = "Pre-release"
+  downloaded.prerelease = true
+  check.prepare = function()
+    return require("deferred").new():resolve(downloaded)
+  end
+  startActions()
+  ShimFireTimers()
   T.eq("automatic checks start the installer", #tcp.writes, 1)
   T.eq("first package is the exact qualified Light archive", root[names[2]], read("c4z/" .. names[2]))
   T.eq("the other archive stays in place before Light acknowledges", root[names[3]], "existing " .. names[3])
+  installed[names[2]][2] = target
+  ShimSetUIRequest(function(device, request)
+    assert(device == 2 and request == "HA_SUITE_RUNNING_VERSION")
+    return "<version>" .. target .. "</version>"
+  end)
+  Properties["Automatic Updates"] = "Off"
+  OPC.Automatic_Updates()
+  tcp.reply()
+  ShimFireTimers()
+  T.eq("turning updates Off blocks the next reload", #tcp.writes, 1)
+  T.eq("turning updates Off leaves the next archive in place", root[names[3]], "existing " .. names[3])
+  Properties["Automatic Updates"], Properties["Update channel"] = "On", "Production"
+  OPC.Automatic_Updates()
+  OPC.Update_channel()
+  EC.CheckDriverUpdates()
+  T.eq("Production cannot resume a prerelease journal", #tcp.writes, 1)
+  T.contains(
+    "Production names the required channel",
+    Properties["Driver update status"],
+    "Update channel to Pre-release"
+  )
+  Properties["Update channel"] = "Pre-release"
+  OPC.Update_channel()
+  EC.CheckDriverUpdates()
+  T.eq("the matching channel can resume the pending package", #tcp.writes, 2)
+  tcp.reply('<c4soap name="UpdateProjectC4i" result="0"/>\0')
+  T.eq(
+    "a rejected package names remaining and completed updates",
+    Properties["Driver update status"],
+    "Switch, Connection pending. Check for driver updates. Updated Light."
+  )
   endActions()
+  check.prepare = realPrepare
   tcp.restore()
+  ShimSetUIRequest(nil)
 end
 
 T.finish()

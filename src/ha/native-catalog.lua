@@ -1,9 +1,41 @@
--- Fixed domain/attribute projection; no caller strings become template source.
--- HA renders this read-only snapshot only when a picker explicitly requests it.
-return [=[
-{% set result = namespace(rows=[]) %}
-{% for domain in ['light', 'switch', 'input_boolean'] %}
-{% for item in states[domain] %}
+-- Read the relevant ID list once, then project only the exact IDs in each page.
+-- Only validated HA entity IDs can enter a follow-up template literal.
+local codec = require("ha.codec")
+-- Leave room for candidates needed to prove aliases, including exported loads.
+-- Catalog publication applies the separate 5,000 eligible-row limit.
+local M = { pageSize = 128, indexSize = 512, maxCandidates = 10000 }
+
+function M.entity(value)
+  return type(value) == "string"
+    and #value <= 255
+    and (
+        value:match("^light%.[a-z0-9_]+$")
+        or value:match("^switch%.[a-z0-9_]+$")
+        or value:match("^input_boolean%.[a-z0-9_]+$")
+      )
+      ~= nil
+end
+
+local scope = [=[
+{% set ids = (states.light | map(attribute='entity_id') | list +
+              states.switch | map(attribute='entity_id') | list +
+              states.input_boolean | map(attribute='entity_id') | list) | sort %}
+]=]
+
+local projection = [=[
+{% set result = namespace(rows=[], size=0) %}
+{% set gestures = namespace(by_device={}) %}
+{% for event in states.event %}
+{% set entry = config_entry_id(event.entity_id) %}
+{% set source = event.attributes.get('bridge_source_device_id') %}
+{% if source is string and entry and config_entry_attr(entry, 'domain') == 'ha_gesture_bridge' %}
+{% set gesture = event.entity_id if source not in gestures.by_device and event.attributes.get('bridge_load') is none else none %}
+{% set gestures.by_device = dict(gestures.by_device, **{source: gesture}) %}
+{% endif %}
+{% endfor %}
+{% for id in requested %}
+{% set item = states[id] %}
+{% if item is not none %}
 {% set modes = item.attributes.get('supported_color_modes', []) %}
 {% set attrs = {'supported_features': item.attributes.get('supported_features', 0)} %}
 {% if modes is iterable and modes is not string and modes is not mapping %}
@@ -21,13 +53,44 @@ return [=[
 {% endfor %}
 {% endif %}
 {% set members = item.attributes.get('entity_id') %}
-{% set result.rows = result.rows + [dict(entity_id=item.entity_id, domain=domain,
+{% set row = dict(entity_id=item.entity_id, domain=item.domain,
 name=item.attributes.get('friendly_name', item.entity_id), device_id=device,
+bridge_gesture_entity_id=gestures.by_device.get(device),
 available=item.state in ['on', 'off'],
 area_name=area_name(item.entity_id), attributes=attrs, c4_exported=policy.exported or false,
 device_disabled=device and device_attr(device, 'disabled_by') is not none or false,
-is_group=members is iterable and members is not string and members is not mapping and members|list|length > 0)] %}
+is_group=members is iterable and members is not string and members is not mapping and members|list|length > 0) %}
+{% set size = row|to_json(ensure_ascii=true)|length + 2 %}
+{% if result.size + size > 98304 %}{% break %}{% endif %}
+{% set result.rows = result.rows + [row] %}
+{% set result.size = result.size + size %}
+{% endif %}
 {% endfor %}
-{% endfor %}
-{{ result.rows | to_json }}
 ]=]
+
+function M.template(ids, offset)
+  if not ids then
+    offset = offset or 0
+    assert(type(offset) == "number" and offset >= 0 and offset < M.maxCandidates and offset % M.indexSize == 0)
+    return scope
+      .. ("{%% set window = ids[%d:%d] if ids|length <= %d else [] %%}\n"):format(
+        offset,
+        offset + M.indexSize,
+        M.maxCandidates
+      )
+      .. ("{%% set requested = window[:%d] %%}\n"):format(M.pageSize)
+      .. projection
+      .. "{{ dict(total=ids|length, ids=window, rows=result.rows, revision=window and (ids|join(',')|sha256) or '') | to_json(ensure_ascii=true) }}"
+  end
+  assert(#ids <= M.pageSize)
+  for _, id in ipairs(ids) do
+    assert(M.entity(id))
+  end
+  return "{% set requested = "
+    .. codec.encode(codec.array(ids))
+    .. " %}\n"
+    .. projection
+    .. "{{ result.rows | to_json(ensure_ascii=true) }}"
+end
+
+return M

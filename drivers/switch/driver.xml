@@ -141,11 +141,6 @@
         <description>The latest event number reported by the selected wall control.</description>
       </property>
       <property>
-        <name>Debug Mode</name><type>LIST</type><default>Off</default><readonly>false</readonly>
-        <items><item>Off</item><item>On</item></items>
-        <description>Print up to 25 button-event summaries to the Lua window. Turn off and on to start a new set.</description>
-      </property>
-      <property>
         <name>Driver Version</name>
         <type>STRING</type>
         <default />

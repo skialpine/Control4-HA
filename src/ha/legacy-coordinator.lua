@@ -56,9 +56,9 @@ local function family(device)
   return services.family(row.driverFileName, model, manufacturer, version)
 end
 
-local function verifiedSuite(owner, peer)
+local function verifiedSuite(owner, peer, outputs)
   local device = tonumber(peer.deviceid)
-  if not contract.integer(device) or contract.provider(device) ~= owner then
+  if not contract.integer(device) or contract.provider(device, outputs) ~= owner then
     return false
   end
   local rows = C4:GetDevices({ DeviceIds = tostring(device) }) or {}
@@ -93,7 +93,7 @@ local function statePlan(previous, change)
   if type(peers) ~= "table" then
     return {}
   end
-  local selected, recipients, scopeOwners, seen, scoped = {}, {}, {}, {}, {}
+  local selected, recipients, scopeOwners, seen, scoped, outputs = {}, {}, {}, {}, {}, {}
   local accepted, logging = change == nil, false
   local function select(entity, model)
     selected[entity] = selected[entity] or {}
@@ -103,7 +103,7 @@ local function statePlan(previous, change)
     local device = reciprocalPeer(owner, peer)
     local model, prototype = family(device)
     if not model then
-      if not verifiedSuite(owner, peer) then
+      if not verifiedSuite(owner, peer, outputs) then
         return {}
       end
       recipients[#recipients + 1] = "suite:" .. peer.deviceid

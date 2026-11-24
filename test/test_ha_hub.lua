@@ -220,7 +220,7 @@ do
   T.eq("releasing one retains shared subscription", #f.connection.sent, 1)
   local count = #f.deliveries
   f.push(subscription.id, "light.lab", "on")
-  T.eq("remaining consumer gets the push and readiness", #f.deliveries, count + 2)
+  T.eq("steady-state push does not resend readiness", #f.deliveries, count + 1)
   T.eq("remaining consumer owns delivery", f.deliveries[count + 1].id, 22)
   clock.run(120000)
   T.eq("healthy connection does not poll", #f.connection.reads, 1)
@@ -327,6 +327,49 @@ do
   f.connection.reads[1].promise:resolve(state("light.lab", "off"))
   T.eq("old snapshot is not published", #f.deliveries, count)
   T.eq("pushed evidence retained", f.hub.entities["light.lab"].state.state, "on")
+  f.close()
+end
+
+T.section("background snapshots bound HTTP work and reuse queued feedback")
+do
+  local f = fixture()
+  for i = 1, 7 do
+    local id, entity = 20 + i, "light.lab_" .. i
+    local consumer = f.consumer(id)
+    at(id, function()
+      consumer:select(codec.array({ entity }))
+    end)
+    f.ack(f.connection.sent[#f.connection.sent].id)
+  end
+  T.eq("first four subscription confirmations start HTTP reads", #f.connection.reads, 4)
+  local fifth = f.hub.entities["light.lab_5"]
+  f.push(fifth.subscription, fifth.entity, "on")
+  f.connection.reads[1].promise:resolve(state("light.lab_1"))
+  T.eq("first free slot passes the entity that already got feedback", f.connection.reads[5].entity, "light.lab_6")
+  T.eq("newer pushed state remains authoritative", fifth.state.state, "on")
+  f.connection.reads[2].promise:reject({ kind = "permission_denied" })
+  T.eq("failed dispatch frees its slot", f.connection.reads[6].entity, "light.lab_7")
+  f.close()
+end
+
+T.section("recovery retires old queued reads and accepts a new wave")
+do
+  local f = fixture()
+  for i = 1, 5 do
+    local id, entity = 20 + i, "light.lab_" .. i
+    local consumer = f.consumer(id)
+    at(id, function()
+      consumer:select(codec.array({ entity }))
+    end)
+    f.ack(f.connection.sent[#f.connection.sent].id)
+  end
+  f.connection.onState("retrying")
+  f.connection.reads[1].promise:resolve(state("light.lab_1"))
+  T.eq("old callbacks cannot dispatch old queued work", #f.connection.reads, 4)
+  local firstNew = #f.connection.sent + 1
+  f.connection.onState("connected")
+  f.ack(f.connection.sent[firstNew].id)
+  T.eq("new transport has an available slot", #f.connection.reads, 5)
   f.close()
 end
 
@@ -768,6 +811,127 @@ do
   f.close()
 end
 
+local function switchRequest(f, consumer, entity, action)
+  return operation(f, consumer, "service", entity, { action = action, parameters = codec.object({}) })
+end
+
+T.section("switch state can arrive before the service reply without overlapping commands")
+do
+  local f = fixture()
+  local a, b, c = f.consumer(21), f.consumer(22), f.consumer(23)
+  for _, item in ipairs({ { a, "switch.lab" }, { b, "switch.lab" }, { c, "switch.other" } }) do
+    at(item[1].device, function()
+      item[1]:select(codec.array({ item[2] }))
+    end)
+  end
+  f.ack(1)
+  f.ack(2)
+  local on = switchRequest(f, a, "switch.lab", "turn_on")
+  local onId = f.connection.sent[3].id
+  f.push(1, "switch.lab", "on")
+  T.eq("the load has already reported On", f.hub.entities["switch.lab"].state.state, "on")
+  local off = switchRequest(f, b, "switch.lab", "turn_off")
+  T.eq("the next command waits for the service reply", #f.connection.sent, 3)
+  local other = switchRequest(f, c, "switch.other", "turn_on")
+  T.eq("a different switch dispatches independently", f.connection.sent[4].target.entity_id, "switch.other")
+  f.ack(f.connection.sent[4].id)
+  T.eq("other switch remains responsive", other.value, { status = "accepted" })
+  f.ack(onId)
+  T.eq("first command completes normally", on.value, { status = "accepted" })
+  T.eq("second command retains its target and action", {
+    f.connection.sent[5].target.entity_id,
+    f.connection.sent[5].service,
+  }, { "switch.lab", "turn_off" })
+  f.ack(f.connection.sent[5].id)
+  T.eq("second caller receives its own result", off.value, { status = "accepted" })
+  f.close()
+end
+
+T.section("switch queue expires unsent commands without replaying a timed-out service")
+do
+  local f = fixture()
+  local a = f.consumer(21)
+  at(a.device, function()
+    a:select(codec.array({ "switch.lab" }))
+  end)
+  f.ack(1)
+  local off = switchRequest(f, a, "switch.lab", "turn_off")
+  local id = f.connection.sent[2].id
+  local early = switchRequest(f, a, "switch.lab", "turn_on")
+  clock.run(4000)
+  T.eq("the queued intent expires", early.failure and early.failure.kind, "timeout")
+  clock.run(5000)
+  local late = switchRequest(f, a, "switch.lab", "toggle")
+  clock.run(1000)
+  T.eq("the unanswered service reports timeout", off.failure and off.failure.kind, "timeout")
+  T.eq("later queued action is cancelled after the ambiguous outcome", late.failure and late.failure.kind, "timeout")
+  f.ack(id)
+  T.eq("no expired or ambiguous command is replayed", #f.connection.sent, 2)
+  local fresh = switchRequest(f, a, "switch.lab", "turn_on")
+  f.ack(f.connection.sent[3].id)
+  T.eq("an explicit new command can proceed", fresh.value, { status = "accepted" })
+  f.close()
+end
+
+T.section("saved switch actions share the lane and unavailable feedback retires waiting commands")
+do
+  local f = fixture()
+  local a = f.consumer(21)
+  at(a.device, function()
+    a:select(codec.array({ "switch.lab" }))
+  end)
+  f.ack(1)
+  f.push(1, "switch.lab", "off")
+  switchRequest(f, a, "switch.lab", "turn_on")
+  local saved
+  at(10, function()
+    f.hub:programmedService({ Service = "switch.turn_off", ["Entity ID"] = "switch.lab" }, function(ok)
+      saved = ok
+    end)
+  end)
+  local queued = switchRequest(f, a, "switch.lab", "toggle")
+  T.eq("same-target entry points wait for the first result", #f.connection.sent, 2)
+  f.push(1, "switch.lab", "unavailable")
+  f.push(1, "switch.lab", "on")
+  f.ack(f.connection.sent[2].id)
+  T.eq("a load loss prevents queued writes even if it becomes available again", #f.connection.sent, 2)
+  T.eq("saved action reports failure", saved, false)
+  T.eq("child is notified that the load became unavailable", queued.failure and queued.failure.kind, "unavailable")
+  at(10, function()
+    f.hub:programmedService({ Service = "switch.turn_off", ["Entity ID"] = "switch.lab" }, function(ok)
+      saved = ok
+    end)
+  end)
+  f.ack(f.connection.sent[3].id)
+  T.eq("a fresh saved command retains its reply", saved, true)
+  f.close()
+end
+
+T.section("switch queue holds its active slot across selection changes")
+do
+  local f = fixture()
+  local a, b = f.consumer(21), f.consumer(22)
+  for _, c in ipairs({ a, b }) do
+    at(c.device, function()
+      c:select(codec.array({ "switch.lab" }))
+    end)
+  end
+  f.ack(1)
+  f.push(1, "switch.lab", "off")
+  switchRequest(f, a, "switch.lab", "turn_on")
+  switchRequest(f, a, "switch.lab", "toggle")
+  local off = switchRequest(f, b, "switch.lab", "turn_off")
+  at(a.device, function()
+    a:select(codec.array({ "switch.other" }))
+  end)
+  T.eq("retiring a lease does not start a second command", #f.connection.sent, 3)
+  f.ack(f.connection.sent[2].id)
+  T.eq("only the current owner's queued operation dispatches", f.connection.sent[4].service, "turn_off")
+  f.ack(f.connection.sent[4].id)
+  T.eq("the remaining owner receives its result", off.value, { status = "accepted" })
+  f.close()
+end
+
 T.section("service rejection, timeout and transport failure remain distinct")
 do
   local f = fixture()
@@ -1048,7 +1212,7 @@ do
   f.push(1, "event.paddle", "old-timestamp")
   T.eq("first pushed evidence is baseline snapshot", f.deliveries[#f.deliveries - 1].message.kind, "snapshot")
   f.push(1, "event.paddle", "new-timestamp")
-  T.eq("subsequent evidence is live state", f.deliveries[#f.deliveries - 1].message.kind, "state")
+  T.eq("subsequent evidence is live state", f.deliveries[#f.deliveries].message.kind, "state")
   at(10, function()
     f.connection.onState("retrying")
     f.connection.onState("connected")
@@ -1092,6 +1256,41 @@ do
     f.hub:announce(true)
   end)
   T.eq("registered consumer stays on its active selection", a.selection, selection)
+  f.close()
+end
+
+T.section("Binding reconciliation shares reciprocal evidence within a callback")
+do
+  local f = fixture()
+  f.consumer(21)
+  f.consumer(22)
+  local read, reads = GetDeviceBindings, 0
+  local announced = {}
+  f.hub.emit = function(id, message)
+    if message.kind == "reset" then
+      announced[id] = true
+    end
+  end
+  GetDeviceBindings = function(device, kind, provider, name, class)
+    if device == 10 and provider == true and class == ids.coordinatorClass then
+      reads = reads + 1
+    end
+    return read(device, kind, provider, name, class)
+  end
+  at(10, function()
+    f.hub:reconcileBindings()
+  end)
+  T.eq(
+    "one provider read proves both announcement recipients",
+    { reads, announced },
+    { 1, { [21] = true, [22] = true } }
+  )
+  peers[10][22], announced = nil, {}
+  at(10, function()
+    f.hub:reconcileBindings()
+  end)
+  T.eq("a new callback reads the changed binding", { reads, announced }, { 2, { [21] = true } })
+  GetDeviceBindings = read
   f.close()
 end
 
@@ -1421,8 +1620,11 @@ do
     rooms = function()
       return { { id = 41, name = "Office" } }
     end,
-    existingChoices = function()
-      return { ["switch.outlet"] = true }, { ["light.bulb"] = { family = "light", room_id = 41, name = "Side lamp" } }
+    browseChoices = function()
+      return deferred.new():resolve({
+        existing = { ["switch.outlet"] = true },
+        staged = { ["light.bulb"] = { family = "light", room_id = 41, name = "Side lamp" } },
+      })
     end,
     destroy = function() end,
   }
@@ -1993,6 +2195,34 @@ do
     verify({ event_control = "paddle", load_registry_id = loadId }).failure.kind,
     "invalid_request"
   )
+  f.close()
+end
+T.section("Coordinator Trace reports requests and outcomes without their payloads")
+do
+  local log = require("lib.logging")
+  local f = fixture()
+  local stdout, output = print, {}
+  print = function(line)
+    output[#output + 1] = tostring(line)
+  end
+  log:setLogMode("Print")
+  log:setLogLevel("5 - Trace")
+  local result
+  local id = f.hub:_request({
+    type = "call_service",
+    service_data = { payload = "private-fixture-payload" },
+  }, function(ok)
+    result = ok
+  end)
+  f.hub:_message(wire({ type = "result", id = id, success = true, result = "private-fixture-result" }))
+  log:setLogMode("Off")
+  log:setLogLevel("3 - Info")
+  print = stdout
+  T.eq("request completion still reaches its callback", result, true)
+  local trace = table.concat(output, "\n")
+  T.contains("logs the operation category", trace, "started: service.round_trip")
+  T.contains("logs acceptance", trace, "completed: accepted")
+  T.excludes("does not log request or response data", trace, "private-fixture-")
   f.close()
 end
 T.finish()

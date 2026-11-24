@@ -7,8 +7,8 @@ local view = require("lib.ui.page")
 local Choices = require("ha.choices")
 local metrics = require("ha.performance").shared
 local M = {}
-function M.connected()
-  view.send("HA_ADD_CONNECTED", {})
+function M.connectionChanged(online)
+  view.send(online and "HA_ADD_CONNECTED" or "HA_ADD_DISCONNECTED", {})
 end
 
 local errors = {
@@ -59,22 +59,26 @@ function M.install(current)
       if result then
         local response = page.choices(result, true)
         local span = metrics:start("commissioning.catalog_matches")
-        local ok, existing, staged = pcall(owner.commissioning.existingChoices, owner.commissioning, result)
-        metrics:finish(span, ok and "ok" or "failed")
-        if not ok then
-          failed(done, { kind = "project_unavailable" })
-          return
-        end
-        for _, choice in ipairs(response.choices) do
-          choice.existing = existing[choice.id] or nil
-          local pending = staged[choice.id]
-          for _, family in ipairs(choice.families) do
-            if pending and family == pending.family then
-              choice.resume = pending
+        owner.commissioning:browseChoices(result):next(function(matches)
+          metrics:finish(span, "ok")
+          if not owner.catalog:hasVerifiedSnapshot(revision) then
+            failed(done, { kind = "revision_changed" })
+            return
+          end
+          for _, choice in ipairs(response.choices) do
+            choice.existing = matches.existing[choice.id] or nil
+            local pending = matches.staged[choice.id]
+            for _, family in ipairs(choice.families) do
+              if pending and family == pending.family then
+                choice.resume = pending
+              end
             end
           end
-        end
-        done(response)
+          done(response)
+        end, function()
+          metrics:finish(span, "failed")
+          failed(done, { kind = "project_unavailable" })
+        end)
       else
         failed(done, { kind = err })
       end

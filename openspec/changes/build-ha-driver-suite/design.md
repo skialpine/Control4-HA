@@ -8,7 +8,7 @@ Discovery inspected the Finite Labs template tree `5efdae849b32d8739d23e4750c0b6
 
 The prototype has useful ownership, lifecycle, filtered-discovery and gesture/LED tests. It also demonstrated why normal feedback, native scene eligibility and Director updates need native qualification: local tests cannot prove those behaviors. Its current companion already supports light/switch/gesture choices; broader HA catalog work is unnecessary for the first milestone.
 
-The Mac has working Docker/Colima, but the persistent lab belongs on Proxmox to avoid consuming local resources. During implementation, the user selected a dedicated HA Container on the existing Portainer-managed Linux Docker VM first, with a 2 GiB HA OS VM fallback. Home Assistant's [Demo integration](https://www.home-assistant.io/integrations/demo/) covers all roadmap domains. Inspection of HA 2026.11.1's demo Light, Cover and Climate implementations confirmed service handlers and device-registry information; this does not establish complete transition, failure or hardware emulation.
+Use a dedicated HA Container on a Linux Docker host, with a dedicated HA OS VM as a fallback. Home Assistant's [Demo integration](https://www.home-assistant.io/integrations/demo/) covers all roadmap domains. Inspection of HA 2026.11.1's demo Light, Cover and Climate implementations confirmed service handlers and device-registry information; this does not establish complete transition, failure or hardware emulation.
 
 ## Goals / Non-Goals
 
@@ -42,7 +42,7 @@ Control4-HA/
   vendor/                  Selected template/vendor dependencies
   documentation/           Canonical manuals and feature matrices
   skills/control4-ha-setup/ Portable product setup skill and references
-  lab/                     Proxmox inventory templates, seed data, simulators
+  lab/                     Isolated test environment seed data
   test/                    Template tests, adapter tests and contract fixtures
   tools/                   Template build tools and small project-specific tools
   openspec/
@@ -113,13 +113,13 @@ Switch needs an actual Navigator surface: an invisible `other` relay alone does 
 
 Baseline the shipped BP Coordinator, original BP Light project and BP Switch, plus the Coordinator, Switch/Light and HA helper prototype revisions. Inventory public XML, Lua dispatch, persistence, companion requests and actual behavior. Track source version, test and evidence for each capability. All supported behavior from either baseline is required for the first demo. Escalate conflicting observable behaviors for a decision and cover each supported starting configuration. A package rename or a green proxy shim cannot establish native upgrade parity.
 
-### 6. Testing and Proxmox lab
+### 6. Testing and isolated Home Assistant
 
-Use a dedicated HA Container on the existing Portainer-managed Linux Docker VM on Proxmox for initial real-service testing. Check Docker host capacity, select a unique container/volume and explicit LAN port, and start with a 2 GiB memory limit. Do not reuse production HA configuration, credentials, host networking, device mounts or Docker socket access. If this allocation cannot be supported, the user-approved fallback is a dedicated two-vCPU, 2 GiB HA OS VM with a thin 32 GiB disk, subject to host/storage/network checks. Do not run persistent HA on this Mac or resize existing production guests implicitly.
+Use a dedicated HA Container for initial real-service testing. Verify host capacity and assign a unique container, config volume and reachable endpoint. Keep the lab isolated from production configuration, credentials, host networking and devices. If the host cannot support a container, check available compute, storage and network resources before assigning a dedicated HA OS VM.
 
 Container testing does not qualify the HA OS app/Supervisor experience. Use an isolated MQTT container only if required by simulation. Record OS/app-specific installation and Marketplace checks as unverified until a suitable HA OS lab is available; do not narrow the GA publication gate or report those checks complete based on Container evidence.
 
-Record HA OS image, HA Core, separate integration and simulator versions. Support a seed/reset and backup/restore path. Use unique endpoint, HA identity and credentials; no production backup restore, radio passthrough, production MQTT, real-device pairing or automatic production HA discovery setup. Test runners require an explicit allowlisted lab identity, not a default URL/token. Ensure the C4 test controller can reach the Proxmox VM's LAN address; localhost-only containers do not satisfy that path.
+Record HA OS image, HA Core, separate integration and simulator versions. Support a seed/reset and backup/restore path. Use unique endpoint, HA identity and credentials; no production backup restore, radio passthrough, production MQTT, real-device pairing or automatic production HA discovery setup. Test runners require an explicit allowlisted lab identity, not a default URL/token. Ensure the C4 test controller can reach the lab endpoint; localhost-only containers do not satisfy that path.
 
 Layer tests by what they prove:
 
@@ -219,7 +219,7 @@ Chowmain's published [feature announcements](https://www.c4forums.com/forums/top
 
 ## Deferrable Configuration Inputs
 
-Implementation uses the approved Docker host and its existing Portainer configuration. Obtain Docker endpoint/container/volume/port identity and capacity before Container provisioning, or storage/network/VM identity before the 2 GiB HA OS fallback, plus an approved native C4 test controller/window before native tests. Final display branding can be chosen before package identity freeze. No infrastructure, controller or public release was changed while authoring this proposal.
+Use a Docker host designated for the isolated lab. Obtain Docker endpoint/container/volume/port identity and capacity before Container provisioning, or storage/network/VM identity before the 2 GiB HA OS fallback, plus an approved native C4 test controller/window before native tests. Final display branding can be chosen before package identity freeze. No infrastructure, controller or public release was changed while authoring this proposal.
 
 ## Reference Sources
 
@@ -234,4 +234,4 @@ Implementation uses the approved Docker host and its existing Portainer configur
 
 Keep the Light V2 native editor available for brightness behavior, keypad presets, transition and click/hold rates. Device Setup configures the LEDs on the selected Home Assistant wall device through verified companion capabilities. Show applicable native Properties directly. The optional manual identity lives in the device picker. Troubleshooting contains diagnostic details. Let the installed Composer version determine the placement of its native proxy editor and record the observed route.
 
-Test the complete path from the shipped HTML request through packaged Lua, Coordinator, Home Assistant and the correlated reply. Exercise reload using Director storage types on existing device identities. Run read-only private MCP checks on the installed candidate and independent end-user task walkthroughs before asking for a narrowly defined native observation. Tie evidence to exact archive hashes, versions, fixture capabilities and outcomes. An advertised command or visible field alone cannot establish that an installer can edit and use it.
+Test the complete path from the shipped HTML request through packaged Lua, Coordinator, Home Assistant and the correlated reply. Exercise reload using Director storage types on existing device identities. Run read-only Director checks on the installed candidate and independent end-user task walkthroughs before asking for a narrowly defined native observation. Tie evidence to exact archive hashes, versions, fixture capabilities and outcomes. An advertised command or visible field alone cannot establish that an installer can edit and use it.

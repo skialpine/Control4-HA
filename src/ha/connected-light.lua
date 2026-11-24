@@ -3,6 +3,7 @@ local Color = require("lib.light.color")
 local Settings = require("lib.light.settings")
 local contract = require("ha.contract")
 local ids = require("ha.identities")
+local foundation = require("ha.foundation")
 local metrics = require("ha.performance").shared
 require("lib.utils")
 
@@ -14,7 +15,7 @@ local VARIABLES = { POWER, LEVEL, COLOR, CAPS }
 local ROLES = { "app", "top", "toggle", "bottom" }
 local RETRY_TIMER = "HA.Connected.Target"
 local RELEASE_RETRIES = 3
-local TRACE_LIMIT = 25
+local TRACE_LABEL = "Linked light trace"
 local POWER_COMMANDS = { ON = "ON", DYNAMIC_ON = "ON", OFF = "OFF", DYNAMIC_OFF = "OFF", TOGGLE = "TOGGLE" }
 local LEVEL_COMMANDS = { SET_LEVEL = true, RAMP_TO_LEVEL = true, SET_BRIGHTNESS_TARGET = true }
 local STOP_COMMANDS = { SET_BRIGHTNESS_STOP = "brightnessStop", SET_COLOR_STOP = "colorStop" }
@@ -186,20 +187,12 @@ function Target:linked()
   return next(self.links) ~= nil
 end
 
-function Target:setTrace(enabled)
-  if enabled ~= (self.traceLines ~= nil) then
-    self.traceLines = enabled and 0 or nil
-  end
-end
-
 function Target:_tracing()
-  return self.traceLines ~= nil and self.traceLines < TRACE_LIMIT
+  return foundation.canLogDiagnostic(TRACE_LABEL)
 end
 
 function Target:_trace(message)
-  self.traceLines = self.traceLines + 1
-  local suffix = self.traceLines == TRACE_LIMIT and " | Limit reached. Select Off, then Trace to start again." or ""
-  print("Linked light trace | " .. message .. suffix)
+  foundation.logDiagnostic(TRACE_LABEL, message)
 end
 
 function Target:_unwatch()

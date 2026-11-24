@@ -174,6 +174,37 @@ do
   T.eq("companion claim cannot override registry category", #visible(result, "switch"), 1)
   T.eq("source identity retained as metadata only", result[2].source_entity_id, "light.b")
 end
+T.section("Native discovery identifies a saved button source only for one eligible load")
+do
+  local device = string.rep("d", 32)
+  local gesture = "event.wall_control"
+  local rows = {
+    row("switch.paddle", { bridge_gesture_entity_id = gesture, available = true }),
+    row("switch.other_load", { bridge_gesture_entity_id = gesture, available = true }),
+  }
+  local entries = {
+    ["switch.paddle"] = entry("switch.paddle", 1, { device_id = device, hidden_by = "user" }),
+    ["switch.other_load"] = entry("switch.other_load", 2, { device_id = device }),
+  }
+  local both = keyed(Choices.apply(rows, entries, true))
+  T.eq("one button with two eligible loads cannot hide either load", {
+    Choices.gestureEntity(both["switch.paddle"]),
+    Choices.gestureEntity(both["switch.other_load"]),
+  }, {})
+  entries["switch.other_load"].entity_category = "config"
+  local filtered = keyed(Choices.apply(rows, entries, true))
+  T.eq(
+    "an enabled hidden load may account for the installed button source",
+    Choices.gestureEntity(filtered["switch.paddle"]),
+    gesture
+  )
+  T.eq(
+    "a configuration-only switch is not paired with the button",
+    Choices.gestureEntity(filtered["switch.other_load"]),
+    nil
+  )
+end
+
 T.section("scoped registry reads batch at fifty and reject extra or missing IDs")
 do
   local rows = codec.array({})

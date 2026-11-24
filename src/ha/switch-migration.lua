@@ -15,6 +15,29 @@ local M = {}
 local SAME_COORDINATOR =
   "Connect the original and replacement to the same Home Assistant Connection in Composer, then check again."
 
+local function lightingLines(references, text)
+  for _, kind in ipairs({ "scenes", "groups" }) do
+    local label = kind == "scenes" and "Advanced Lighting scenes" or "Load groups"
+    local rows = references and references[kind]
+    if not rows then
+      text[#text + 1] = label .. " could not be verified."
+    else
+      local names, seen = {}, {}
+      for _, dependencies in pairs(rows) do
+        for id, dependency in pairs(dependencies) do
+          if not seen[id] then
+            seen[id], names[#names + 1] = true, dependency.name
+          end
+        end
+      end
+      table.sort(names)
+      if #names > 0 then
+        text[#text + 1] = label .. " · " .. table.concat(names, ", ")
+      end
+    end
+  end
+end
+
 local function lines(report, replacement)
   local text = {
     ("%s (%s version %s)"):format(
@@ -22,7 +45,7 @@ local function lines(report, replacement)
       report.origin,
       report.version
     ),
-    "Home Assistant device: " .. (report.entity or "Selection could not be verified."),
+    "Home Assistant device: " .. (report.selectedName or report.entity or "Selection could not be verified."),
   }
   local selectionIssue = assess.switchSelectionIssue(report)
   if selectionIssue and report.family == "switch" then
@@ -32,11 +55,21 @@ local function lines(report, replacement)
       .. report.candidate_entity
       .. ". Check the old driver’s Entity ID before saving."
   end
-  for _, p in ipairs(report.proxies) do
-    local label = assess.deviceLocation(p.id, report.name or report.model, report.room)
-    text[#text + 1] = "Control4 proxy for " .. label .. " · " .. tostring(p.file)
+  if report.origin == "Legacy HA" then
+    for _, edge in ipairs(report.edges) do
+      local role = assess.destination(edge.binding, report)
+      if role and role.name then
+        text[#text + 1] = role.name .. " → " .. assess.deviceLocation(edge.device)
+      end
+    end
+    lightingLines(report.lighting, text)
+  else
+    for _, p in ipairs(report.proxies) do
+      local label = assess.deviceLocation(p.id, report.name or report.model, report.room)
+      text[#text + 1] = "Control4 proxy for " .. label .. " · " .. tostring(p.file)
+    end
   end
-  if report.family == "light" then
+  if report.origin ~= "Legacy HA" and report.family == "light" then
     for _, edge in ipairs(report.edges) do
       text[#text + 1] = string.format(
         "Current connection from %s, connection %d to %s, connection %d.",
@@ -48,19 +81,19 @@ local function lines(report, replacement)
     end
     text[#text + 1] = report.interfaces and "Update this Light in place and verify its existing device and proxy."
       or "This Light has a different or unreadable interface. Check its project backup and proxy before planning an update."
-  else
+  elseif report.origin ~= "Legacy HA" then
     if replacement then
       text[#text + 1] = "Replacement is " .. assess.deviceLocation(replacement, "Home Assistant Switch") .. "."
     end
     for _, edge in ipairs(report.edges) do
-      local role = assess.destination(edge.binding)
+      local role = assess.destination(edge.binding, report)
       text[#text + 1] = string.format(
         "%s uses old connection %d to %s, connection %d%s.",
         role and role.name or "Unknown connection",
         edge.binding,
         (assess.deviceLocation(edge.device)),
         edge.port,
-        role and ("; replacement connection " .. role.new) or ""
+        role and role.new and ("; replacement connection " .. role.new) or ""
       )
     end
     text[#text + 1] = "Programming: replace Turn On and Turn Off with the matching actions on the new switch."
@@ -96,9 +129,14 @@ local function lines(report, replacement)
     text[#text + 1] =
       "Only the first 128 locations in each direction are listed. Inspect the remaining programs in Composer."
   end
-  text[#text + 1] = report.programs.readable
-      and "Check scene membership, agent settings and references inside program arguments in Composer."
-    or "Programming could not be read. Check programs on the old device and other devices, scenes and agents in Composer."
+  if report.origin == "Legacy HA" then
+    text[#text + 1] = report.programs.readable and "Check references inside program arguments in Composer."
+      or "Programming could not be read. Check programs on the old driver and related devices and agents in Composer."
+  else
+    text[#text + 1] = report.programs.readable
+        and "Check scene membership, agent settings and references inside program arguments in Composer."
+      or "Programming could not be read. Check programs on the old device and other devices, scenes and agents in Composer."
+  end
   if not report.interfaces then
     text[#text + 1] = "Some connections could not be verified. Compare both devices in Composer."
   end
@@ -569,7 +607,7 @@ function M.install(register, family, current)
       local me, action = C4:GetDeviceID(), params.action
       if action == "open" then
         local cp = family == "switch" and saved()
-        return cp and progress(cp, owner) or { phase = "choose", sources = assess.sources() }
+        return cp and progress(cp, owner) or { phase = "choose", sources = assess.sources(nil, true) }
       end
       if action == "cancel" then
         if preview and preview.token == params.token then
@@ -587,6 +625,7 @@ function M.install(register, family, current)
         preview = { source = source, token = token }
         local modeIssue = source.family == "switch" and assess.switchMigrationModeIssue(source)
         local possible = family == "switch"
+          and source.origin ~= "Legacy HA"
           and source.family == "switch"
           and not modeIssue
           and source.entity
@@ -599,8 +638,9 @@ function M.install(register, family, current)
           token = token,
           can_save = possible and true or false,
           lines = lines(source, family == "switch" and me or nil),
-          message = possible
-              and "Saving this plan records the old switch and its connections on this replacement. The old switch keeps control."
+          message = source.origin == "Legacy HA"
+              and "This review shows what the old driver uses. Leave it in place while you check its connections and programming in Composer."
+            or possible and "Saving this plan records the old switch and its connections on this replacement. The old switch keeps control."
             or modeIssue
             or family ~= "switch" and source.family == "switch" and "Open this review on an unconfigured Home Assistant Switch to prepare a replacement."
             or source.family == "switch" and "Resolve the selection or connection details and start from an unconfigured replacement before saving."
@@ -625,6 +665,7 @@ function M.install(register, family, current)
         local now = assess.assess(original.id)
         if
           not sameOrigin(original, now)
+          or original.origin == "Legacy HA"
           or not now.entity
           or now.family ~= "switch"
           or assess.switchMigrationModeIssue(now)

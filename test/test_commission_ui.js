@@ -3,16 +3,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const elementLookup = require("./html-fixture");
 
 function quickSetup() {
   const source = fs.readFileSync(path.join(__dirname, "../src/ha/commission-ui.js"), "utf8");
-  const elements = new Map();
   const sent = [];
   const document = {
     hidden: false,
     addEventListener(event, handler) { this[event] = handler; },
-    getElementById(id) {
-      if (!elements.has(id)) elements.set(id, {
+    getElementById: elementLookup(() => ({
         value: "",
         parentNode: { classList: { toggle() {} } },
         contains() { return false; },
@@ -20,9 +19,7 @@ function quickSetup() {
         setAttribute() {},
         focus() { document.activeElement = this; },
         addEventListener(event, handler) { this[event] = handler; },
-      });
-      return elements.get(id);
-    },
+    }), "drivers/coordinator/www/html/index.html"),
   };
   let options;
   vm.runInNewContext(source, {
@@ -47,7 +44,11 @@ function quickSetup() {
       setups: [{ id: "lighting", name: "Lighting" }],
     });
   }
-  return { sent, document, reply, connected: options.handlers.HA_ADD_CONNECTED };
+  return {
+    sent, document, reply,
+    connected: options.handlers.HA_ADD_CONNECTED,
+    disconnected: options.handlers.HA_ADD_DISCONNECTED,
+  };
 }
 
 test("an authenticated connection opens the device list without manual retry", () => {
@@ -88,5 +89,19 @@ test("returning to a disconnected tab checks state once if it missed the push", 
   reply(false, stale);
   assert.equal(sent.length, 2);
   reply(true);
+  assert.equal(sent.at(-1).command, "HA_ADD_BROWSE");
+});
+
+test("an open picker stops showing Connected on loss and resumes browsing on reconnect", () => {
+  const { sent, document, reply, connected, disconnected } = quickSetup();
+  reply(true);
+  disconnected();
+  assert.equal(document.getElementById("connection").textContent, "Checking connection…");
+  assert.equal(sent.at(-1).command, "HA_ADD_GET");
+  reply(false);
+  assert.equal(document.getElementById("reload-state").hidden, false);
+  connected();
+  reply(true);
+  assert.equal(document.getElementById("connection").textContent, "Connected");
   assert.equal(sent.at(-1).command, "HA_ADD_BROWSE");
 });

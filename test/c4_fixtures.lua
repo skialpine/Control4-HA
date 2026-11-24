@@ -132,9 +132,9 @@ function F.captureTcpClient(opts)
       return self
     end
     function client:ReadUntil()
-      local function answer()
+      local function answer(response)
         if self._onRead and not self._closed then
-          self._onRead(self, '<c4soap name="UpdateProjectC4i" result="1"/>\0')
+          self._onRead(self, response or '<c4soap name="UpdateProjectC4i" result="1"/>\0')
         end
       end
       if opts and opts.holdReplies then
@@ -155,10 +155,10 @@ function F.captureTcpClient(opts)
     return client
   end
 
-  function capture.reply()
+  function capture.reply(response)
     local answer = table.remove(capture.pendingReplies, 1)
     if answer then
-      answer()
+      answer(response)
     end
   end
 

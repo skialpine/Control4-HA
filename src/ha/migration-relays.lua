@@ -93,12 +93,13 @@ function M.destinationIssue(cp, replacement, undo)
     return
   end
   local bindings = GetDeviceBindings(replacement)
-  local input = bindings[ids.coordinatorBinding]
+  local inputId = cp.source.family == "light" and ids.lightCoordinatorBinding or ids.coordinatorBinding
+  local input = bindings[inputId]
   if not input or tonumber(input.deviceid) ~= replacement or input.provider ~= false then
     return "Control4 could not verify the replacement's connections. Recheck migration."
   end
   for port, binding in pairs(bindings) do
-    if port ~= ids.coordinatorBinding and port ~= ids.proxy then
+    if port ~= inputId and port ~= ids.proxy then
       local found = false
       for _, peer in pairs(binding.boundconsumers or {}) do
         found = true

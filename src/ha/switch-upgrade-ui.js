@@ -3,7 +3,11 @@ var SwitchUpgradePage = (function () {
   var el = function (id) { return document.getElementById("migration-" + id); };
   var panel = document.getElementById("migration");
   var selection = new Set(), phase = "loading", plan, pending, sequence = 0, cached = [], results = [];
-  var resultToken;
+  var resultToken, removalScope, migrationRunning = false;
+  var migrationStatusTimer, statusWait = 18000;
+  var openingRecheckToken;
+  var readinessChecks = 0, readinessTimer, connectedDuringScan = false;
+  var readinessDelays = [2000, 4000, 8000];
   var prefix = "upgrade-" + Math.random().toString(36).slice(2) + "-";
   var summary = el("summary"), next = el("next"), back = el("back"), refresh = el("refresh");
   var backup = el("backup"), list = el("switches"), cleanup = el("cleanup");
@@ -35,41 +39,80 @@ var SwitchUpgradePage = (function () {
       }
     } else if (action === "availability" && phase === "loading") {
       panel.hidden = false;
-      summary.textContent = "Couldn’t check for older switch drivers. Try again.";
+      summary.textContent = "Couldn’t check for older Home Assistant drivers. Try again.";
       button(refresh, true, "Retry migration check");
     } else {
       summary.textContent = message;
-      button(refresh, true, next.dataset.command === "recheck_release" ? "Refresh status"
-        : timedOut || phase === "result" ? "Check migration status" : "Refresh list");
+      if (action === "review_removal") backup.checked = false;
+      button(refresh, true, timedOut ? "Check migration status"
+        : action === "review_removal" || next.dataset.command === "recheck_release" ? "Refresh status"
+        : phase === "result" ? "Check migration status" : "Refresh list");
     }
   }
 
-  function request(action, params, answer, errorTarget) {
+  function startsMigration(action) {
+    return action === "start" || action === "resume";
+  }
+
+  function request(action, params, answer, errorTarget, retried) {
     if (pending) return;
     var payload = params || {};
     var id = prefix + (++sequence);
+    var startingMigration = startsMigration(action);
     payload.action = action;
     payload.request = id;
     if (errorTarget) errorTarget.textContent = "";
-    pending = { id: id, action: action, answer: answer, errorTarget: errorTarget, timer: setTimeout(function () {
+    pending = { id: id, action: action, answer: answer, errorTarget: errorTarget, token: payload.token,
+      payload: payload, retried: retried, timer: setTimeout(function () {
       if (!pending || pending.id !== id) return;
-      pending = null;
-      requestFailed(action, "The Coordinator did not reply. Check the connection, then refresh.", true, errorTarget);
+      if ((action === "availability" || action === "status") && !retried) {
+        retryRead();
+      } else {
+        pending = null;
+        if (startingMigration) {
+          read(true, false, payload.token);
+        } else {
+          requestFailed(action, action === "status"
+            ? "Couldn’t confirm migration status. Check the connection, then choose Check migration status."
+            : "The Coordinator did not reply. Check the connection, then refresh.", true, errorTarget);
+        }
+      }
       changed();
-    }, 18000) };
+    }, startingMigration ? 60000 : action === "availability" && !retried ? 5000 : statusWait) };
+    if (startingMigration) {
+      summary.textContent = "Checking the project and Home Assistant connection…";
+    }
     changed();
     Kit.sendCommand("HA_SWITCH_UPGRADE", payload);
   }
 
+  function retryRead() {
+    var task = pending;
+    clearTimeout(task.timer);
+    pending = null;
+    request(task.action, Object.assign({}, task.payload), task.answer, task.errorTarget, true);
+  }
+
   function receive(data) {
     if (!pending || pending.id !== data.request) return;
+    if (pending.action === "status" && pending.token && !data.error
+        && (!data.saved || pending.token !== data.token)) return;
+    finishRequest(data);
+  }
+
+  function finishRequest(data) {
     var task = pending;
+    if (data.error && task.action === "availability" && !task.retried) {
+      retryRead();
+      return;
+    }
     clearTimeout(task.timer);
     pending = null;
     if (data.error) {
       requestFailed(task.action, data.error, false, task.errorTarget);
     } else {
-      task.answer(data);
+      task.answer(data.running && task.progress && task.progress.token === data.token ? task.progress : data);
+      if (data.running && task.completedBeforeReply) read(true, false, data.token);
     }
     changed();
   }
@@ -276,7 +319,7 @@ var SwitchUpgradePage = (function () {
   function display(heading, message, rows, selectable, focus, running) {
     var title = el("heading");
     if (title.textContent !== heading) title.textContent = heading;
-    summary.textContent = message;
+    if (summary.textContent !== message) summary.textContent = message;
     var readyForTesting = phase === "result" && rows.length && rows.every(function (row) { return row.state === "upgraded"; });
     var secondary = readyForTesting || phase === "result" && rows.some(function (row) { return row.state === "manual"; })
       && rows.every(function (row) { return row.state === "manual" || row.state === "upgraded"; });
@@ -302,13 +345,13 @@ var SwitchUpgradePage = (function () {
     (rows || []).forEach(function (row) {
       var item = document.createElement("li");
       item.dataset.row = row.id;
-      if (mixed && row.state === "upgraded") {
+      if (mixed && row.state === "upgraded" && row.tested && row.referencesReviewed) {
         item.className = "upgrade-complete";
         var completed = document.createElement("strong");
         completed.textContent = driverLabel(row.name, row.room);
         item.appendChild(completed);
         item.appendChild(document.createTextNode(
-          (row.verifiedActions && row.verifiedActions.length ? " · Programming check passed" : "") + " · Ready to test"));
+          " · Testing confirmed"));
         list.appendChild(item);
         return;
       }
@@ -327,37 +370,55 @@ var SwitchUpgradePage = (function () {
         label.appendChild(checkbox);
       }
       var body = document.createElement("span"), name = document.createElement("strong");
+      var connectionReview = row.state === "review" && row.unresolvedConnections;
       name.textContent = driverLabel(row.name, row.room);
       body.appendChild(name);
-      if (row.state === "review" && row.replacement && !row.confirmProgramming) {
-        var target = document.createElement("p");
-        target.className = "setup-detail";
-        target.textContent = row.details && row.details.some(function (entry) { return entry.action; })
-          ? "In Device Actions, select " + driverLabel(row.replacement, row.room)
-            + ". Keep the other actions in each script."
-          : "Move the listed programming to " + driverLabel(row.replacement, row.room) + ".";
-        body.appendChild(target);
+      if (row.state === "review" && row.replacement) {
+        if (!row.confirmProgramming && row.details && row.details.length) {
+          var target = document.createElement("p");
+          target.className = "setup-detail";
+          target.textContent = row.details.some(function (entry) { return entry.moveTimer; })
+            ? "In Composer Programming, follow the steps below for the light events and the timer event."
+            : row.details.some(function (entry) { return entry.action; })
+            ? "In Device Actions, select " + driverLabel(row.replacement, row.room)
+              + ". Keep the other actions in each script."
+            : "Move the listed programming to " + driverLabel(row.replacement, row.room) + ".";
+          body.appendChild(target);
+        }
+        if (connectionReview) {
+          var destination = document.createElement("p");
+          destination.className = "setup-detail";
+          destination.textContent = "In Composer Connections, check the marked links for "
+            + driverLabel(row.replacement, row.room) + ".";
+          body.appendChild(destination);
+        }
         if (row.oldDriver) {
           var source = document.createElement("p");
           source.className = "setup-detail";
-          source.textContent = driverLabel(row.oldDriver, row.room) + " still controls the switch.";
+          source.textContent = driverLabel(row.oldDriver, row.room) + (row.family === "light" ? " still controls the light." : " still controls the switch.");
           body.appendChild(source);
         }
       }
       if (row.device) {
         var facts = document.createElement("span");
         facts.className = "setup-detail";
-        facts.textContent = "Controls " + row.device;
+        facts.textContent = phase === "review" && row.reviewedLoad && row.reviewedLoad.previous
+          ? "Currently controls " + row.reviewedLoad.previous
+          : "Controls " + row.device;
         body.appendChild(facts);
       }
-      if (row.state === "upgraded" && row.buttonBehavior && !row.tested) {
+      var testRow = phase === "result" && row.state === "upgraded" && !row.tested;
+      if (testRow) {
         var test = document.createElement("p");
         test.className = "setup-detail";
         test.textContent = row.buttonBehavior === "Buttons only" ? "Test the buttons you use."
-          : "Test on/off control and the buttons you use.";
+          : row.buttonBehavior ? "Test on/off control and the buttons you use."
+          : row.family === "light" ? "Test on/off and any dimming or color controls you use."
+          : "Turn the switch on and off.";
         body.appendChild(test);
       }
-      if (row.message || phase === "review" && row.buttonBehavior) {
+      var namedConnectionReview = connectionReview && row.programming === "none" && row.replacement && row.oldDriver;
+      if (row.message && !namedConnectionReview || phase === "review" && row.buttonBehavior) {
         var note = document.createElement("p");
         note.className = "setup-detail";
         note.textContent = phase === "review" && row.unresolvedConnections
@@ -379,13 +440,76 @@ var SwitchUpgradePage = (function () {
       if (phase === "review" && row.reviewedLoad) {
         var proposed = document.createElement("p");
         proposed.className = "setup-detail";
-        proposed.textContent = "Home Assistant load to transfer";
+        proposed.textContent = row.reviewedLoad.previous
+          ? "The new driver will control the same device through this Home Assistant light."
+          : "Home Assistant load to transfer";
         item.appendChild(proposed);
         showLoad(item, row.reviewedLoad);
+        if (row.lightSettings) {
+          [["Original settings", row.lightSettings.original], ["Settings on the new driver", row.lightSettings.replacement]]
+            .forEach(function (entry) {
+              var settings = entry[1], line = document.createElement("p");
+              line.className = "setup-detail";
+              var values = [settings.kind];
+              if (settings.format) values.push(settings.format + " color");
+              if (settings.range) values.push(settings.range.replace("-", "–") + " K");
+              line.textContent = entry[0] + " · " + values.join(", ");
+              item.appendChild(line);
+            });
+        } else if (row.lightType) {
+          var lightType = document.createElement("p");
+          lightType.className = "setup-detail";
+          lightType.textContent = "Light type · " + row.lightType;
+          item.appendChild(lightType);
+        }
       } else if (row.recheckLoad) {
         showLoad(item, row.recheckLoad);
       }
-      if (phase === "review" || row.state === "manual") showConnections(item, row);
+      if (row.lighting && row.lighting.length && (phase === "review" || row.state === "review" || testRow)) {
+        var previewLighting = phase === "review";
+        var lighting = document.createElement(previewLighting ? "details" : "div");
+        var lightingTitle = document.createElement(previewLighting ? "summary" : "p");
+        lightingTitle.textContent = testRow ? "Lighting to test" : "Lighting scenes and load groups (" + row.lighting.length + ")";
+        lighting.appendChild(lightingTitle);
+        if (previewLighting && row.automaticScenes) {
+          var sceneTransfer = document.createElement("p");
+          sceneTransfer.className = "setup-detail";
+          sceneTransfer.textContent = "Quick Setup will verify the saved settings as it moves the light in these scenes. It will show you any Composer edits to make. If the move stops partway through, restore the project backup.";
+          lighting.appendChild(sceneTransfer);
+        }
+        var dependencies = document.createElement("ul");
+        dependencies.className = "upgrade-worklist";
+        row.lighting.forEach(function (reference) {
+          var dependency = document.createElement("li");
+          dependency.textContent = testRow && reference.kind === "scenes"
+            ? "In Agents → Advanced Lighting, select “" + reference.name + "”, click Activate Scene and verify the new light responds."
+            : (reference.kind === "scenes" ? "Advanced Lighting · " : "Load group · ") + reference.name;
+          dependencies.appendChild(dependency);
+        });
+        lighting.appendChild(dependencies);
+        item.appendChild(lighting);
+      }
+      if (testRow && row.hadProgramming) {
+        var runProgram = document.createElement("p");
+        runProgram.className = "setup-detail";
+        var events = row.testEvents || row.verifiedActions || [];
+        runProgram.textContent = events.length ? "In Programming → Device Events, select each event below. Click Execute in the Script pane and verify the new driver responds."
+          : "Run the programming you changed and verify the new driver responds.";
+        item.appendChild(runProgram);
+        if (events.length) {
+          var programs = document.createElement("ul");
+          programs.className = "upgrade-worklist";
+          events.forEach(function (entry) {
+            var program = document.createElement("li");
+            program.textContent = entry.location + (entry.event ? " · " + entry.event : " · Event " + entry.eventId);
+            programs.appendChild(program);
+          });
+          item.appendChild(programs);
+        }
+      }
+      if (phase === "review" || row.state === "manual" || connectionReview || row.family && row.state === "review") {
+        showConnections(item, row);
+      }
       if (!running && row.state === "manual") manualSteps(item, row);
       if (!running && row.state === "target" && row.targetToConfirm) confirmLoad(item, row);
       if ((row.state === "review" || row.state === "manual" || phase === "review") && row.details && row.details.length) {
@@ -398,7 +522,16 @@ var SwitchUpgradePage = (function () {
           ref.appendChild(event);
           var instruction = document.createElement("p");
           var instructions = entry.instruction;
-          if (phase === "result" && row.state === "review" && row.replacement && entry.action) {
+          if (phase === "result" && row.state === "review" && row.replacement && entry.moveTimer) {
+            instructions = "Copy the Timer Agent action to the " + entry.event + " event on "
+              + driverLabel(row.replacement, row.room) + ". Keep the same timer, then remove the action from the old driver.";
+          } else if (phase === "result" && row.state === "review" && row.replacement && entry.action && row.family) {
+            instructions = "Under Commands, choose Device Specific Command → " + entry.action
+              + ". In Script Actions, keep " + (entry.count > 1 ? "exactly " + entry.count + " copies" : "one copy")
+              + " for " + driverLabel(row.replacement, row.room)
+              + " in the original position in the script. Remove any matching actions for "
+              + driverLabel(row.oldDriver || row.name, row.room) + ".";
+          } else if (phase === "result" && row.state === "review" && row.replacement && entry.action) {
             instructions = "Under Commands, select Device Specific Command → " + entry.action
               + ". Drag " + (entry.count > 1 ? entry.count + " copies of the action" : "the action")
               + " into Script Actions";
@@ -440,7 +573,7 @@ var SwitchUpgradePage = (function () {
         reviewLabel.appendChild(document.createTextNode(confirmationText));
         item.appendChild(reviewLabel);
       }
-      if (row.state === "upgraded" && row.verifiedActions && row.verifiedActions.length) {
+      if (!testRow && row.state === "upgraded" && row.verifiedActions && row.verifiedActions.length) {
         var confirmation = document.createElement("p");
         confirmation.textContent = "Programming check passed";
         var verified = document.createElement("ul");
@@ -464,7 +597,7 @@ var SwitchUpgradePage = (function () {
     phase = "list";
     el("backup-label").hidden = true;
     var count = selection.size;
-    display("Migrate switch drivers",
+    display(cached.some(function (row) { return row.family; }) ? "Migrate older drivers" : "Migrate switch drivers",
       "These older Control4 drivers need replacements to work with the current suite. The new drivers keep the original names and rooms.",
       cached, true, focus);
     button(back, results.length > 0, "Back to migration results");
@@ -482,8 +615,38 @@ var SwitchUpgradePage = (function () {
     if (focused) document.getElementById("add-title").focus();
   }
 
-  function scan(focus) {
-    request("scan", {}, function (data) {
+  function scan(focus, refreshCatalog) {
+    if (pending) return;
+    clearTimeout(readinessTimer);
+    connectedDuringScan = false;
+    if (refreshCatalog) summary.textContent = "Checking for older Home Assistant drivers…";
+    request("scan", { refresh: refreshCatalog === true }, function (data) {
+      if (data.waiting === "home_assistant" || data.waiting === "driver_versions") {
+        if (data.waiting === "home_assistant" && connectedDuringScan) {
+          scan(focus, refreshCatalog);
+          return;
+        }
+        phase = "waiting";
+        var versions = data.waiting === "driver_versions";
+        var delay = versions && readinessDelays[readinessChecks];
+        display("Migrate older drivers",
+          versions ? (delay ? "Waiting for the installed drivers to report matching versions…"
+              : "Check that the Home Assistant drivers are on the same version, then refresh this list.")
+            : "Waiting for Home Assistant to connect…",
+          cached.map(function (row) { return { id: row.id, name: row.name, room: row.room }; }), false, false);
+        button(back, results.length > 0, "Back to migration results");
+        button(cleanup, false);
+        button(next, false);
+        button(refresh, true, "Refresh list");
+        if (delay) {
+          readinessChecks += 1;
+          readinessTimer = setTimeout(function () {
+            if (phase === "waiting") scan(false, refreshCatalog);
+          }, delay);
+        }
+        return;
+      }
+      readinessChecks = 0;
       cached = data.rows || [];
       if (!cached.length) {
         if (data.pending) read(focus, true);
@@ -505,7 +668,9 @@ var SwitchUpgradePage = (function () {
     el("confirmation").textContent = "I saved a backup of this Control4 project.";
     el("backup-label").hidden = false;
     display("Review migration",
-      data.rows.some(function (row) { return row.reviewedLoad; })
+      data.rows.some(function (row) { return row.lightSettings; })
+        ? "Continuing approves the Home Assistant loads and Light settings shown below."
+        : data.rows.some(function (row) { return row.reviewedLoad; })
         ? "Continuing approves the Home Assistant loads shown below." : "Review the drivers below before continuing.",
       data.rows, false, true);
     button(back, true, "Back to driver list");
@@ -539,14 +704,34 @@ var SwitchUpgradePage = (function () {
   }
 
   function renderStatus(data, focus, noOtherDrivers) {
+    clearTimeout(migrationStatusTimer);
     if (!data.saved) {
       scan(focus);
       return;
     }
     phase = "result";
     var rows = data.rows || [], count = rows.filter(function (row) { return row.state === "upgraded"; }).length;
+    var wasRunning = migrationRunning;
     results = rows;
     resultToken = data.token;
+    removalScope = data.removalScope;
+    migrationRunning = data.running === true;
+    if (migrationRunning) {
+      display("Migrating drivers", data.progress || "Checking the project and Home Assistant connection…", rows.map(function (row) {
+        return { id: row.id, name: row.name, room: row.room, device: row.device };
+      }), false, focus, true);
+      el("backup-label").hidden = true;
+      button(back, false);
+      button(cleanup, false);
+      button(next, false);
+      button(refresh, true, "Refresh status");
+      if (!pending) {
+        migrationStatusTimer = setTimeout(function () { read(false, false, data.token); }, statusWait);
+      }
+      changed();
+      return;
+    }
+    focus = focus || wasRunning;
     var recovery = rows.filter(function (row) { return row.state === "recovery"; });
     if (recovery.length) {
       display("Restore the project backup", "After restoring the backup, select Refresh status.",
@@ -556,6 +741,19 @@ var SwitchUpgradePage = (function () {
       button(cleanup, false);
       button(next, false);
       el("backup-label").hidden = true;
+      changed();
+      return;
+    }
+    var releaseRecheck = rows.filter(function (row) { return row.state === "release_recheck"; });
+    if (releaseRecheck.length) {
+      display("Check the saved migration", "Quick Setup will check the original drivers, their replacements, and the saved lighting scenes. Then you can review what to do next.",
+        releaseRecheck, false, focus, false);
+      el("backup-label").hidden = true;
+      button(back, false);
+      button(refresh, true, "Refresh status");
+      button(cleanup, false);
+      button(next, true, "Check saved migration");
+      next.dataset.command = "recheck_release";
       changed();
       return;
     }
@@ -577,25 +775,28 @@ var SwitchUpgradePage = (function () {
       changed();
       return;
     }
-    var testInstructions = (rows.some(function (row) { return row.buttonBehavior; }) ? "Test the new drivers’ controls"
-        : rows.length === 1 ? "Turn the switch on and off" : "Turn each switch on and off")
-      + (rows.some(function (row) { return row.hadProgramming; }) ? " and run the programming you changed." : ".")
-      + " Then review the old drivers for removal.";
     var programming = rows.some(function (row) {
       return row.state === "review" && (row.details && row.details.length || row.programming === "check");
     });
+    var connections = rows.some(function (row) { return row.state === "review" && row.unresolvedConnections; });
+    var lighting = rows.some(function (row) { return row.state === "review" && row.lightingReview; });
+    var attention = rows.some(function (row) { return row.state === "attention"; });
     var manual = rows.some(function (row) { return row.state === "manual"; });
     var stageDone = rows.every(function (row) { return row.state === "upgraded" || row.state === "manual"; });
     var testPending = rows.some(function (row) { return row.state === "manual" && row.connectedAutomatically; });
     var targetPending = rows.some(function (row) { return row.state === "target"; });
-    var tested = rows.length > 0 && rows.every(function (row) { return row.tested; });
+    var tested = rows.length > 0 && rows.every(function (row) { return row.tested && row.referencesReviewed; });
+    var confirmingTests = rows.some(function (row) {
+      return row.state === "upgraded" && row.oldDriver && (!row.tested || !row.referencesReviewed);
+    });
     var canResume = rows.some(function (row) {
       return ["review", "attention", "pending", "adding", "prepared", "cutover", "restored"].indexOf(row.state) >= 0;
     });
     el("backup-label").hidden = true;
-    var heading = data.running ? "Migrating switch drivers" : programming ? "Update programming"
+    var heading = data.running ? (rows.some(function (row) { return row.family; }) ? "Migrating drivers" : "Migrating switch drivers") : programming ? "Update programming"
         : targetPending ? "Confirm the Home Assistant load" : testPending ? "Test the new drivers"
-        : manual ? "Finish migration in Composer" : count === rows.length
+        : lighting ? "Update lighting scenes" : connections ? "Check connections" : attention ? "Driver setup needs attention"
+          : manual ? "Finish migration in Composer" : count === rows.length
           ? (tested ? "Review migrated drivers" : "Test the new drivers") : "Continue migration";
     var nextTaskAppeared = !data.running && !programming && (targetPending || count === rows.length && !tested)
       && el("heading").textContent !== heading;
@@ -603,45 +804,58 @@ var SwitchUpgradePage = (function () {
       data.running ? "Preparing new drivers and checking their connections…"
         : data.needsNames ? "Finish applying the original names to the new drivers."
         : count === rows.length && tested ? "Review the old drivers for removal."
-        : count === rows.length ? (noOtherDrivers ? "No other older switch drivers were found. " : "") + testInstructions
-        : programming ? "The original still controls each switch that needs programming changes."
+        : count === rows.length ? (noOtherDrivers ? "No other older Home Assistant drivers were found. " : "")
+          + "In Composer’s System Design, double-click each new driver to test its controls. Follow any scene and programming checks below."
+          + (confirmingTests ? " Then choose Confirm testing to see which old drivers are ready to remove." : "")
+          + (!noOtherDrivers ? " To see other drivers you can migrate, choose Review more drivers." : "")
+        : programming ? "Complete the Composer changes below, then check your changes. The original drivers stay connected while you work."
         : targetPending ? "The original stays connected until you confirm its load."
+        : lighting ? "Make the listed lighting changes in Composer, then choose Check Composer changes. The original drivers stay connected while you work."
+        : connections ? "Check the marked connections in Composer, then choose Check connections."
+          + (confirmingTests ? " Follow the tests below for drivers that are ready." : "")
+        : attention ? "Check the devices with setup issues below, then choose Retry driver setup."
+          + (confirmingTests ? " You can test the drivers that are ready." : "")
         : "Follow the next step for each driver below.", rows, false, focus || nextTaskAppeared, data.running);
     button(back, false);
     button(refresh, !data.running, "Refresh status");
-    button(cleanup, !data.running && !programming && data.canReviewRemoval, "Review old drivers for removal");
+    button(cleanup, !data.running && !programming && data.canReviewRemoval,
+      confirmingTests ? (count < rows.length ? "Confirm tests for ready drivers" : "Confirm testing") : "Review old drivers for removal");
     button(next, !data.running && (data.needsNames || (stageDone && !noOtherDrivers) || canResume),
       data.needsNames ? "Finish naming drivers" : stageDone ? "Review more drivers"
-        : programming ? "Check programming" : "Recheck and continue");
+        : programming || lighting ? "Check Composer changes" : connections ? "Check connections"
+        : attention ? "Retry driver setup" : "Continue migration");
     next.dataset.command = data.needsNames ? "finish_names" : stageDone ? "scan" : "resume";
     changed();
   }
 
-  function read(focus, noOtherDrivers) {
-    request("status", {}, function (data) { renderStatus(data, focus, noOtherDrivers); });
+  function read(focus, noOtherDrivers, token) {
+    if (pending) return;
+    clearTimeout(migrationStatusTimer);
+    request("status", { token: token }, function (data) { renderStatus(data, focus, noOtherDrivers); });
   }
 
   function checkAvailability(focus) {
     if (!pending && phase === "loading" && !panel.hidden) {
-      summary.textContent = "Checking for older switch drivers…";
+      summary.textContent = "Checking for older Home Assistant drivers…";
     }
-    request("availability", {}, function (data) {
+    request("availability", { includeStatus: true }, function (data) {
       if (!data.pending && !data.count) {
         hide();
         return;
       }
       if (panel.hidden) {
-        display("Migrate switch drivers", "Checking this project for older switch drivers…", [], false, false);
+        display("Migrate drivers", "Checking this project for older Home Assistant drivers…", [], false, false);
         [next, back, refresh, cleanup, el("backup-label")].forEach(function (element) { button(element, false); });
       }
       panel.hidden = false;
-      if (data.pending) read(focus);
+      if (data.status && data.status.saved) renderStatus(data.status, focus);
+      else if (data.pending) read(focus);
       else scan(focus);
     });
   }
 
   function checkRemoval() {
-    request("review_removal", { tested: backup.checked, referencesReviewed: backup.checked }, function (data) {
+    request("review_removal", { tested: backup.checked, referencesReviewed: backup.checked, scope: removalScope }, function (data) {
       var rows = data.rows || [];
       var removed = rows.length && rows.every(function (row) { return row.state === "removed"; });
       var ready = rows.some(function (row) { return row.state === "ready"; });
@@ -669,15 +883,14 @@ var SwitchUpgradePage = (function () {
     phase = "cleanup-confirm";
     completed = untested;
     var edited = completed.some(function (row) { return row.hadProgramming; });
-    el("confirmation").textContent = (completed.some(function (row) { return row.buttonBehavior; })
-      ? "I tested each new driver and verified the controls and buttons it uses."
-      : completed.length === 1 ? "I verified that the new driver turns the switch on and off."
-        : "I verified that each new driver turns its switch on and off.")
+    var lighting = completed.some(function (row) { return row.lighting && row.lighting.length; });
+    el("confirmation").textContent = "I tested the controls I use on each new driver."
       + (edited ? " I also ran the programming I changed and verified it worked." : "")
+      + (lighting ? " I tested the affected lighting scenes and load groups." : "")
       + " I checked that no scenes, agent settings or programming still use the old drivers.";
     el("backup-label").hidden = false;
     display("Confirm testing before removal",
-      "In Composer, check Advanced Lighting scene loads, other agent settings, and programming that uses the old drivers. Move any remaining references and test them before deleting the originals.",
+      "Use the checkbox after testing and checking the old drivers’ references. Choose Check old drivers to see which ones are ready to remove in Composer.",
       completed.map(function (row) {
         return { id: row.id, name: row.replacement || row.name, room: row.room,
           message: "Old driver to check · " + driverLabel(row.oldDriver, row.room) };
@@ -688,15 +901,22 @@ var SwitchUpgradePage = (function () {
     button(next, true, "Check old drivers");
     changed();
   };
-  refresh.onclick = function () { if (phase === "list") scan(true); else checkAvailability(true); };
+  refresh.onclick = function () {
+    if (phase === "list" || phase === "waiting") {
+      readinessChecks = 0;
+      scan(true, true);
+    }
+    else if (migrationRunning) read(true, false, resultToken);
+    else checkAvailability(true);
+  };
   back.onclick = function () {
-    if (phase === "list" || phase === "cleanup-confirm" || phase === "cleanup") read(true);
+    if (phase === "list" || phase === "waiting" || phase === "cleanup-confirm" || phase === "cleanup") read(true);
     else renderList(true);
   };
   backup.onchange = changed;
   startDialog.addEventListener("close", function () {
     if (startDialog.returnValue === "start") startMigration();
-    next.focus();
+    if (!migrationRunning) next.focus();
   });
   next.onclick = function () {
     if (pending) return;
@@ -715,17 +935,49 @@ var SwitchUpgradePage = (function () {
     } else {
       var params = {};
       if (next.dataset.command === "resume") {
+        params.token = resultToken;
         var reviewed = Array.from(list.querySelectorAll("[data-manual-review]:checked"), function (checkbox) {
           return Number(checkbox.dataset.manualReview);
         });
-        if (reviewed.length) params = { token: resultToken, reviewed: reviewed };
+        if (reviewed.length) params.reviewed = reviewed;
       }
       request(next.dataset.command, params, function (data) { renderStatus(data, true); });
     }
   };
   Kit.listen("HA_SWITCH_UPGRADE_REPLY", receive);
+  Kit.listen("HA_ADD_CONNECTED", function () {
+    if (pending && pending.action === "scan") connectedDuringScan = true;
+    else if (phase === "waiting" && !pending) scan(false);
+  });
   Kit.listen("HA_SWITCH_UPGRADE_PROGRESS", function (data) {
-    if (phase === "result" && !pending) renderStatus(data, false);
+    if (!data.saved || !data.token) return;
+    if (pending) {
+      if (startsMigration(pending.action) && pending.token === data.token) {
+        if (data.running) {
+          var firstProgress = !pending.progress;
+          pending.completedBeforeReply = false;
+          pending.progress = data;
+          if (firstProgress) renderStatus(data, true);
+          else if (data.progress) summary.textContent = data.progress;
+        } else if (pending.progress) {
+          finishRequest(data);
+        } else {
+          // A release recheck can save a non-running snapshot before starting the run.
+          pending.completedBeforeReply = true;
+        }
+      } else if (pending.action === "status" && migrationRunning && data.token === resultToken
+          && (!pending.token || pending.token === data.token) && !data.running) {
+        finishRequest(data);
+      } else if ((pending.action === "availability" || pending.action === "status") && !pending.token && !pending.retried
+          && phase === "loading" && !data.running && openingRecheckToken !== data.token) {
+        retryRead();
+      }
+    } else if (phase === "result" && data.token === resultToken && (!data.running || migrationRunning)) {
+      renderStatus(data, false);
+    } else if (phase === "loading" && !panel.hidden && !data.running && openingRecheckToken !== data.token) {
+      openingRecheckToken = data.token;
+      checkAvailability(false);
+    }
   });
   return { connect: function () { checkAvailability(false); } };
 })();

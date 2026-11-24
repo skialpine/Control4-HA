@@ -11,6 +11,11 @@ local TIMER = "HA.SuiteUpdate"
 local ROOT, STAGING = "C4Z_ROOT", "SANDBOX"
 local COORDINATOR = ids.packages.coordinator.file
 local ORDER = { ids.packages.light.file, ids.packages.switch.file, COORDINATOR }
+local labels = {
+  [ids.packages.light.file] = "Light",
+  [ids.packages.switch.file] = "Switch",
+  [COORDINATOR] = "Connection",
+}
 local MAX_BYTES = 4 * 1024 * 1024
 
 local function digest(bytes)
@@ -86,8 +91,22 @@ local function matchesWriteIntent(row, bytes, qualified, previous)
     or #bytes < #previous and previous:sub(1, #bytes) == bytes
 end
 
-function Installer.new()
-  return setmetatable({}, Installer)
+local function packageRunning(name, members, revision)
+  if name == COORDINATOR then
+    return tonumber(C4:GetDriverConfigInfo("version")) == revision
+  end
+  local expected = "<version>" .. revision .. "</version>"
+  for device in pairs(members) do
+    local ok, reply = pcall(SendUIRequest, device, "HA_SUITE_RUNNING_VERSION", {})
+    if not ok or reply ~= expected then
+      return false
+    end
+  end
+  return true
+end
+
+function Installer.new(usesDriverLocalTrust)
+  return setmetatable({ usesDriverLocalTrust = usesDriverLocalTrust }, Installer)
 end
 
 function Installer:stop()
@@ -145,14 +164,8 @@ function Installer:prepare(result)
   if not Installer.isOwner() or self:pending() then
     return false
   end
-  if Properties["Directory Start Path"] == "Driver" then
-    for _, name in ipairs({ "CA Certificate Path", "Certificate Path", "Private Key Path" }) do
-      local path = Properties[name]
-      if type(path) == "string" and path ~= "" then
-        return false,
-          "This Coordinator uses a certificate file stored with its driver. Ask your installer to update it."
-      end
-    end
+  if self.usesDriverLocalTrust and self.usesDriverLocalTrust() then
+    return false, "This Coordinator uses a certificate file stored with its driver. Ask your installer to update it."
   end
   local running, assets = installed(), {}
   if not hasOneCoordinator(running) then
@@ -161,7 +174,7 @@ function Installer:prepare(result)
   for _, asset in ipairs(result.assets or {}) do
     assets[asset.name] = asset
   end
-  local job = { revision = result.revision, archives = codec.array({}) }
+  local job = { revision = result.revision, prerelease = result.prerelease, archives = codec.array({}) }
   for _, name in ipairs(ORDER) do
     local members, asset = running and running[name], assets[name]
     if (members ~= nil) ~= (asset ~= nil) then
@@ -193,7 +206,7 @@ end
 
 -- After a restart, observe the saved operation. Only an explicitly enabled
 -- check may resume writes. The other packages are always handled before self.
-function Installer:runPending(allowWrites, onDone)
+function Installer:runPending(mayWrite, onDone)
   if self.run or not Installer.isOwner() then
     return false
   end
@@ -201,12 +214,12 @@ function Installer:runPending(allowWrites, onDone)
   if job == nil then
     return false
   end
-  local run = { attempted = {}, checks = {} }
+  local run = { attempted = {}, checks = {}, verified = {} }
   self.run = run
   local function finish(status)
     if self.run == run then
       self:stop()
-      onDone(status, job and job.revision or nil)
+      onDone(status, job and job.revision or nil, run.progress)
     end
   end
   local function check()
@@ -215,6 +228,7 @@ function Installer:runPending(allowWrites, onDone)
     end
     local running = installed()
     local pending, archives, installedCount = nil, {}, 0
+    run.progress = nil
     if not job or not hasOneCoordinator(running) or not Installer.isOwner() then
       return finish("blocked")
     end
@@ -224,25 +238,34 @@ function Installer:runPending(allowWrites, onDone)
     if installedCount ~= #job.archives then
       return finish("blocked")
     end
+    local progress = { completed = {}, pending = {} }
+    local blocked = false
     for _, row in ipairs(job.archives) do
       local current = withMembers(row, running[row.name], job.revision)
-      if current and row.name == COORDINATOR then
-        current = tonumber(C4:GetDriverConfigInfo("version")) == job.revision
-      end
       local bytes = updater:readArchive(ROOT, row.name)
       local onDisk = digest(bytes)
       local qualified = updater:readArchive(STAGING, "qualified-" .. row.name)
       local previous = updater:readArchive(STAGING, "previous-" .. row.name)
       if current == nil or digest(qualified) ~= row.new or digest(previous) ~= row.old then
-        return finish("blocked")
-      end
-      if onDisk ~= row.old and onDisk ~= row.new and not matchesWriteIntent(row, bytes, qualified, previous) then
-        return finish("blocked")
+        blocked = true
+      elseif onDisk ~= row.old and onDisk ~= row.new and not matchesWriteIntent(row, bytes, qualified, previous) then
+        blocked = true
       end
       archives[row.name] = qualified
-      if not pending and (not current or onDisk ~= row.new) then
-        pending = row
+      if current ~= nil and onDisk == row.new and not run.verified[row.name] then
+        run.verified[row.name] = packageRunning(row.name, running[row.name], job.revision)
       end
+      if current ~= nil and onDisk == row.new and run.verified[row.name] then
+        progress.completed[#progress.completed + 1] = labels[row.name]
+      else
+        run.verified[row.name] = nil
+        progress.pending[#progress.pending + 1] = labels[row.name]
+        pending = pending or row
+      end
+    end
+    run.progress = progress
+    if blocked then
+      return finish("blocked")
     end
     if not pending then
       if C4:FileSetDir(STAGING) == false then
@@ -259,10 +282,17 @@ function Installer:runPending(allowWrites, onDone)
       end
       return finish("updated")
     end
-    if not allowWrites then
+    if not mayWrite then
       return finish("attention")
     end
+    local checked, allowed, reason = pcall(mayWrite, job)
+    if not checked or not allowed then
+      return finish(reason or "attention")
+    end
     local name = pending.name
+    if name == COORDINATOR and self.usesDriverLocalTrust and self.usesDriverLocalTrust() then
+      return finish("driver_local_trust")
+    end
     if run.attempted[name] then
       run.checks[name] = (run.checks[name] or 0) + 1
       if run.checks[name] >= 15 then

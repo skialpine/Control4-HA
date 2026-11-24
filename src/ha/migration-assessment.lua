@@ -1,8 +1,11 @@
 -- Read-only Director assessment. Keep private script bodies and settings inside Director.
+local codec = require("ha.codec")
 local contract = require("ha.contract")
 local ids = require("ha.identities")
 require("lib.utils")
 local prototypeSelection = require("ha.prototype-selection")
+local legacyProfile = require("ha.legacy-driver-profile")
+local lighting = require("ha.migration-lighting")
 local M = {}
 local roles = {
   [999] = { class = "HA_DEVICE", name = "Home Assistant connection", provider = false, new = ids.coordinatorBinding },
@@ -12,6 +15,10 @@ local roles = {
   [202] = { class = "BUTTON_LINK", name = "Toggle button", provider = true, new = ids.links.toggle },
 }
 local function sourceRoles(report)
+  local profile = legacyProfile.forSource(report)
+  if profile then
+    return profile.bindings
+  end
   if report.family == "switch" then
     return roles
   end
@@ -73,15 +80,44 @@ end
 
 function M.programReference(reference, original)
   local location, device = M.deviceLocation(reference.device, original and original.name, original and original.room)
+  local available, timer = pcall(GetAgentId, "control4_agent_timer.c4i")
+  if available and reference.device == timer then
+    location = "Timer Agent"
+  end
+  local profile = legacyProfile.forSource(original)
   return {
     location = location,
     event = eventName(device, reference),
     eventId = reference.event,
+    replacementEventId = profile and original.id == reference.device and profile.events[reference.event] or nil,
   }
 end
 
 function M.source(id, row)
   local package = row and ids.legacyPrototypes[row.driverFileName]
+  if row and not package and legacyProfile.contains(row.driverFileName) then
+    local profile = legacyProfile.identify(
+      row.driverFileName,
+      C4:GetDeviceData(id, "model"),
+      C4:GetDeviceData(id, "manufacturer"),
+      C4:GetDeviceData(id, "version")
+    )
+    if profile then
+      local proxyId, proxy = next(row.proxies or {})
+      local name = proxy and not next(row.proxies, proxyId) and proxy.deviceName or row.deviceName
+      return {
+        id = id,
+        file = row.driverFileName,
+        model = profile.model,
+        family = profile.family,
+        origin = "Legacy HA",
+        version = profile.version,
+        room = row.roomName,
+        room_id = numeric(row.roomId),
+        name = name,
+      }
+    end
+  end
   if not package or C4:GetDeviceData(id, "model") ~= package.model or C4:GetDeviceData(id, "manufacturer") ~= "BP" then
     return nil
   end
@@ -103,8 +139,12 @@ function M.source(id, row)
   }
 end
 
-function M.sources(family)
-  local found = C4:GetDevices({ C4iNames = family == "switch" and "HA.Switch.c4z" or "HA.Switch.c4z,HA.Light.c4z" })
+function M.sources(family, includeAdditional)
+  local names = family == "switch" and "HA.Switch.c4z" or "HA.Switch.c4z,HA.Light.c4z"
+  if includeAdditional then
+    names = names .. "," .. legacyProfile.files()
+  end
+  local found = C4:GetDevices({ C4iNames = names })
   assert(type(found) == "table")
   local list = {}
   for key, row in pairs(found) do
@@ -199,7 +239,7 @@ end
 local powerCommands = { ["Turn On"] = true, ["Turn Off"] = true, TurnOn = true, TurnOff = true }
 
 -- Only single, unconditional power commands with empty arguments have a verified mapping.
-local function powerCommand(node, depth)
+local function powerCommand(node, depth, nativePower)
   local xml = type(node.cmdcond) == "table" and node.cmdcond.xml
   if depth ~= 1 or node.enabled == false or type(xml) ~= "string" or #xml > 2048 then
     return
@@ -208,21 +248,55 @@ local function powerCommand(node, depth)
   local command = ok and Select(parsed, "devicecommand")
   if
     type(command) == "table"
-    and powerCommands[command.command]
     and (command.params == nil or type(command.params) == "table" and not next(command.params))
   then
-    return command.command
+    return powerCommands[command.command] and command.command or nativePower and nativePower[command.command]
   end
 end
 
 -- The published GetAllCodeItems schema separates structural targets from private cmdcond XML.
-local function programming(members, programs)
+local function timerScript(code, agent)
+  if not agent or code.enabled == false or (type(code.cmdcond) == "table" and (code.cmdcond.xml or "") ~= "") then
+    return
+  end
+  local actions = code.subitems or {}
+  local first = next(actions)
+  if first ~= 1 or next(actions, first) then
+    return
+  end
+  local action = actions[1]
+  local xml = type(action.cmdcond) == "table" and action.cmdcond.xml
+  if
+    numeric(action.device) ~= agent
+    or action.enabled == false
+    or next(action.subitems or {})
+    or type(xml) ~= "string"
+    or #xml > 2048
+  then
+    return
+  end
+  local ok, parsed = pcall(ParseXml, xml)
+  local command = ok and Select(parsed, "devicecommand")
+  local parameter = type(command) == "table" and Select(command, "params", "param")
+  local value = type(parameter) == "table" and parameter.value
+  if
+    type(value) == "table"
+    and parameter.name == "id"
+    and Select(value, "_attr", "type") == "INTEGER"
+    and numeric(value.static)
+    and (command.command == "StartTimer" or command.command == "StopTimer")
+  then
+    return C4:Hash("SHA256", codec.encode({ agent = agent, action = command, kind = action.type }))
+  end
+end
+
+local function programming(members, programs, nativePower, ignoreEmpty, lightProxy)
   local summary = { readable = false, attached = {}, incoming = {}, opaque = false }
   if type(programs) ~= "table" or type(programs.event_mgr) ~= "table" then
     return summary
   end
   local remaining = 25000
-  local function visit(node, depth, location, active)
+  local function visit(node, depth, location, active, position)
     remaining = remaining - 1
     if remaining < 0 or depth > 64 or type(node) ~= "table" then
       error("unsupported program structure")
@@ -230,9 +304,12 @@ local function programming(members, programs)
     local target = numeric(node.device)
     if target and members[target] then
       location.actionCount = location.actionCount + 1
-      local command = active and powerCommand(node, depth)
+      local command = active and powerCommand(node, depth, nativePower and nativePower[target])
       if command then
         location.commands[command] = (location.commands[command] or 0) + 1
+        if ignoreEmpty and type(position) == "number" and position >= 1 and position == math.floor(position) then
+          location.positions[tostring(position)] = command
+        end
       end
     end
     if type(node.cmdcond) == "table" and node.cmdcond.xml ~= nil and node.cmdcond.xml ~= "" then
@@ -241,8 +318,8 @@ local function programming(members, programs)
     if node.subitems ~= nil and type(node.subitems) ~= "table" then
       error("unsupported branch structure")
     end
-    for _, child in pairs(node.subitems or {}) do
-      visit(child, depth + 1, location, active)
+    for slot, child in pairs(node.subitems or {}) do
+      visit(child, depth + 1, location, active, slot)
     end
   end
   for _, event in pairs(programs.event_mgr) do
@@ -251,8 +328,17 @@ local function programming(members, programs)
       return summary
     end
     local location = { device = id, event = trigger, actionCount = 0, commands = {} }
+    if ignoreEmpty then
+      location.positions = codec.object({})
+    end
     visit(event.codeitem, 0, location, event.codeitem.enabled ~= false)
-    local locations = members[id] and summary.attached or location.actionCount > 0 and summary.incoming
+    local triggerCode = type(event.codeitem.cmdcond) == "table" and event.codeitem.cmdcond.xml
+    local owned = members[id]
+      and (not ignoreEmpty or triggerCode and triggerCode ~= "" or next(event.codeitem.subitems or {}))
+    if owned and id == lightProxy and lightEvents[trigger] then
+      location.timerScript = timerScript(event.codeitem, GetAgentId("control4_agent_timer.c4i"))
+    end
+    local locations = owned and summary.attached or location.actionCount > 0 and summary.incoming
     if locations then
       if #locations >= 128 then
         summary.truncated = true
@@ -275,28 +361,44 @@ function M.programmingSnapshot()
   return ok and programs or false
 end
 
-local function readProgramming(members, snapshot)
+local function readProgramming(members, snapshot, nativePower, ignoreEmpty, lightProxy)
   if snapshot == nil then
     snapshot = M.programmingSnapshot()
   end
-  local safe, programs = pcall(programming, members, snapshot)
+  local safe, programs = pcall(programming, members, snapshot, nativePower, ignoreEmpty, lightProxy)
   return safe and programs or { readable = false, attached = {}, incoming = {} }
 end
 
-function M.deviceProgramming(id)
+function M.deviceProgramming(id, family)
   local row = lookup(id)
   if not row or next(row.protocol or {}) then
     return { readable = false, attached = {}, incoming = {} }
   end
-  local members = { [id] = true }
+  local members, nativePower = { [id] = true }, {}
+  if family == "switch" then
+    nativePower[id] = { Toggle = "Toggle" }
+  end
   for key in pairs(row.proxies or {}) do
     local proxy = numeric(key)
     if not proxy then
       return { readable = false, attached = {}, incoming = {} }
     end
     members[proxy] = true
+    if family == "light" then
+      nativePower[proxy] = { ON = "TurnOn", OFF = "TurnOff" }
+    elseif family == "switch" then
+      nativePower[proxy] = { Select = "Toggle" }
+    end
   end
-  return readProgramming(members)
+  local first, proxy = next(row.proxies or {})
+  local lightProxy = family == "light"
+      and first
+      and type(proxy) == "table"
+      and proxy.driverFileName == "light_v2.c4i"
+      and not next(row.proxies, first)
+      and numeric(first)
+    or nil
+  return readProgramming(members, nil, family and nativePower, family ~= nil, lightProxy)
 end
 
 function M.assess(requested, options)
@@ -338,10 +440,14 @@ function M.assess(requested, options)
     end
   end
   report.bindingsVerified = report.interfaces
-  if report.family == "switch" and #report.proxies > 0 then
+  local profile = legacyProfile.forSource(report)
+  if profile then
+    if #report.proxies ~= 1 or report.proxies[1].file ~= profile.proxy then
+      report.interfaces = false
+    end
+  elseif report.family == "switch" and #report.proxies > 0 then
     report.interfaces = false
-  end
-  if report.family == "light" and (#report.proxies ~= 1 or report.proxies[1].file ~= "light_v2.c4i") then
+  elseif report.family == "light" and (#report.proxies ~= 1 or report.proxies[1].file ~= "light_v2.c4i") then
     report.interfaces = false
   end
   table.sort(report.edges, function(a, b)
@@ -357,6 +463,33 @@ function M.assess(requested, options)
     return a.port < b.port
   end)
   local ok, props = pcall(GetDeviceProperties, id)
+  if profile then
+    report.entity, report.selection_disagrees, report.selectedName =
+      legacyProfile.selection(ok and props, report.family)
+    if report.family == "light" then
+      report.compatibility = legacyProfile.lightSettings(ok and props)
+    end
+    if not (options and options.skipPrograms) then
+      local proxy = #report.proxies == 1 and report.proxies[1].id
+      local nativePower = proxy
+        and {
+          [proxy] = report.family == "light" and { ON = "TurnOn", OFF = "TurnOff" } or { Select = "Toggle" },
+        }
+      report.programs = readProgramming(
+        members,
+        options and options.programming,
+        nativePower,
+        true,
+        profile.family == "light" and proxy and report.proxies[1].file == "light_v2.c4i" and proxy or nil
+      )
+      if not (options and options.skipLighting) then
+        report.lighting = lighting.checkpoint(
+          options and options.lighting or lighting.read(members, options and options.lightingSnapshot)
+        )
+      end
+    end
+    return report
+  end
   local got, vars = pcall(C4.GetDeviceVariables, C4, id)
   local entity, variable, count = ok and type(props) == "table" and props["Entity ID"], nil, 0
   for key, item in pairs(got and type(vars) == "table" and vars or {}) do
@@ -401,7 +534,11 @@ function M.switchSelectionIssue(source)
   end
 end
 
-function M.destination(sourceBinding)
+function M.destination(sourceBinding, source)
+  local profile = legacyProfile.forSource(source)
+  if profile then
+    return profile.bindings[sourceBinding]
+  end
   return roles[sourceBinding]
 end
 
@@ -421,6 +558,9 @@ function M.connectionPeer(id)
     row = id and lookup(id) or nil
   end
   if row and type(row.driverFileName) == "string" then
+    if legacyProfile.contains(row.driverFileName) then
+      return label, false, "legacy"
+    end
     if not ids.legacyPrototypes[row.driverFileName] then
       return label, true
     end

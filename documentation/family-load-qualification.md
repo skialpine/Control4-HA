@@ -42,13 +42,6 @@ separate.
 | General relay or fireplace switch          | Navigation SELECT, relay OPEN/CLOSE, three Button Links, and programming On/Off/Toggle through the Switch adapter. Exact on/off pushes drive the icon, relay state and programming events. | Native Navigator, relay wiring, programming conditions and physical equipment pending.       |
 | Color while off                            | A chosen color sends with the next On and produces matching HA feedback on Demo.                                                                                                           | Native controller and physical behavior pending.                                             |
 
-The [family evidence](../lab/family-evidence.json) identifies the exact packages
-and HA version. To reproduce the run against the allowlisted lab:
-
-```sh
-.cache/lab-venv/bin/python lab/verify_families.py --samples 5 --runtime-profile
-```
-
 The runner uses actual packaged Lua in separate Coordinator and family
 processes, local Director and proxy shims, and real HA Container services.
 External timing starts immediately before the native command is written to the
@@ -102,11 +95,11 @@ samples with minimum 249.16 ms, median 250.41 ms and p95 252.62 ms. Hold release
 to the replacement target's matching HA state had a 23.14 ms median. Hold start
 does not have a matching full-level state sample because release interrupts it.
 
-The 2026111801 Light package selected the Docker demo bed light’s rainbow and
-off effects five times each. The packaged Coordinator, Light adapter and
-simulated Director/proxy exchanged real Home Assistant requests. Across ten
-operations with driver logging off at Info and a local monotonic clock,
-median/p95 command-to-HA-acceptance time was 27.37/29.92 ms.
-Command-to-confirmed-HA-state was 26.67/28.62 ms, and
-command-to-family-consumption was 38.31/49.77 ms. Feedback and service results
-arrive independently. The test measures software delivery.
+The 2026111801 Light package selected the Demo light’s rainbow and off effects
+five times each. The packaged Coordinator, Light adapter and simulated
+Director/proxy exchanged real Home Assistant requests. Across ten operations
+with driver logging off at Info and a local monotonic clock, median/p95
+command-to-HA-acceptance time was 27.37/29.92 ms. Command-to-confirmed-HA-state
+was 26.67/28.62 ms, and command-to-family-consumption was 38.31/49.77 ms.
+Feedback and service results arrive independently. The test measures software
+delivery.

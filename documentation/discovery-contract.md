@@ -35,18 +35,22 @@ No failure causes an all-state or full-registry download.
 Native discovery uses the fixed `src/ha/native-catalog.lua` projection through
 HA's
 [read-only template endpoint](https://contributors.home-assistant.io/core/internals/rest-api/#post-apitemplate).
-The projection enumerates only `light` and `switch`, returning identity,
-name/area/device and allowlisted capability metadata. Caller strings never
-become template code. Live levels, arbitrary attributes and event payloads are
-omitted. It shares the connection's template HTTP helper, TLS/redirect policy,
-private logging and generation checks. Both this endpoint and the companion
-picker require their HA administrative permissions; authentication alone does
-not establish catalog access.
+The projection indexes only `light`, `switch` and `input_boolean` IDs in HA. An
+index window contains up to 512 IDs. Each detail request looks up at most 128
+validated exact IDs and returns only allowlisted identity, name, area, device
+and capability metadata. HA keeps each response below its template output limit.
+The Coordinator checks the order and completeness before it publishes a new
+snapshot. Live levels, arbitrary attributes and event payloads are omitted. Both
+this endpoint and the companion picker require HA administrative permissions.
 
-The native metadata snapshot receives a content hash after stable entity-ID
-ordering. HA's native endpoint offers no revision-only confirmation, so explicit
-subsequent openings repeat this scoped projection, with concurrent reads still
-coalesced. This does not poll during healthy control.
+The native snapshot receives a content hash after stable entity-ID ordering.
+When the companion supplies `native_revision`, the Coordinator checks that token
+before and after collecting native state and registry metadata. A later forced
+refresh can use one unchanged confirmation when both the picker revision and
+native token match on the same connection. With an older companion, forced
+refresh still collects the supplement. Without a companion, read-only browsing
+can reuse the current native snapshot for up to 30 seconds. Explicit refresh and
+commissioning writes still require fresh HA checks. These checks run on demand.
 
 ## Bounded consumer pages
 
@@ -60,7 +64,7 @@ The targeted correlated result has status `catalog` and a `catalog` object:
 `source`, `revision`, `total`, `cursor`, `next_cursor` and `entities`.
 `next_cursor` is explicit JSON null after the last page. Pages contain at most
 50 records and a 16 KiB payload budget; records cannot be silently truncated.
-Transfers are limited to 5,000 rows, 64 companion pages and 1 MiB of projected
+Transfers are limited to 5,000 rows, 256 companion pages and 4 MiB of projected
 records. Duplicate IDs, missing pages/records, inconsistent revisions, invalid
 shapes and oversized rows fail. Data does not become load state or programming
 occurrences, and it never authorizes a target by name.
@@ -75,15 +79,13 @@ also exercised against real HA 2026.11.1: its 11 scoped rows included all three
 controlled lab loads without live brightness attributes.
 
 The built Coordinator passed companion retrieval and revision confirmation
-against that lab. The exact package hash and catalog summary are recorded in
-`lab/transport-evidence.json`.
+against the lab.
 
 The packaged native setup run selected the controlled Light and Switch fixtures
 by name and confirmed their initial states. The harness simulated only the
 companion discovery service's `not_found` reply. The packaged POST template,
 exact registry requests, subscriptions and selected REST reads used real HA. The
-installed helper stayed in place and the runner sent no fixture commands. See
-`lab/native-setup-evidence.json` for the package hash, timings and results.
+installed helper stayed in place and the runner sent no fixture commands.
 
 Light and Switch share the same Device Setup tab. See the selection and recovery
 steps in [Choose a device](device-setup.md).
@@ -104,6 +106,11 @@ or foreign response IDs fail the scoped read. Device-less helpers stay on the
 advanced manual path. Native groups remain independent supported endpoints. The
 native projection checks integration and device ownership before returning its
 small C4-export flag.
+
+Native discovery can supply a hidden load when its registry entry is enabled,
+its state confirms it is working, and it is the only usable representation of
+that load. A compatible visible light with a verified wrapper relationship
+represents the underlying switch in the picker.
 
 Light offers binary switches/lights, dimmers and remote choices. Switch offers
 binary targets and remote choices; dimming-only endpoints remain in Light.
@@ -132,5 +139,5 @@ legacy registry path. The same packaged Coordinator was then tested on HA
 2026.11.1 with helper 0.1.2 and 0.1.3. Ten warm opens needed ten registry
 requests with 0.1.2 and zero with 0.1.3. Median request-to-list time was 6.87 ms
 and 3.21 ms respectively with logging and instrumentation off. These are
-DriverWorks shim measurements. See `lab/companion-catalog-evidence.json` for the
-raw samples and package hash.
+DriverWorks shim measurements. The lab report records the raw samples and
+package hash.

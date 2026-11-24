@@ -56,6 +56,36 @@ taps, hold or release, depending on what the selected device reports through HA
 Gesture Bridge. Refresh Composer after choosing a new device if its events do
 not appear.
 
+### Replace a legacy Home Assistant driver
+
+In **System Design**, select the Home Assistant Connection, open **Quick Setup**
+and review the drivers listed under **Migrate drivers**. The review identifies
+each driver by its project name and room and shows the Home Assistant device it
+will control. A Light used for an on/off load keeps its Light role.
+
+1. Save a backup of the Control4 project. Select **Start migration** after you
+   confirm the backup, then acknowledge the prompt to return to Quick Setup.
+   Composer may select the replacement automatically. Return to the Home
+   Assistant Connection to see the migration status.
+1. Follow the steps for any listed scene, load group or programming action. In
+   **Agents → Advanced Lighting**, open each named scene and preserve its saved
+   member settings when moving it to the replacement. In **Programming**, open
+   the named event and move only the listed actions. Choose **Recheck and
+   continue** to verify those edits. While you make them, the original driver
+   retains its Home Assistant connection. A scene or script you move can operate
+   the replacement after it connects.
+1. When Quick Setup shows **Test the new drivers**, double-click each
+   replacement in **System Design** to test its controls. The replacement uses
+   the original name and room. Run the scenes and programming listed under the
+   driver, then return to Quick Setup and choose **Confirm testing**.
+1. Confirm the checks and choose **Check old drivers**. Delete the drivers
+   marked ready in Composer, then return to Quick Setup and choose **Check
+   removal**.
+
+If a setting or connection needs review, leave the original in place. If the
+wizard reports that a migration must be recovered, use the saved project backup
+to restore the original references.
+
 ### When setup needs attention
 
 | What you see                                | What to do                                                                                                                                                                                                                                    |
@@ -99,6 +129,15 @@ If a linked Control4 light keeps dimming after a button release, choose **Print
 device diagnostics to Lua** in **Actions**. If all release attempts fail, the
 last command result in the **Lua** tab explains what to check.
 
+For a Home Assistant light, expand **Light compatibility** on **Device Setup**
+if automatic detection gives the wrong light type or the device ignores color
+commands. **Light type override** changes the controls offered for that light.
+**Color format override** selects HS, RGB, or XY for color commands. For tunable
+white, enter lower and upper Kelvin limits together, such as `2700-6500`, and
+select **Apply**. Choose **Automatic** or clear the range to restore the
+detected setting. The driver still reports the state confirmed by Home
+Assistant.
+
 - **Button behavior** appears for devices with buttons, Control4 lighting
   connections or an existing override. In **Automatic**, the text below the
   selector names what the app controls and tells you when button presses are
@@ -114,13 +153,13 @@ last command result in the **Lua** tab explains what to check.
   Link** connection takes precedence.
 - **Selected device ID** and **Controlled device ID** help distinguish a wall
   control from its target when troubleshooting.
-- For a linked Control4 light, choose **Trace** under **Troubleshooting → Debug
-  Mode**, repeat the action, then open the **Lua** tab. The trace shows which
-  commands the driver forwarded or skipped and the power and brightness the
-  linked light reported. Director can deliver feedback while the driver is
-  sending a command, so a feedback line can appear before the send result. The
-  trace stops after 25 entries. Select **Off**, then **Trace** to capture
-  another set. **On** prints button-event summaries.
+- To investigate button events or a linked Control4 light, open
+  **Troubleshooting**. Set **Log Mode** to **Print** and **Log Level** to **4 -
+  Debug**. Repeat the action and check the **Lua** tab. The Light reports
+  commands it forwarded or skipped and the linked light’s reported power and
+  brightness. Director can deliver feedback before the send result. Each
+  diagnostic reports up to 25 entries. To start a new capture, turn **Log Mode**
+  off and back on, then set **Log Level** to **4 - Debug** again.
 - **Latency Diagnostics** records timing samples when enabled. Expand
   **Troubleshooting** and choose **Show timing report** to read them. Use
   **Clear timing samples** before measuring a new setup. Logging and timing can

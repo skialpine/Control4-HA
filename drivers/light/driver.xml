@@ -16,7 +16,13 @@
     <category>Lighting</category>
   </composer_categories>
   <conditionals />
-  <events />
+  <events>
+    <event>
+      <id>1099</id>
+      <name>Light became unavailable</name>
+      <description>When NAME becomes unavailable</description>
+    </event>
+  </events>
   <config>
     <script file="driver.lua" jit="1" />
     <documentation file="www/documentation/index.html" />
@@ -147,11 +153,6 @@
       <property>
         <name>Last Sequence</name><type>STRING</type><readonly>true</readonly><default>0</default>
         <description>The latest event number reported by the selected wall control.</description>
-      </property>
-      <property>
-        <name>Debug Mode</name><type>LIST</type><default>Off</default><readonly>false</readonly>
-        <items><item>Off</item><item>On</item><item>Trace</item></items>
-        <description>On logs button events. Trace logs commands, power and brightness for a linked Control4 light. Read up to 25 entries in the Lua tab. Select Off, then choose a mode to start again.</description>
       </property>
       <property>
         <name>Driver Version</name>

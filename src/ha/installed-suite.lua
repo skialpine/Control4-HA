@@ -40,9 +40,9 @@ end
 
 -- Inspect the running versions of every installed suite instance, including
 -- unbound ones. The replacement and Coordinator must both be in this set.
-local function aligned(coordinatorId, replacement)
+local function aligned(coordinatorId, replacement, family)
   local inventory = M.read()
-  local revision, coordinator, switch
+  local revision, coordinator, child
   for _, row in ipairs(inventory or {}) do
     if row.low ~= row.high or #tostring(row.high) ~= 10 or (revision and revision ~= row.high) then
       return nil
@@ -50,17 +50,18 @@ local function aligned(coordinatorId, replacement)
     revision = row.high
     coordinator = coordinator
       or (row.package.family == "Coordinator" and (not coordinatorId or row.instances[coordinatorId] ~= nil))
-    switch = switch or (row.package.family == "Switch" and row.instances[replacement] ~= nil)
+    child = child
+      or (row.package.family == (family == "light" and "Light" or "Switch") and row.instances[replacement] ~= nil)
   end
-  return coordinator and (not replacement or switch) and revision or nil
+  return coordinator and (not replacement or child) and revision or nil
 end
 
 function M.migrationRevision(replacement)
   return aligned(nil, replacement)
 end
 
-function M.upgradeRevision(coordinator, replacement)
-  return aligned(coordinator, replacement)
+function M.upgradeRevision(coordinator, replacement, family)
+  return aligned(coordinator, replacement, family)
 end
 
 return M
