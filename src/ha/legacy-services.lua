@@ -69,12 +69,29 @@ local families = {
   ["HA Thermostat"] = { "108", "climate" },
 }
 
+local releasedFanVariants = {
+  ["HA.Fan.3-speed.c4z"] = "103",
+  ["HA.Fan.4-speed.c4z"] = "103",
+  ["HA.Fan.5-speed.c4z"] = "103",
+  ["HA.Fan.6-speed.c4z"] = "103",
+  ["HA.Fan.9-speed.c4z"] = "104",
+}
+
 function M.family(file, model, manufacturer, version)
   local spec = families[model]
-  if not spec or manufacturer ~= "BP" or tostring(version) ~= spec[1] then
+  if not spec or manufacturer ~= "BP" then
     return nil
   end
-  if file == model:gsub(" ", ".") .. ".c4z" or (model == "HA Fan" and file == "HA.Fan.9-speed.c4z") then
+  version = tostring(version)
+  if file == model:gsub(" ", ".") .. ".c4z" then
+    if
+      version == spec[1]
+      or (model == "HA Alarm Panel" and version == "101")
+      or (model == "HA Fan" and version == "102")
+    then
+      return model
+    end
+  elseif model == "HA Fan" and releasedFanVariants[file] == version then
     return model
   end
 end

@@ -1,0 +1,96 @@
+<devicedata>
+  <name>Home Assistant Alarm Panel</name>
+  <version />
+  <manufacturer>SkiAlpine Labs</manufacturer>
+  <model>Control4.HA.AlarmPanel</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 skialpine. Template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/24/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories><category>Other</category></composer_categories>
+  <conditionals />
+  <events />
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <!-- #embed ../../src/ha/endpoint-properties.xml -->
+    </properties>
+    <tabs><tab name="Device Setup" file="html/index.html" /></tabs>
+    <actions>
+      <!-- #embed ../../src/ha/endpoint-actions.xml -->
+    </actions>
+  </config>
+  <capabilities>
+    <can_set_time>false</can_set_time>
+    <can_activate_partitions>false</can_activate_partitions>
+    <ui_version>2</ui_version>
+    <arm_states>Home,Away,Night,Vacation,Custom Bypass</arm_states>
+    <supports_virtual_keypad>false</supports_virtual_keypad>
+  </capabilities>
+  <proxies qty="2">
+    <proxy proxybindingid="5001">securitypanel</proxy>
+    <proxy proxybindingid="5002">security</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>1</id>
+      <facing>5</facing>
+      <connectionname>HA Suite Coordinator</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>SKIALPINE_HA_SUITE_V1</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Security Panel</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>SECURITY_PANEL</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>5002</id>
+      <facing>6</facing>
+      <connectionname>Security Partition</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>SECURITY</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection proxybindingid="5002">
+      <id>7002</id>
+      <facing>6</facing>
+      <connectionname>Room Selection</connectionname>
+      <type>7</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>SECURITY_SYSTEM</classname><autobind>True</autobind></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+  </connections>
+</devicedata>

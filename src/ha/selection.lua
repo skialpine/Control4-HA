@@ -5,11 +5,14 @@ local contract = require("ha.contract")
 local operations = require("ha.operations")
 local deferred = require("deferred")
 local eventSelection = require("ha.event-selection")
+local families = require("ha.endpoint-families")
+local choices = require("ha.choices")
 local M = {}
 
 function M.directLoad(family, entity, name)
-  local domain = contract.loadDomain(entity)
-  if not domain then
+  local native = contract.endpointFamily(family)
+  local domain = native and contract.endpointDomain(entity) or contract.loadDomain(entity)
+  if not domain or (native and families[family].domain ~= domain) then
     return nil
   end
   return codec.object({
@@ -37,7 +40,7 @@ function M.query(value)
     and #value.choice_id > 0
     and #value.choice_id <= 255
     and not value.choice_id:find("%c")
-    and (value.family == "light" or value.family == "switch")
+    and contract.family(value.family)
     and type(value.prepare) == "boolean"
     and value.revision ~= nil
     and contract.catalogQuery(codec.object({ revision = value.revision, family = value.family }))
@@ -45,7 +48,7 @@ end
 local function load(value)
   return codec.isObject(value)
     and type(value.domain) == "string"
-    and value.domain == contract.loadDomain(value.entity_id)
+    and value.domain == contract.endpointDomain(value.entity_id)
     and (value.available == nil or type(value.available) == "boolean")
 end
 function M.valid(value, arguments)
@@ -59,6 +62,17 @@ function M.valid(value, arguments)
     or type(value.input_ready) ~= "boolean"
   then
     return false
+  end
+  if contract.endpointFamily(value.family) then
+    local target = value.controlled_load
+    return value.preparation == "not_required"
+      and value.input_ready == false
+      and not (value.device_id or value.control_id or value.source_load or value.gesture_entity_id or value.manual_event or value.prototype_picker or value.prototype_mode)
+      and load(target)
+      and target.domain == families[value.family].domain
+      and target.entity_id == value.key
+      and (target.registry_id == nil or contract.registryId(target.registry_id))
+      and value.controlled_load_origin == "selected_endpoint"
   end
   if
     value.prototype_picker ~= nil
@@ -76,10 +90,15 @@ function M.valid(value, arguments)
   then
     return false
   end
-  if value.controlled_load ~= nil and not load(value.controlled_load) then
+  if
+    value.controlled_load ~= nil
+    and (not load(value.controlled_load) or not contract.loadDomain(value.controlled_load.entity_id))
+  then
     return false
   end
-  if value.source_load ~= nil and not load(value.source_load) then
+  if
+    value.source_load ~= nil and (not load(value.source_load) or not contract.loadDomain(value.source_load.entity_id))
+  then
     return false
   end
   if
@@ -177,6 +196,9 @@ function M.resolve(catalog, request, arguments, active)
     else
       config.controlled_load =
         codec.object({ entity_id = row.entity_id, domain = row.domain, available = row.available })
+      if contract.endpointFamily(arguments.family) then
+        config.controlled_load.registry_id = choices.standaloneRegistry(row) or nil
+      end
       config.controlled_load_origin = "selected_endpoint"
     end
     result:resolve(config)

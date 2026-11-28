@@ -78,7 +78,7 @@ function M.publishAddress(address)
   values:update("HA URL", address or "", "STRING", true, nil, { property = false })
 end
 
-function M.init(family, address)
+function M.init(family, address, restoreVariables)
   C4:AllowExecute(true)
   loggingActive = false
   log:setLogMode("Off")
@@ -114,6 +114,15 @@ function M.init(family, address)
       -- other variables so older Director versions keep allocating it first.
       values:update("ENTITY_ID", Variables.ENTITY_ID, "STRING", true)
     end
+  end
+  if identities.packages[family] and identities.packages[family].retainsLegacyInput then
+    if restoreVariables then
+      restoreVariables()
+    end
+    if not values:getValue("ENTITY_ID") then
+      values:update("ENTITY_ID", Variables.ENTITY_ID or "", "STRING", true)
+    end
+    SetPropertyVisible("Entity ID", false)
   end
   if
     family == "coordinator"

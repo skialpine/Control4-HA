@@ -213,7 +213,9 @@ function Transfer:receive(consumer, message)
     end
     return true
   end
-  Selection.resolve(self.hub.catalog, function(...)
+  local catalog = contract.endpointFamily(job.query.family) and self.hub:catalogFor(job.query.family)
+    or self.hub.catalog
+  Selection.resolve(catalog, function(...)
     return self.hub:_request(...)
   end, job.query, active):next(function(config)
     if active() then

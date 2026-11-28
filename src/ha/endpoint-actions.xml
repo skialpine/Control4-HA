@@ -1,0 +1,12 @@
+      <action>
+        <name>Print device diagnostics to Lua</name>
+        <command>PrintDiagnostics</command>
+      </action>
+      <action>
+        <name>Print timing summary to Lua</name>
+        <command>PrintTiming</command>
+      </action>
+      <action>
+        <name>Reset timing samples</name>
+        <command>ResetTiming</command>
+      </action>

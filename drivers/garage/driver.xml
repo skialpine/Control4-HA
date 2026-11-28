@@ -1,0 +1,233 @@
+<devicedata>
+  <name>Home Assistant Garage Door</name>
+  <version />
+  <manufacturer>SkiAlpine Labs</manufacturer>
+  <model>Control4.HA.GarageDoor</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 skialpine; template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/24/2026 12:00:00 PM</created>
+  <modified />
+  <small image_source="c4z">icons/composer-garage-16.gif</small>
+  <large image_source="c4z">icons/composer-garage-32.gif</large>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Other</category>
+  </composer_categories>
+  <conditionals>
+    <conditional>
+      <id>1000</id>
+      <name>IS_OPEN</name>
+      <type>SIMPLE</type>
+      <condition_statement>Door is fully open</condition_statement>
+      <description>Door is fully open</description>
+      <sort_order>0</sort_order>
+    </conditional>
+    <conditional>
+      <id>1001</id>
+      <name>IS_CLOSED</name>
+      <type>SIMPLE</type>
+      <condition_statement>Door is fully closed</condition_statement>
+      <description>Door is fully closed</description>
+      <sort_order>1</sort_order>
+    </conditional>
+    <conditional>
+      <id>1002</id>
+      <name>IS_AVAILABLE</name>
+      <type>SIMPLE</type>
+      <condition_statement>Door is available</condition_statement>
+      <description>Door is available</description>
+      <sort_order>2</sort_order>
+    </conditional>
+  </conditionals>
+  <events>
+    <event>
+      <id>1000</id>
+      <name>Door opened</name>
+      <description>When NAME reaches its open position</description>
+    </event>
+    <event>
+      <id>1001</id>
+      <name>Door closed</name>
+      <description>When NAME reaches its closed position</description>
+    </event>
+    <event>
+      <id>1002</id>
+      <name>Door started opening</name>
+      <description>When NAME starts opening</description>
+    </event>
+    <event>
+      <id>1003</id>
+      <name>Door started closing</name>
+      <description>When NAME starts closing</description>
+    </event>
+    <event>
+      <id>1004</id>
+      <name>Door became unavailable</name>
+      <description>When NAME becomes unavailable in Home Assistant</description>
+    </event>
+  </events>
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <!-- #embed ../../src/ha/endpoint-properties.xml -->
+      <!-- #embed ../../src/ha/cover-position-property.xml -->
+      <property>
+        <name>Door status</name>
+        <type>STRING</type>
+        <readonly>true</readonly>
+        <default>Unavailable</default>
+      </property>
+    </properties>
+    <tabs>
+      <tab name="Device Setup" file="html/index.html" />
+    </tabs>
+    <commands>
+      <command>
+        <name>Open</name>
+        <description>Open NAME</description>
+      </command>
+      <command>
+        <name>Close</name>
+        <description>Close NAME</description>
+      </command>
+      <command>
+        <name>Stop</name>
+        <description>Stop NAME</description>
+      </command>
+      <command>
+        <name>Toggle</name>
+        <description>Open or close NAME</description>
+      </command>
+      <command>
+        <name>Set Position</name>
+        <description>Move NAME to PARAM1 percent open</description>
+        <params><param><name>Percent</name><type>STRING</type></param></params>
+      </command>
+    </commands>
+    <actions>
+      <!-- #embed ../../src/ha/endpoint-actions.xml -->
+    </actions>
+  </config>
+  <capabilities>
+    <type>9</type>
+    <can_stop>false</can_stop>
+    <driver_handles_toggle>true</driver_handles_toggle>
+    <has_level>false</has_level>
+    <level_discrete_control>false</level_discrete_control>
+    <level_closed>0</level_closed>
+    <level_open>100</level_open>
+    <level_unknown>-1</level_unknown>
+  </capabilities>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" primary="True" name="Home Assistant Garage Door" image_source="c4z"
+      small_image="icons/composer-garage-16.gif" large_image="icons/composer-garage-32.gif">blind</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Cover</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes><class><classname>BLIND</classname></class></classes>
+    </connection>
+    <connection>
+      <id>1</id>
+      <facing>5</facing>
+      <connectionname>HA Suite Coordinator</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>SKIALPINE_HA_SUITE_V1</classname></class>
+      </classes>
+    </connection>
+    <connection>
+      <id>4</id>
+      <facing>6</facing>
+      <connectionname>Garage Door Relay</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>RELAY</classname></class>
+      </classes>
+    </connection>
+    <connection>
+      <id>2</id>
+      <facing>6</facing>
+      <connectionname>Closed Limit Contact</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>CONTACT_SENSOR</classname></class>
+      </classes>
+    </connection>
+    <connection>
+      <id>3</id>
+      <facing>6</facing>
+      <connectionname>Open Limit Contact</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>CONTACT_SENSOR</classname></class>
+      </classes>
+    </connection>
+    <connection>
+      <id>5</id>
+      <facing>6</facing>
+      <connectionname>Open Door Relay</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>RELAY</classname></class>
+      </classes>
+    </connection>
+    <connection>
+      <id>6</id>
+      <facing>6</facing>
+      <connectionname>Close Door Relay</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>RELAY</classname></class>
+      </classes>
+    </connection>
+    <connection>
+      <id>7</id>
+      <facing>6</facing>
+      <connectionname>Stop Door Relay</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>RELAY</classname></class>
+      </classes>
+    </connection>
+    <!-- #embed ../../src/ha/cover-step-connection.xml -->
+  </connections>
+</devicedata>

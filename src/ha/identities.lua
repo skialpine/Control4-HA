@@ -1,5 +1,5 @@
 -- Installed identities are an append-only contract; AGPL-3.0.
-return {
+local identities = {
   api = 1,
   packages = {
     coordinator = { file = "HA.Coordinator.c4z", model = "HA Coordinator" },
@@ -33,3 +33,8 @@ return {
     { name = "Latency Report", kind = "STRING", initial = "" },
   },
 }
+local families = require("ha.endpoint-families")
+for _, family in ipairs(families.order) do
+  identities.packages[family] = families[family]
+end
+return identities

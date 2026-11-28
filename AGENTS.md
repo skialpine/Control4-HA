@@ -14,11 +14,20 @@ exists, read it before accessing a controller or staging a package.
 
 # Public project privacy
 
-Keep real installation data in local, ignored files outside public artifacts.
-Use synthetic names and configuration in source, test fixtures, documentation,
-screenshots, OpenSpec, and release packages. Record qualification outcomes
-without private project names, locations, addresses, device identifiers, or
-installation settings.
+This repository is public. Keep real installation data in local, ignored files
+outside public artifacts. Use synthetic names and configuration in source, test
+fixtures, documentation, screenshots, OpenSpec, and release packages. Record
+qualification outcomes without private project names, locations, addresses,
+device identifiers, or installation settings.
+
+Never commit environment or technique specifics. In particular, do not include:
+controller instance names or labels (write "a Control4 controller", not a named
+or numbered controller); lab infrastructure or tooling names; internal
+hostnames, IP or MAC addresses; development build or revision numbers tied to
+lab runs; or any private development tooling or access method. Genericize
+qualification evidence before committing. Because this branch is pushed to a
+public remote, make each commit clean as written — never commit content you
+intend to remove in a later commit, since it remains visible in history.
 
 # Shared driver behavior
 
@@ -135,3 +144,13 @@ space taken by native chrome. Review headings, grouping, alignment, focus and
 the prominence of common actions alongside functional parity. If two layouts
 trade off ease of setup against access to everyday controls, compare both on the
 same tasks before choosing one.
+
+# Driver issue reports
+
+When the user points out a driver issue, ask whether they want it fixed before
+changing code, configuration, or deployed drivers. An explicit request to fix
+the issue already gives that approval.
+
+Once approved, find the cause, implement a fix, and add a unit test that
+reproduces the issue. Check related drivers and shared code for the same
+failure, and report the scope of the fix and the tests that passed.

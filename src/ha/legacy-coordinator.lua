@@ -48,9 +48,9 @@ local function family(device)
   end
   local model = C4:GetDeviceData(device, "model")
   local manufacturer = C4:GetDeviceData(device, "manufacturer")
-  local version = tostring(C4:GetDeviceData(device, "version"))
+  local version = C4:GetDeviceData(device, "version")
   local prototype = ids.legacyPrototypes[row.driverFileName]
-  if prototype and model == prototype.model and manufacturer == "BP" and version == prototype.version then
+  if prototype and model == prototype.model and manufacturer == "BP" and tostring(version) == prototype.version then
     return model, true
   end
   return services.family(row.driverFileName, model, manufacturer, version)
@@ -64,11 +64,12 @@ local function verifiedSuite(owner, peer, outputs)
   local rows = C4:GetDevices({ DeviceIds = tostring(device) }) or {}
   local row = rows[device] or rows[tostring(device)]
   local model = C4:GetDeviceData(device, "model")
-  local function matches(package)
-    return row and row.driverFileName == package.file and model == package.model
+  for family, package in pairs(ids.packages) do
+    if family ~= "coordinator" and row and row.driverFileName == package.file and model == package.model then
+      return SendUIRequest(device, "HA_LEGACY_WIRE", {}) == "<legacy_wire>ignore-v1</legacy_wire>"
+    end
   end
-  return (matches(ids.packages.light) or matches(ids.packages.switch))
-    and SendUIRequest(device, "HA_LEGACY_WIRE", {}) == "<legacy_wire>ignore-v1</legacy_wire>"
+  return false
 end
 
 local function boundPeers(owner)

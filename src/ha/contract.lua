@@ -1,6 +1,7 @@
 -- Shared validation for the versioned Coordinator/consumer boundary; AGPL-3.0.
 local codec = require("ha.codec")
 local ids = require("ha.identities")
+local families = require("ha.endpoint-families")
 local metrics = require("ha.performance").shared
 require("lib.utils")
 local M = { maxEntities = 16 }
@@ -24,7 +25,21 @@ end
 
 function M.entity(value)
   local domain = entityDomain(value)
-  return loadDomains[domain] == true or otherDomains[domain] == true
+  return loadDomains[domain] == true or otherDomains[domain] == true or families.domains[domain] == true
+end
+
+function M.endpointDomain(value)
+  local domain = entityDomain(value)
+  return (loadDomains[domain] or families.domains[domain]) and domain or nil
+end
+
+function M.family(value)
+  return value == "light" or value == "switch" or M.endpointFamily(value)
+end
+
+function M.endpointFamily(value)
+  local definition = type(value) == "string" and families[value]
+  return type(definition) == "table" and definition.domain ~= nil
 end
 
 function M.loadDomain(value)
@@ -104,7 +119,11 @@ local function retainedPair(device, provider)
       and not (type(row.protocol) == "table" and next(row.protocol))
       and C4:GetDeviceData(id, "model") == expected.model
   end
-  return matches(device, ids.packages.light) and matches(provider, ids.packages.coordinator)
+  return (
+    matches(device, ids.packages.light)
+    or matches(device, ids.packages.binary_sensor)
+    or matches(device, ids.packages.sensor)
+  ) and matches(provider, ids.packages.coordinator)
 end
 
 -- Share the native binding projection within one synchronous inspection.
@@ -215,7 +234,7 @@ function M.catalogQuery(value)
   then
     return false
   end
-  if value.family ~= nil and value.family ~= "light" and value.family ~= "switch" then
+  if value.family ~= nil and not M.family(value.family) then
     return false
   end
   if value.revision ~= nil and not catalogRevision(value.revision) then
@@ -233,7 +252,7 @@ function M.catalogRow(value)
     or type(value.name) ~= "string"
     or #value.name > 4096
     or (value.available ~= nil and type(value.available) ~= "boolean")
-    or (not loadDomains[value.domain] and value.domain ~= "event")
+    or (not loadDomains[value.domain] and not families.domains[value.domain] and value.domain ~= "event")
   then
     return false
   end
@@ -243,7 +262,8 @@ function M.catalogRow(value)
   local choice = value.attributes.device_choice
   if choice ~= nil then
     if
-      not codec.isObject(choice)
+      families.domains[value.domain]
+      or not codec.isObject(choice)
       or choice.type ~= "device_choice"
       or choice.version ~= 1
       or choice.choice_id ~= value.entity_id
@@ -271,7 +291,7 @@ function M.catalogPage(value)
     or value.cursor > value.total + 1
     or not codec.isArray(value.entities)
     or #value.entities > 50
-    or (value.family ~= nil and value.family ~= "light" and value.family ~= "switch")
+    or (value.family ~= nil and not M.family(value.family))
   then
     return false
   end

@@ -1,7 +1,7 @@
 # Home Assistant Connection
 
-This driver connects Control4 to Home Assistant. Start in **Properties**.
-**Quick Setup** is available when you want to add lights and switches to rooms.
+This driver connects Control4 to Home Assistant. Start in **Properties**. Use
+**Quick Setup** to add Home Assistant devices to rooms.
 
 1. In Composer, open **Properties** on Home Assistant Connection. Enter the
    hostname or IP address in **HA Host** and select **HA Protocol**. Leave **HA
@@ -28,7 +28,7 @@ Setup** to add several devices together.
 
 1. Open **Quick Setup**. The list hides devices that already have a matching
    Control4 driver. Choose **Show all devices** to include them. Use **Device
-   type** to show only lights or only switches, or search by name or room.
+   type** to narrow the list, or search by name or room.
 1. Select the devices you want to add. Check the room on each selected row. When
    the Home Assistant area matches one Control4 room, the page suggests it.
    Choose a room for the other rows. Use the room action to fill missing rooms
@@ -39,13 +39,13 @@ Setup** to add several devices together.
    check the matching driver and review again.
 1. Confirm the changes to create the listed controls in their rooms and link
    them to Home Assistant. Use **Back to edit** to change the selection first.
+   Quick Setup installs any missing driver files as it creates the controls.
    Open the new driver's **Device Setup** tab and check its **Controls** and
    status. If an addition was interrupted, review the same device again to see
    which steps finished.
 
-Install the family's Light and Switch packages on the controller before adding
-devices. For an ordinary light or switch, the Coordinator can find it without an
-extra Home Assistant integration. The optional HA Gesture Bridge also discovers
+For an ordinary light or switch, the Coordinator can find it without an extra
+Home Assistant integration. The optional HA Gesture Bridge also discovers
 compatible wall controls, remotes and their linked devices. If you use it, add
 **HA Gesture Bridge** in Home Assistant under **Settings → Devices & services**.
 Return to Quick Setup and refresh the list.

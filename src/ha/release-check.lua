@@ -226,6 +226,40 @@ local function installationMatches(installed, latest)
   return true
 end
 
+local function matchesProxies(expected, actual)
+  for id, value in pairs(expected) do
+    if actual[id] ~= value then
+      return false
+    end
+  end
+  for id in pairs(actual) do
+    if not expected[id] then
+      return false
+    end
+  end
+  return true
+end
+
+local function archiveProxies(xml)
+  local proxies = Select(xml, "proxies", "proxy")
+  local result = {}
+  if proxies == nil then
+    return result
+  end
+  if type(proxies) ~= "table" then
+    return nil
+  end
+  local entries = proxies._attr and { proxies } or proxies
+  for _, entry in ipairs(entries) do
+    local binding = Select(entry, "_attr", "proxybindingid")
+    if not binding or result[binding] or type(entry[1]) ~= "string" then
+      return nil
+    end
+    result[binding] = entry[1]
+  end
+  return result
+end
+
 local function compatible(package, item, osVersion)
   if
     not codec.isObject(item)
@@ -236,14 +270,9 @@ local function compatible(package, item, osVersion)
     or #item.minimum_os > 15
     or not hash(item.sha256)
     or type(item.size) ~= "number"
-    or item.proxies["5001"] ~= package.proxy
+    or not matchesProxies(package.proxies or { ["5001"] = package.proxy }, item.proxies)
   then
     return false, "invalid_manifest"
-  end
-  for id in pairs(item.proxies) do
-    if id ~= "5001" then
-      return false, "invalid_manifest"
-    end
   end
   local actual, actualError = version(osVersion)
   local required, requiredError = version(item.minimum_os)
@@ -299,19 +328,15 @@ local function qualify(release, installed, target, retainBytes)
         return download(archive.asset):next(function(bytes)
           local package = archive.entry.package
           local ok, xml = pcall(readDriverXML, bytes)
-          local proxies = ok and xml and Select(xml, "proxies", "proxy")
+          local proxies = ok and type(xml) == "table" and archiveProxies(xml)
           if
             not ok
             or type(xml) ~= "table"
             or xml.model ~= package.model
             or xml.version ~= manifest.revision
             or xml.minimum_os_version ~= archive.item.minimum_os
-            or (package.proxy and (type(proxies) ~= "table" or proxies[1] ~= package.proxy or Select(
-              proxies,
-              "_attr",
-              "proxybindingid"
-            ) ~= "5001"))
-            or (not package.proxy and proxies ~= nil)
+            or not proxies
+            or not matchesProxies(archive.item.proxies, proxies)
           then
             return reject("invalid_archive")
           end
@@ -420,7 +445,7 @@ local STATUS = "Driver update status"
 local CHANNEL = "Update channel"
 local AUTOMATIC = "Automatic Updates"
 local SCHEDULE = "HA.ReleaseCheck"
-local HELP = "Use Actions → Check for driver updates."
+local HELP = "Use Actions → Check for driver updates to install available updates."
 local problems = {
   ambiguous_release = "GitHub has more than one release with the same revision. Ask your installer to check the release.",
   no_release = "There are no published releases on this channel.",
@@ -439,8 +464,8 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
   local running
   local installer = Installer.new(usesDriverLocalTrust)
   local migrationMessage = "Finish the current migration in Quick Setup before installing driver updates."
-  local function enabled()
-    return Properties[AUTOMATIC] == "On" and Installer.isOwner()
+  local function automaticEnabled()
+    return Properties[AUTOMATIC] == "On"
   end
   local function installStatus(status, revision, progress)
     if status == "updated" then
@@ -458,10 +483,7 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
     if status == "migration_pending" then
       return migrationMessage
     end
-    local action = enabled() and "Check for driver updates." or "Turn on Automatic Updates."
-    if status == "blocked" then
-      action = "Ask your installer."
-    end
+    local action = status == "blocked" and "Ask your installer." or "Check for driver updates."
     if progress and #progress.pending > 0 then
       local completed = #progress.completed > 0 and " Updated " .. table.concat(progress.completed, ", ") .. "." or ""
       return table.concat(progress.pending, ", ") .. " pending. " .. action .. completed
@@ -489,8 +511,8 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
     end
   end
   OPC.Update_channel = reset
-  EC.CheckDriverUpdates = function()
-    if running or not isReady() then
+  local function checkForUpdates(scheduled)
+    if running or not isReady() or (scheduled and not automaticEnabled()) then
       return
     end
     local owner = Installer.owner()
@@ -498,12 +520,13 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
       UpdateProperty(STATUS, ownerMessage(owner))
       return
     end
-    if enabled() and migrationPending and migrationPending() then
+    local apply = owner ~= nil
+    if apply and migrationPending and migrationPending() then
       UpdateProperty(STATUS, migrationMessage)
       return
     end
     local channel = Properties[CHANNEL] == "Pre-release" and "Pre-release" or "Production"
-    local request = {}
+    local request = { scheduled = scheduled }
     running = request
     local function complete(message, installing)
       if running ~= request then
@@ -514,9 +537,15 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
         UpdateProperty(STATUS, request.stale and not installing and HELP or message)
       end
     end
-    local apply = enabled()
+    local function canInstall()
+      return running == request
+        and not request.stale
+        and isReady()
+        and (not scheduled or automaticEnabled())
+        and Installer.isOwner()
+    end
     local function mayWrite(job)
-      if running ~= request or request.stale or not isReady() or not enabled() then
+      if not canInstall() then
         return false
       end
       if migrationPending and migrationPending() then
@@ -550,7 +579,7 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
     promise:next(function(result)
       local current = " Installed: " .. result.installed .. "."
       if result.kind == "available" then
-        if apply and running == request and isReady() and not request.stale and enabled() then
+        if apply and canInstall() then
           if migrationPending and migrationPending() then
             complete(migrationMessage)
             return
@@ -601,6 +630,9 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
       end
     end)
   end
+  EC.CheckDriverUpdates = function()
+    checkForUpdates(false)
+  end
   local function start(checkSoon)
     CancelTimer(SCHEDULE)
     if not isReady() then
@@ -616,19 +648,19 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
     if owner and not ownsUpdates and Properties[STATUS] ~= nil then
       UpdateProperty(STATUS, ownerMessage(owner))
     end
-    if installer:pending() then
+    if not running and installer:pending() then
       installer:runPending(nil, function(status, revision, progress)
         if isReady() then
           UpdateProperty(STATUS, installStatus(status, revision, progress))
         end
       end)
     end
-    if enabled() then
+    if ownsUpdates and automaticEnabled() then
       local function scheduledCheck()
-        if enabled() and not installer:pending() then
-          EC.CheckDriverUpdates()
+        if not installer:pending() then
+          checkForUpdates(true)
         end
-        if isReady() and enabled() then
+        if isReady() and automaticEnabled() and Installer.isOwner() then
           SetTimer(SCHEDULE, 86400000, scheduledCheck)
         end
       end
@@ -636,7 +668,7 @@ function M.installActions(isReady, migrationPending, usesDriverLocalTrust)
     end
   end
   OPC.Automatic_Updates = function()
-    if running then
+    if running and running.scheduled then
       running.stale = true
     end
     start(true)

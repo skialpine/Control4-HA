@@ -129,6 +129,204 @@ function GetDriverVersion(filename)
   return Select(ParseXml(FileRead("driver.xml")) or {}, "devicedata", "version") or nil
 end
 
+--- Replaces a file in the current FileSetDir folder, and puts its old contents back when the write doesn't take.
+--- @param filename string
+--- @param contents string
+--- @return boolean written Whether the file now holds `contents`.
+local function replaceFile(filename, contents)
+  local previous = C4:FileExists(filename) and FileRead(filename) or nil
+  FileWrite(filename, contents, true)
+  -- The vendored FileWrite returns nothing, so only reading the file back shows a failed write.
+  if FileRead(filename) == contents then
+    return true
+  end
+  if previous ~= nil then
+    FileWrite(filename, previous, true)
+  else
+    C4:FileDelete(filename)
+  end
+  return false
+end
+
+--- The request that asks Director to update every driver of a file in the project to the copy in the driver store.
+--- @param filename string
+--- @return string c4soap
+local function updateProjectC4iRequest(filename)
+  return XMLTag(
+    "c4soap",
+    XMLTag("param", filename, nil, nil, {
+      name = "name",
+      type = "string",
+    }),
+    false,
+    false,
+    {
+      name = "UpdateProjectC4i",
+      session = "0",
+      operation = "RWX",
+      category = "composer",
+      async = "0",
+    }
+  ) .. "\0"
+end
+
+--- Request one Director reload. A self reload is submitted before this driver exits.
+--- The caller verifies the running revision separately.
+function ReloadDriverArchive(name, selfReload)
+  local promise = deferred.new()
+  local client, closed = C4:CreateTCPClient(), false
+  local function close()
+    if not closed then
+      closed = true
+      client:Close()
+    end
+  end
+  client
+    :OnConnect(function(client)
+      if closed then
+        return
+      end
+      client:Write(updateProjectC4iRequest(name))
+      client:ReadUntil("\0")
+      if selfReload then
+        promise:resolve("submitted")
+      end
+    end)
+    :OnRead(function(_, reply)
+      if closed then
+        return
+      end
+      close()
+      if not selfReload then
+        local header = type(reply) == "string" and reply:match("<c4soap(%s[^>]+)>")
+        if header and header:match("%sname=['\"]UpdateProjectC4i['\"]") and header:match("%sresult=['\"]1['\"]") then
+          promise:resolve("replied")
+        else
+          promise:reject("Director did not acknowledge the driver reload")
+        end
+      end
+    end)
+    :OnError(function(_, code, message)
+      if closed then
+        return
+      end
+      close()
+      promise:reject("Error " .. code .. ": " .. message)
+    end)
+    :Connect("127.0.0.1", 5020)
+  return promise, close
+end
+
+--- @class DriverPackage
+--- @field name string The driver's file name, such as `example_light.c4z`.
+--- @field body? string The .c4z file's contents. When nil, the copy this driver carries in its package is used.
+
+-- The folder in a host's package where `make package` puts the drivers it carries.
+local CARRIED_DIR = "c4z"
+
+--- Returns a driver version as a number. Versions are build dates, such as 20261125.
+--- @param version string|nil
+--- @return number|nil
+local function versionNumber(version)
+  return tonumber(string.match(tostring(version or ""), "^%d+$") or "")
+end
+
+--- Returns the contents to install for a package, or nil when there is nothing to install. If the store has a copy but
+--- none of its drivers has been added yet, there is no version to compare, so the copy is left alone.
+--- @param package DriverPackage
+--- @return string|nil body
+local function bodyToInstall(package)
+  if package.body ~= nil then
+    return package.body
+  end
+  UnlockC4ZRoot()
+  assert(C4:FileSetDir("C4Z_ROOT") ~= false, "could not open the driver store")
+  if C4:FileExists(package.name) then
+    local readable, version = pcall(GetDriverVersion, package.name)
+    local unpacked = readable and versionNumber(version)
+    local carried = versionNumber(C4:GetDriverConfigInfo("version"))
+    if not unpacked or not carried or unpacked >= carried then
+      return nil
+    end
+  end
+  if C4:FileSetDir("C4Z", CARRIED_DIR) == false then
+    return nil
+  end
+  local body = FileRead(package.name)
+  return not IsEmpty(body) and body or nil
+end
+
+--- Writes each package that needs installing to the controller's driver store, and returns the file names written.
+--- @param packages DriverPackage[]
+--- @return string[] written
+local function writePackages(packages)
+  local written = {}
+  for _, package in ipairs(packages) do
+    local body = bodyToInstall(package)
+    if body ~= nil then
+      UnlockC4ZRoot()
+      assert(C4:FileSetDir("C4Z_ROOT") ~= false, "could not open the driver store")
+      -- The file can already match if an earlier install wrote it but Director's update was lost.
+      if FileRead(package.name) ~= body then
+        if not replaceFile(package.name, body) then
+          error(string.format("failed to write %s", package.name), 0)
+        end
+        log:info("Put %s in the controller's driver store", package.name)
+      end
+      table.insert(written, package.name)
+    end
+  end
+  return written
+end
+
+--- Installs drivers the same way an update in Composer does. Each package is written to the controller's driver store,
+--- then Director is asked (on port 5020) to update the project's devices that use each file. A package with no body is
+--- the copy this driver carries in its own package. It is installed only when the store doesn't have it, or when the
+--- project's devices run an older version than this driver. If a write fails, the file keeps its old contents and
+--- nothing is sent to Director. Director is asked about one file at a time, because it drops requests still queued on a
+--- closed socket. This driver's own file goes last, because updating it reloads this driver. Leaves the current folder
+--- set to the driver store, as GetDriverVersion does.
+--- @param packages DriverPackage[]
+--- @return Deferred<string[], string> installed Resolves with the files written, after Director answers each update or
+--- after this driver's own update is sent.
+function InstallDrivers(packages)
+  local ok, written = pcall(writePackages, packages)
+  if not ok then
+    log:error("Couldn't install drivers: %s", written)
+    return reject(written)
+  end
+
+  local ownFilename = C4.GetDriverFileName and C4:GetDriverFileName()
+  local order, own = {}, nil
+  for _, filename in ipairs(written) do
+    if filename == ownFilename then
+      own = filename
+    elseif not IsEmpty(C4:GetDevicesByC4iName(filename) or {}) then
+      table.insert(order, filename)
+    end
+  end
+  if own ~= nil then
+    table.insert(order, own)
+  end
+
+  --- @type Deferred<string[], string>
+  local d = deferred.new()
+  local function send(index)
+    local filename = order[index]
+    if filename == nil then
+      return d:resolve(written)
+    end
+    log:info("Updating the project's %s", filename)
+    ReloadDriverArchive(filename, filename == own):next(function()
+      send(index + 1)
+    end, function(err)
+      d:reject(err)
+    end)
+  end
+  send(1)
+  return d
+end
+
 --- What a send's trace shows in place of parameters that hold a secret.
 local REDACTED = "***REDACTED***"
 

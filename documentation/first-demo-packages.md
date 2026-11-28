@@ -99,7 +99,7 @@ subscriptions and the saved Composer action.
 On each of Home Assistant 2026.11.1 and 2026.11.2, the staged packages passed
 1,131 family checks, 12 picker checks and ten paired recovery checks. All six
 reports match the staged Light, Switch and Coordinator digests. Both temporary
-HA labs were removed. The primary Home Assistant lab and CORE 1 project were
+HA labs were removed. The primary Home Assistant lab and project were
 preserved.
 
 The exact packaged Light and Coordinator replayed the native 750 ms brightness
@@ -123,7 +123,7 @@ archive comparison and 217 release checks passed for these exact packages.
 
 The exact packages passed 1,131 family, 12 picker and ten paired recovery checks
 on each of Home Assistant 2026.11.1 and 2026.11.2. All three archive hashes
-matched both HA runs and the CORE 1 installation receipt. The recovery tests
+matched both HA runs and the the controller installation receipt. The recovery tests
 covered reconnect, reload and lost feedback. Both temporary HA labs were
 removed. The packaged Coordinator passed 139 mixed-project checks against the
 pinned BP and prototype consumers.
@@ -145,7 +145,7 @@ Remaining lower-severity work includes a positive packaged round-trip of the
 prepared Switch identity for migration, and reducing repeated replacement
 binding reads during large connection maps if native timing justifies it.
 
-The installer authorized separate CORE 1 rehearsals for Prototype Switch 107 and
+The installer authorized separate the controller rehearsals for Prototype Switch 107 and
 BP Switch 106 using the same disposable HA load. For each source, Quick Setup
 transferred the Coordinator connection to the 2026112017 replacement, preserved
 the display name and room, and offered the old driver for removal after testing
@@ -172,7 +172,7 @@ old driver through Composer. Director then reported no pending migration. The
 saved Light event ran both actions, the scene reached 55% in Control4 and
 140/255 in Home Assistant, and the isolated loads were restored.
 
-The installed 2026112017 suite also passed the CORE 1 cold-reload checks. The
+The installed 2026112017 suite also passed the the controller cold-reload checks. The
 simulated dimmer kept its saved selection, indicator readback, bindings,
 programming and proxy after an acknowledged native reload. The two baseline
 Light fixtures kept their saved rooms, bindings, presets, programming and scenes
@@ -183,14 +183,14 @@ change only the model in the candidate XML.
 A fresh isolated HA 2026.11.1 run without HA Gesture Bridge passed 380 checks
 for native helper selection and control across both driver families. Each of the
 four paths recorded 20 software command samples. The temporary HA environment
-was removed. On CORE 1, the installed candidate ignored a fourth tap and
+was removed. On the controller, the installed candidate ignored a fourth tap and
 delivered the following triple tap for each family with the load state and saved
 programming intact.
 
 ## Revision 2026112016 qualification
 
 The three C4Zs passed release verification and the first-demo archive
-comparison. CORE 1 confirmed all four suite instances on revision 2026112016
+comparison. The controller confirmed all four suite instances on revision 2026112016
 with their project identities and connections preserved.
 
 Director returned the older-driver review entry for blank Light and Switch
@@ -201,7 +201,7 @@ were removed, and the project inventory matched its starting state.
 An independent browser review at 1000 × 550 and 320 × 300 checked the same
 visibility rules and keyboard focus when closing a completed review. The code
 review covered the saved checkpoint, the setup response, and the completed
-review's refresh and focus behavior. The installer's CORE 1 Composer screenshots
+review's refresh and focus behavior. The installer's the controller Composer screenshots
 confirm that the simulated dimmer and simulated wall switch hide **Review an
 older driver**, and that a Switch with an unfinished migration still offers it.
 
@@ -228,7 +228,7 @@ across manual saved-ID and Device Setup paths. The four paths each collected 20
 command samples on the test host's monotonic clock. All three temporary HA
 containers and volumes were removed.
 
-On CORE 1, the BP and prototype Light rehearsal fixtures updated from
+On the controller, the BP and prototype Light rehearsal fixtures updated from
 2026111923\. They kept their device and proxy IDs, rooms, connections, saved
 settings and scene membership. Their saved scenes drove the separate simulated
 load to 55% and 62% respectively, before and after the update. These test
@@ -267,7 +267,7 @@ A separate HA 2026.11.1 lab exercised `input_boolean` control with HA Gesture
 Bridge absent. Light passed 64 checks and Switch passed 124 checks, with 20
 command samples per family. The temporary lab was removed.
 
-CORE 1 reported the same revision on all four installed suite instances. Its
+The controller reported the same revision on all four installed suite instances. Its
 saved Bottom double-tap program still turned off the lab Light. The saved custom
 brightness preset preset also ramped from 37% to 64%, keeping the 64% target
 throughout all 23 Director ramp samples. Home Assistant received one brightness
@@ -344,7 +344,7 @@ Light retains input 999 and its original connection class. The original BP input
 also requested automatic binding. That behavior still needs reconciliation with
 selection of the intended Coordinator during setup. The isolated Home Assistant
 fixture run passed 1,064 checks using these packaged drivers and a simulated
-Director binding graph. It did not exercise a saved CORE 1 project or establish
+Director binding graph. It did not exercise a saved project or establish
 full baseline parity.
 
 ### Native rehearsal baseline
@@ -432,7 +432,7 @@ This build adopts template v0.9.112. The archive comparison passed against all
 six predecessors, and the packaged Light tests preserved brightness presets,
 click and hold rates, and configured keypad colors across reload.
 
-CORE 1 updated the three packages in place. Both Light and Switch recovered
+The controller updated the three packages in place. Both Light and Switch recovered
 their selected Home Assistant devices with the same proxy IDs and Coordinator
 bindings. Director retained the Switch's saved **Bottom - 2 taps → Turn off HA
 Light** program. A synthetic double tap delivered one gesture and turned off the
@@ -447,13 +447,13 @@ Mode → Off** returns **Log Level** to **Info** on all three drivers. The
 three-hour timeout was exercised with a virtual clock.
 
 Home Assistant 2026.11.1 and 2026.11.2 each passed 1,131 family, 12 browser
-setup and eight shared-Coordinator checks with the same packages as CORE 1. The
+setup and eight shared-Coordinator checks with the same packages as the controller. The
 runtime and browser runs used isolated Home Assistant containers with simulated
 Director and proxy behavior.
 
 ### Revision 2026111816 qualification
 
-Revision 2026111816 passed the six predecessor archive comparisons. CORE 1 kept
+Revision 2026111816 passed the six predecessor archive comparisons. The controller kept
 the existing Light and Switch selections, proxy IDs and bindings during
 child-first updates, followed by a Coordinator update. Both devices returned to
 **Device connected**.
@@ -486,7 +486,7 @@ python3 tools/check_first_demo.py --version 2026111816 --match-evidence \
 ### Revision 2026111815 qualification
 
 Revision 2026111815 passed the archive comparison against all six predecessor
-packages. CORE 1 loaded the Coordinator and both current child packages at that
+packages. The controller loaded the Coordinator and both current child packages at that
 revision. The existing Light and suite Switch returned to their saved Home
 Assistant selections after the Coordinator reloaded. Their bindings were
 preserved.
@@ -513,7 +513,7 @@ first-demo handoff checks.
 
 Run `python3 tools/check_first_demo.py --version 2026111810 --match-evidence` to
 match built archive hashes with the Docker run and deployment record, and match
-all three revisions with CORE 1 readback. Director reports the installed
+all three revisions with the controller readback. Director reports the installed
 versions. The hashes come from the deployment record. The open behavioral and
 operator checks below still govern handoff.
 
@@ -589,7 +589,7 @@ The user observed Advanced Properties opening to Device Setup on the preceding
 revision. The outer Properties pane showed the dimmer editor, preset controls
 and rates. Its On mode only showed a brightness field. An independent review
 confirmed the profile change matches the pinned Light example and Light Group,
-and identified native selection and save/reopen as the remaining checks. CORE 1
+and identified native selection and save/reopen as the remaining checks. The controller
 retained the Light and proxy identities, selection, bindings and `ENTITY_ID`.
 Director and HA again confirmed the saved scene reached 100%, and the fixture
 returned to its prior settings.
@@ -608,7 +608,7 @@ removes the experimental notification. Its Light archive SHA-256 is
 candidate was applied to the existing Light in Composer. Director confirmed the
 new revision on the Light. The native proxy still reported both modes disabled
 and kept its original preset IDs 1 and 2. The Composer update therefore
-reproduced the same limitation as the development helper.
+reproduced the same limitation as the development build.
 
 The original proxy's Default On Brightness remained functional. After the
 isolated dimmer was switched off from 33% and again from 67%, an ordinary On
@@ -634,13 +634,13 @@ simulated Example Light. The source, group and member all reported 27%, Off and
 100%. The checks took 381, 335 and 223 ms through Director and polling. The
 group was then set to a 47% On preset. The linked On command kept 47% and
 readback took 168 ms. The linked source's scene moved the group and its member
-to 69%. CORE 1 became unreachable during the first attempt. After the operator
+to 69%. The controller became unreachable during the first attempt. After the operator
 rebooted it, the interrupted fixtures were removed and the retry completed. The
 retry fixtures were also removed.
 
 ### Navigator Off and the Default On preset
 
-On CORE 1, the HA Light and Light Group sent the same brightness target and Off
+On the controller, the HA Light and Light Group sent the same brightness target and Off
 preset ID during a 36% to Off transition. The published Light Group revision
 2026111801 reported a 0% target. The in-place HA Light reported 43690. Home
 Assistant recorded one ordinary Off request with a 750 ms transition and no
@@ -699,7 +699,7 @@ this to the three affected built-in presets. The adapter tests check the numeric
 targets and verify that a custom preset still carries its identity during a
 ramp.
 
-On CORE 1, the normal revision 2026111834 package kept the same Light and proxy.
+On the controller, the normal revision 2026111834 package kept the same Light and proxy.
 Across 33 Director samples for Default On at 55% and 34 for Previous Level at
 37%, every reported target matched the selected mode. The preceding Off runs
 reported only 0% targets. Home Assistant received one request per operation, and
@@ -720,7 +720,7 @@ five repetitions, packaged HTML and driver Lua, simulated Director IPC and
 native proxy calls, and real HA services. Light passed 749 checks and Switch
 passed 367. Logging was Off. The package hashes matched the build inventory.
 
-A separate CORE 1 rehearsal pushed a 55% scene to a temporary proxy running the
+A separate the controller rehearsal pushed a 55% scene to a temporary proxy running the
 original BP 106 scene handlers. Director stored the parsed scene and kept the
 record intact after the protocol driver updated to 2026111834. The upgraded
 driver received `CLEAR_ALL_SCENES` during reload. Advanced Lighting did not send
@@ -737,7 +737,7 @@ both the upgraded proxy and its isolated linked Example Light to 55%. The test
 used a temporary package alias and simulated load. The original Light was
 verified at 2026111834 and was outside this rehearsal.
 
-For the prototype repeat, CORE 1 installed the pinned Light 1 code under a
+For the prototype repeat, the controller installed the pinned Light 1 code under a
 temporary alias with a lab-only binding action. The original Top Controller Link
 drove an independent Example Light to 37%. Director reported the selected Home
 Assistant paddle, the connected-light mode, and dimming and ramp support. With
@@ -760,7 +760,7 @@ outside the measurement.
 
 ### Revision 2026111837 template fade verification
 
-The suite now uses template v0.9.114 with upstream PR #242. On CORE 1 (OS
+The suite now uses template v0.9.114 with upstream PR #242. On the controller (OS
 3.4.3), the existing Light and proxy kept their Home Assistant selection and
 native preset settings after the update. Director reported only 0% in both Off
 fades, 55% across 22 Default On samples, and 37% across 21 Previous Level
@@ -770,7 +770,7 @@ state were restored.
 
 The adapter regression applies custom preset 42 and verifies that the proxy
 shows 64% throughout its fade and receives preset 42 on completion. A separate
-CORE 1 probe used two disposable Example Lights and a 750 ms ramp from 37% to
+The controller probe used two disposable Example Lights and a 750 ms ramp from 37% to
 64%. With synthetic preset ID 42 in the old fade notification, the proxy kept
 showing 37% until the fade finished. With v0.9.114, all 14 active ramp samples
 showed 64%. Both settled at 64%. This tested the native proxy notification.
@@ -859,7 +859,7 @@ used a monotonic clock to distinguish service acceptance, observed state, and
 feedback consumed by the driver. The tests used real HA and simulated Director
 IPC. Both temporary HA copies were removed, and the primary lab was preserved.
 
-All four installed suite instances on the CORE 1 lab controller moved to
+All four installed suite instances on the the controller lab controller moved to
 2026111911 with their project names, rooms, selections and bindings intact. The
 migrated Switch retained its saved Turn On action, and the independent fixture's
 programming was unchanged. Through the Light proxy, Director's native On command
@@ -922,7 +922,7 @@ programming-only mode, test gestures and indicator behavior, and keep the
 original until the replacement is tested. The physical walkthrough is still
 open.
 
-All four suite instances on the CORE 1 lab controller upgraded to 2026111912 in
+All four suite instances on the the controller lab controller upgraded to 2026111912 in
 one batch. Their names, rooms, selections, bindings and saved programming were
 preserved. The migrated Switch retained its verified Turn On action.
 
@@ -1003,7 +1003,7 @@ type. The retry screen named the exact staged Switch and kept removal hidden
 while the operation was pending. Fresh setup, stale Entity ID and missing-room
 recovery passed. These browser tests simulated Director replies.
 
-The same 2026111914 archives were staged together and installed on the CORE 1
+The same 2026111914 archives were staged together and installed on the the controller
 lab controller. Director verified all four instance revisions, selected devices,
 names, rooms, proxies, connections, gesture programming and the saved Turn On
 action on the migrated Switch. Quick Setup found three devices already in
@@ -1096,7 +1096,7 @@ without a separate Home Assistant lookup to approve the cached choice. Quick
 Setup rereads eligibility before it creates or connects a driver. Its preflight
 rejected a removed load before contacting Director to add it.
 
-On the CORE 1 lab controller, all installed suite drivers reported 2026111919
+On the the controller lab controller, all installed suite drivers reported 2026111919
 after staging and updating the coordinated package set. Director retained
 project names, selections, bindings and saved programming, including the
 migrated Switch action. A read-only request to the installed Device Setup
@@ -1129,7 +1129,7 @@ Prototype 107, the wizard returned the existing connection and relay to the old
 driver. The edited programming still pointed to the prepared replacement. The
 wizard kept old-driver removal unavailable and identified when to restore the
 project backup and how to retry. A retry used the same driver and verified the
-moved actions. This was a scripted Director simulation. The earlier CORE 1
+moved actions. This was a scripted Director simulation. The earlier the controller
 manual BP programming move and native prototype rollback are separate runs.
 
 An independent browser review of the exact 2026111920 Coordinator archive
@@ -1139,7 +1139,7 @@ pressing Enter submitted one request. Recovery with no programs to move showed
 only the retry instructions. If the old driver's return could not be verified,
 the page directed the installer to the backup and hid retry.
 
-CORE 1 accepted the coordinated 2026111920 update and reopened the saved project
+The controller accepted the coordinated 2026111920 update and reopened the saved project
 with the original names, selections, bindings, migration record and programming.
 A simulated fourth tap and following triple tap on button five advanced Last
 Sequence twice and Gesture Count once for each installed family. Last Gesture
@@ -1158,7 +1158,7 @@ Director and the simulated HA lab.
 | Switch | Warm open       | 36 ms   | 37 ms  | 83 ms           |
 | Switch | Explicit reload | 69 ms   | 72 ms  | 82 ms           |
 
-CORE 1 also ran five Light Programming requests each for indicator color,
+The controller also ran five Light Programming requests each for indicator color,
 brightness, behavior, and bulk color against the simulated wall dimmer. The
 requested field changed independently and all original values were restored.
 Median Director replies were 94, 153, 160 and 179 ms, respectively. Median times
@@ -1181,7 +1181,7 @@ archive was detected after creating a Docker container. Provisioning now checks
 the existing private seed before Docker writes. The regression verifies that a
 conflict preserves the original backup and creates no resources.
 
-A disposable Light V2 driver on CORE 1 played a looping flash through the
+A disposable Light V2 driver on the controller played a looping flash through the
 simulated binary light. The test observed six alternating HA state transitions,
 then verified that native Stop halted the loop and Remove prevented the scene
 from starting again. The first confirmed state arrived in 602 ms. Five observed
@@ -1207,7 +1207,7 @@ clears it and restores heading focus. The mapped On-only example continued with
 its existing programming check. The live Composer walkthrough of this new
 confirmation remains open.
 
-All installed suite drivers on CORE 1 reported 2026111921 after the update. The
+All installed suite drivers on the controller reported 2026111921 after the update. The
 saved migration status and programming survived. The candidate passed 139
 mixed-predecessor checks and 1,131 family checks, 12 picker checks, and 9 paired
 checks on each supported HA version. The package hashes match the installed and
@@ -1216,7 +1216,7 @@ Docker receipts.
 
 ## Revision 2026111922 Light reload checks
 
-On the CORE 1 lab controller, the installed canonical Light kept its 57% On
+On the the controller lab controller, the installed canonical Light kept its 57% On
 preset and its custom brightness preset. Using the native proxy, Home Assistant
 confirmed both levels on the simulated dimmer. The saved Advanced Lighting scene
 reached 100%, and the existing Bottom double-tap program turned the light off.

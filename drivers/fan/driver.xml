@@ -1,0 +1,161 @@
+<devicedata>
+  <name>Home Assistant Fan</name>
+  <version />
+  <manufacturer>SkiAlpine Labs</manufacturer>
+  <model>Control4.HA.Fan</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 skialpine. Template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/24/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Fan</category>
+  </composer_categories>
+  <conditionals>
+    <conditional>
+      <id>1002</id>
+      <name>IS_AVAILABLE</name>
+      <type>SIMPLE</type>
+      <condition_statement>Fan is available</condition_statement>
+      <description>Fan is available</description>
+      <sort_order>2</sort_order>
+    </conditional>
+  </conditionals>
+  <events>
+    <event>
+      <id>1002</id>
+      <name>Device became unavailable</name>
+      <description>When NAME stops reporting its current state</description>
+    </event>
+  </events>
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+<!-- #embed ../../src/ha/endpoint-properties.xml -->
+      <property>
+        <name>State</name>
+        <type>STRING</type>
+        <default>Unavailable</default>
+        <readonly>true</readonly>
+      </property>
+    </properties>
+    <tabs>
+      <tab name="Device Setup" file="html/index.html" />
+    </tabs>
+    <commands>
+      <command>
+        <name>Turn On</name>
+        <description>Turn On for NAME</description>
+      </command>
+      <command>
+        <name>Turn Off</name>
+        <description>Turn Off for NAME</description>
+      </command>
+      <command>
+        <name>Toggle</name>
+        <description>Toggle for NAME</description>
+      </command>
+      <command>
+        <name>Set Fan Option</name>
+        <description>Set NAME to PARAM1</description>
+        <params>
+          <param>
+            <name>Option</name>
+            <type>DYNAMIC_LIST</type>
+          </param>
+        </params>
+      </command>
+    </commands>
+    <actions>
+<!-- #embed ../../src/ha/endpoint-actions.xml -->
+    </actions>
+  </config>
+  <capabilities>
+    <discrete_levels>1</discrete_levels>
+    <can_reverse>false</can_reverse>
+    <can_set_preset>false</can_set_preset>
+  </capabilities>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" primary="True" name="Home Assistant Fan">fan</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>1</id>
+      <facing>5</facing>
+      <connectionname>HA Suite Coordinator</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>SKIALPINE_HA_SUITE_V1</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Fan</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>FAN</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>200</id>
+      <facing>6</facing>
+      <connectionname>On Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>201</id>
+      <facing>6</facing>
+      <connectionname>Off Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>202</id>
+      <facing>6</facing>
+      <connectionname>Toggle Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

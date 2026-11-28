@@ -9,7 +9,7 @@ WebSocket, timer and logging helpers. Configure these Composer properties:
 | HA Protocol         | Choose **HTTP** or **HTTPS** to match the address you use to open Home Assistant.                                                                                                                                                                                  |
 | HA Port             | Enter your port, or leave it blank to check `80` and `8123` over HTTP or `443` and `8123` over HTTPS. The Coordinator fills it in when exactly one port answers with the Home Assistant authentication prompt. If none or several answer, enter the port yourself. |
 | HA Token            | HA long-lived access token, entered in the password-protected property. Never paste it into logs, programming or support reports.                                                                                                                                  |
-| CA Certificate Path | Optional controller-side CA file path for HTTPS, relative to the driver location as defined by DriverWorks. Leave empty to use Director's trust configuration.                                                                                                     |
+| CA Certificate Path | Optional CA bundle for the Home Assistant HTTPS connection, relative to the driver location. Leave empty to use Director's trust configuration. |
 
 Port detection leaves the access token in Properties. If you change the host or
 protocol, the Coordinator checks common ports again when it picked the previous
@@ -48,7 +48,7 @@ the complete origin, including its scheme. The original variable keeps slot 1001
 on an upgrade from BP. A prior side-by-side suite installation appends the
 variable after its existing programming slots.
 
-On the lab CORE 1 running 3.4.3, the saved project serialized **Use SSL** as
+On the controller running 3.4.3, the saved project serialized **Use SSL** as
 **No**, while the running property reader returned a boolean spelling. The
 Coordinator accepts Yes/No and True/False case-insensitively for both transport
 setup and certificate controls. An unknown choice leaves the connection offline

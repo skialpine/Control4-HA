@@ -17,16 +17,19 @@ local errors = {
   review_required = "Review the matching devices before adding anything.",
   room_changed = "The selected room changed. Choose a room and review your selection again.",
   duplicate_selection = "The same device was selected twice. Keep one entry and review your selection again.",
+  duplicate_name = "Two selected devices have the same Control4 name and room. Change one name or room and review again.",
   invalid_request = "Choose a device, a room and a name, then review your selection again.",
+  name_required = "Enter a Control4 name for the selected device and review again.",
+  multiple_receipts = "More than one earlier attempt matches this device. In Composer, check which driver was added before trying again.",
   configuration_unconfirmed = "The new driver has not confirmed setup. Check the driver and review your selection again to finish setup.",
   retired = "The connection restarted. Review your selection again.",
   project_unavailable = "Could not check which devices already have a Control4 driver. Refresh the list to try again.",
 }
-function M.install(current)
-  local register = page.commands(current)
+function M.install(current, register)
+  register = register or page.commands(current)
   local function failed(done, err)
     local kind = type(err) == "table" and err.kind
-    done({ error = errors[kind] or page.explain(kind) })
+    done({ error = errors[kind] or page.explain(kind), changed_family = type(err) == "table" and err.family or nil })
   end
   register("HA_ADD_GET", "HA_ADD_STATE", function(owner, _, done)
     done({
@@ -54,14 +57,16 @@ function M.install(current)
       failed(done, { kind = owner.online and "invalid_request" or "disconnected" })
       return
     end
+    local family = params.setup or query.family
+    local catalog = contract.endpointFamily(family) and owner:catalogFor(family) or owner.catalog
     local function read(revision)
-      local result, err = owner.catalog:read(revision, query.cursor, index)
+      local result, err = catalog:read(revision, query.cursor, index)
       if result then
         local response = page.choices(result, true)
         local span = metrics:start("commissioning.catalog_matches")
         owner.commissioning:browseChoices(result):next(function(matches)
           metrics:finish(span, "ok")
-          if not owner.catalog:hasVerifiedSnapshot(revision) then
+          if not catalog:hasVerifiedSnapshot(revision) then
             failed(done, { kind = "revision_changed" })
             return
           end
@@ -86,7 +91,7 @@ function M.install(current)
     if query.cursor or (params.setup and query.revision) then
       read(query.revision)
     else
-      owner.catalog:refresh(params.refresh == true):next(function(metadata)
+      catalog:refresh(params.refresh == true):next(function(metadata)
         read(metadata.revision)
       end, function(err)
         failed(done, err)

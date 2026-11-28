@@ -1,5 +1,6 @@
 -- Running release identity shared by update qualification and migration.
 local ids = require("ha.identities")
+local families = require("ha.endpoint-families")
 
 local M = {}
 local packages = {
@@ -7,8 +8,18 @@ local packages = {
   { family = "Light", file = ids.packages.light.file, model = ids.packages.light.model, proxy = "light_v2" },
   { family = "Switch", file = ids.packages.switch.file, model = ids.packages.switch.model, proxy = "uibutton" },
 }
+for _, family in ipairs(families.order) do
+  local package = families[family]
+  packages[#packages + 1] = {
+    family = package.name,
+    file = package.file,
+    model = package.model,
+    proxies = package.proxies,
+    predecessorVersion = package.predecessorVersion,
+  }
+end
 
-function M.read()
+function M.read(suiteOnly)
   local installed, summary = {}, {}
   for _, package in ipairs(packages) do
     local instances = {}
@@ -27,8 +38,13 @@ function M.read()
       if not rev or rev < 1 or rev > 2147483647 or rev ~= math.floor(rev) then
         return nil
       end
-      instances[device] = rev
-      low, high = math.min(low or rev, rev), math.max(high or rev, rev)
+      local retainedPredecessor = suiteOnly
+        and rev == package.predecessorVersion
+        and C4:GetDeviceData(device, "manufacturer") == "BP"
+      if not retainedPredecessor then
+        instances[device] = rev
+        low, high = math.min(low or rev, rev), math.max(high or rev, rev)
+      end
     end
     if low then
       installed[#installed + 1] = { package = package, low = low, high = high, instances = instances }
@@ -41,7 +57,7 @@ end
 -- Inspect the running versions of every installed suite instance, including
 -- unbound ones. The replacement and Coordinator must both be in this set.
 local function aligned(coordinatorId, replacement, family)
-  local inventory = M.read()
+  local inventory = M.read(true)
   local revision, coordinator, child
   for _, row in ipairs(inventory or {}) do
     if row.low ~= row.high or #tostring(row.high) ~= 10 or (revision and revision ~= row.high) then

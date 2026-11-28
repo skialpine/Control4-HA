@@ -1,0 +1,11 @@
+      <property>
+        <name>Position control</name>
+        <type>LIST</type>
+        <default>Automatic</default>
+        <items>
+          <item>Automatic</item>
+          <item>Positional</item>
+          <item>Open and close</item>
+        </items>
+        <description>Automatic uses the device's reported capabilities. Positional shows reported percentages. Open and close disables intermediate moves. Stop remains available when supported.</description>
+      </property>

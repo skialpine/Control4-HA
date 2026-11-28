@@ -47,7 +47,9 @@ selection while exercising the template's socket cache.
 The GitHub updater extension stages archives and waits for Director to accept
 each child reload. The Coordinator checks the resulting revision by calling each
 child's live UIRequest handler through the template helper. The running
-Coordinator verifies its own revision after reload.
+Coordinator verifies its own revision after reload. The template's OSS GitHub
+updater leaves scheduling to the calling driver. The Coordinator's Actions check
+runs on request, and Automatic Updates controls scheduled runs.
 
 Use the template test shim, virtual clocks, Light conformance kit and existing
 library tests. Translate prototype behavioral tests into adapter/contract tests
@@ -64,6 +66,11 @@ The pinned Composer Kit uses each option value as its display text. The shared
 property renderer accepts optional `choice_labels` to display the resolved
 target's name while preserving the value used by the property's normal save
 handler. Light and Switch use this for Button behavior.
+
+Director can keep the package name when `lib.companions` adds a Garage Door with
+relay and contact bindings. Quick Setup uses the template `RenameDevice` helper
+on the exact new instance if it still shows that name, then verifies the name
+and the room through its normal project readback.
 
 The pinned Light library currently needs two local corrections before the
 adapters can rely on it: explicit logical power intent on commands and permanent
@@ -135,14 +142,14 @@ synchronization status.
 ### Advanced Lighting Scene IDs
 
 The pinned library accepts scene ID zero. The suite's added range guard excluded
-it, so CORE 1 could save its first scene but the Light ignored its activation.
+it, so the controller could save its first scene but the Light ignored its activation.
 Retain the template's zero-based ID contract when validating incoming IDs. The
 Light adapter regression test saves and activates ID zero after a cold read.
 
 ### Native Brightness On Mode
 
 The pinned `example_light` and Light Group profiles both enable `defaultOn` and
-`onModes`. The suite originally enabled only `onModes`. The CORE 1 Composer
+`onModes`. The suite originally enabled only `onModes`. The the controller Composer
 screen showed a Default On Brightness spinner where Light Group showed Preset
 and Previous Level choices. Revision 2026111826 adds the template's `defaultOn`
 profile option. The package verifier requires the native On mode and default-on
@@ -150,9 +157,9 @@ capabilities. The adapter test confirms that an ordinary HA On with remembered
 brightness and an unset Control4 mode still leaves brightness to Home Assistant.
 Explicit On presets have their own test.
 
-CORE 1 reported both brightness mode flags enabled and supplied a Previous On
+The controller reported both brightness mode flags enabled and supplied a Previous On
 preset for a fresh test copy of the same driver. Its existing BP-upgraded Light
-reported both flags disabled. The revision 2026111827 experiment sent the flags
+reported both flags disabled. A later experiment sent the flags
 through `DYNAMIC_CAPABILITIES_CHANGED`, and the existing proxy continued to
 report them disabled. Revision 2026111828 removes that notification change and
 retains the template profile. Applying it in Composer also left both flags
@@ -165,7 +172,7 @@ path. They also use the same two inputs for preset edits. A single
 preset level stale until the proxy's follow-up `UPDATE_BRIGHTNESS_PRESET`. Keep
 those values in sync in the shared settings library. The regression exercises
 both edit commands, ordinary On and the preservation of a different On mode.
-CORE 1's complete native command sequence already includes the follow-up.
+The controller's complete native command sequence already includes the follow-up.
 
 An upgraded Light can expose Default On Brightness without a named On mode. The
 template already chooses its saved fallback level in that case. The HA adapter
@@ -248,6 +255,43 @@ lighting tests also exercise its new group deletion regression.
 
 [Upstream group deletion fix](https://github.com/finitelabs/control4-driver-template/pull/246)
 
+### v0.9.117 to v0.9.119
+
+The `example-driver/drivers/example_light` diff is empty. The Coordinator uses
+the updated WebSocket library, which echoes the ping payload in its pong. The
+upstream `test_websocket.lua` cases cover empty, split and interleaved pings and
+retain the HA upgrade and teardown regressions.
+
+Quick Setup uses the template's `InstallDrivers` before the existing
+`addSelected` flow when the installer confirms creating a device whose file is
+missing. It keeps the suite's exact room, binding and selection readbacks.
+Installed project drivers continue through the Coordinator's release checks and
+saved update plan. The template installer and the release plan share the same
+Director reload request and acknowledgment handling.
+
+The template's embedded-driver setting takes source folder names, while the
+packaging recipe assumes those names are also the published archive names. The
+recipe resolves them from each `driver.c4zproj`. The build checks that the
+Coordinator carries the same archive bytes as the standalone releases. The
+commissioning simulator checks confirmation, existing files and retry after the
+bundle or write is unavailable.
+
+The exact 2026112501 Coordinator passed package inspection. Two builds with the
+same inputs produced identical inventory, manifests and bundles. The independent
+Quick Setup browser review demonstrated recovery at 480 × 530 and 960 × 720,
+including selection, room, name and keyboard focus retained for retry.
+Coordinator-only installation in Composer awaits clean-project qualification on
+The controller.
+
+The packaged driver installed the 177,712-byte Fan archive into the simulator's
+in-memory driver store in 64 samples. With logging off, the host CPU clock
+reported p50 0.024 ms, p95 0.064 ms and max 0.141 ms. The existing-file path had
+p50 0.002 ms, p95 0.003 ms and max 0.003 ms over 64 samples. These timings cover
+the package check and copy in the simulator.
+
+[PR #247](https://github.com/finitelabs/control4-driver-template/pull/247) ·
+[PR #248](https://github.com/finitelabs/control4-driver-template/pull/248)
+
 ### Member cleanup after a missed leave
 
 The shared `lib.light.groups` checks saved group IDs against Director's device
@@ -261,7 +305,7 @@ missing, a group that reappears and an overlapping group that remains active.
 
 ### Native brightness and color rate readback
 
-CORE 1 returned a 750 ms default brightness rate and a separate 0 ms color rate
+The controller returned a 750 ms default brightness rate and a separate 0 ms color rate
 for the lab dimmer. The template's setup reader applied both fields as
 shared-rate edits, so the color field overwrote the brightness default. The
 suite now restores both reported fields independently and uses the available
@@ -318,3 +362,18 @@ snapshot as final. The Home Assistant adapter uses the same hook, with the local
 The ledger waits until the expected transition has landed before requesting a
 read. The adapter uses the Coordinator's existing exact-load read and correlates
 the result to the current command.
+
+## Additional Home Assistant families
+
+The pinned generic example supplies handler initialization, property tabs,
+values, events and teardown. The family entry points use the existing Device
+Setup and Coordinator binding path. The shared endpoint adapter owns
+registration cleanup, invalidation and confirmed state publication. Switch uses
+that same registration cleanup. The template's Light library continues to own
+its proxy, state, settings and groups through its documented interfaces.
+
+The pin has no dedicated adapter library for the new native proxies. Each new
+driver translates its Home Assistant capabilities, supported commands and
+reported state in its own adapter. The setup and command modules retain the
+selection and service ownership checks. All native endpoint catalog scopes use
+the standard Home Assistant API without depending on an extension.

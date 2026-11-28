@@ -234,7 +234,7 @@ function Connection:_open()
   end
   local ok, ws = pcall(WebSocket.new, WebSocket, config.url, nil, options)
   if not ok or not ws then
-    self:_fail("Cannot open HA connection; check controller networking and available bindings", true)
+    self:_fail("Cannot open the Home Assistant connection. Check the controller network connection.", true)
     return
   end
   self.socket = ws
@@ -256,7 +256,7 @@ function Connection:_open()
       end
       phase = "required"
       self:_state("authenticating", "Waiting for HA authentication challenge")
-      deadline("HA authentication timed out; check the endpoint and proxy WebSocket support")
+      deadline("HA authentication timed out. Check the address and proxy WebSocket support.")
     end
   end)
   ws:SetProcessMessageFunction(function(_, raw)
@@ -298,7 +298,7 @@ function Connection:_open()
   end)
   local function offline()
     if active() then
-      self:_fail("HA connection lost; reconnecting", true)
+      self:_fail("The Home Assistant connection was lost.", true)
     end
   end
   ws:SetOfflineFunction(offline)
@@ -311,7 +311,7 @@ function Connection:_open()
     if active() then
       DEBUG_WEBSOCKET, DEBUG_RFN = false, false
       if not pcall(callback, ...) then
-        self:_fail("HA network handler failed; reconnecting", true)
+        self:_fail("The Home Assistant network handler failed.", true)
       end
     end
   end
@@ -321,11 +321,9 @@ function Connection:_open()
   OCS[ws.netBinding] = function(...)
     guarded(status, ...)
   end
-  deadline(
-    "HA WebSocket upgrade timed out; use the final URL and check DNS, TLS trust and proxy support (redirects are refused)"
-  )
+  deadline("HA WebSocket upgrade timed out. Check DNS, TLS trust and proxy WebSocket support.")
   if not pcall(ws.Start, ws) then
-    self:_fail("Cannot start HA connection; check controller networking", true)
+    self:_fail("Cannot start the Home Assistant connection. Check the controller network connection.", true)
   end
 end
 
@@ -339,7 +337,7 @@ function Connection:send(message)
     return false
   end
   if not pcall(self.socket.Send, self.socket, raw) then
-    self:_fail("HA send failed; reconnecting", true)
+    self:_fail("A message to Home Assistant could not be sent.", true)
     return false
   end
   return true
@@ -351,7 +349,7 @@ function Connection:recover()
   if self.destroyed or self.state ~= "connected" then
     return false
   end
-  self:_fail("HA subscription confirmation timed out; reconnecting", true)
+  self:_fail("HA subscription confirmation timed out.", true)
   return true
 end
 
@@ -377,11 +375,7 @@ function Connection:_privateRead(path, body, maxBytes, operation)
     ssl_verify_peer = true,
   }
   if config.ca and config.ca ~= "" then
-    if config.clientTLS then
-      options.ssl_cabundle = config.ca
-    else
-      options.ssl_cacerts = { config.ca }
-    end
+    options.ssl_cabundle = config.ca
   end
   if config.clientTLS then
     options.ssl_cert = config.clientTLS.cert
@@ -448,6 +442,41 @@ function Connection:readCatalogNames(sensor)
   return result
 end
 
+function Connection:climateScale()
+  if self.climateConfig and self.climateConfig.generation == self.generation then
+    return self.climateConfig.work
+  end
+  local pending = deferred.new()
+  local config = { generation = self.generation, work = pending }
+  self.climateConfig = config
+  local function complete(unit)
+    if self.climateConfig == config and not unit then
+      self.climateConfig = nil
+    end
+    pending:resolve(unit)
+  end
+  self:_privateRead("/api/config", nil, 262144, "climate.config"):next(function(raw)
+    local ok, decoded = pcall(codec.decode, raw)
+    local units = ok and codec.isObject(decoded) and decoded.unit_system
+    local unit = codec.isObject(units) and units.temperature
+    if config.generation == self.generation and (unit == "°C" or unit == "°F") then
+      config.unit = unit
+    end
+    complete(config.unit)
+  end, function()
+    complete()
+  end)
+  return pending
+end
+
+function Connection:addClimateScale(state)
+  local config = self.climateConfig
+  if config and config.generation == self.generation and config.unit then
+    state.attributes.temperature_unit = config.unit
+  end
+  return state
+end
+
 function Connection:readState(entity)
   local result = deferred.new()
   if type(entity) ~= "string" or not entity:match("^[a-z][a-z0-9_]*%.[a-z0-9_]+$") then
@@ -471,7 +500,7 @@ function Connection:readState(entity)
   return result
 end
 
-function Connection:readCatalog()
+function Connection:readCatalog(family)
   local result = deferred.new()
   local total, revision, rows, ids = nil, nil, codec.array({}), nil
   local offset, generation = 0, self.generation
@@ -482,7 +511,7 @@ function Connection:readCatalog()
     self
       :_privateRead(
         "/api/template",
-        { template = nativeCatalog.template(page, offset) },
+        { template = nativeCatalog.template(page, offset, family) },
         262144,
         "catalog.native_projection"
       )
@@ -509,7 +538,7 @@ function Connection:readCatalog()
           end
           local previous = #rows > 0 and rows[#rows].entity_id or ""
           for _, id in ipairs(response.ids) do
-            if not nativeCatalog.entity(id) or id <= previous then
+            if not nativeCatalog.entity(id, family) or id <= previous then
               return reject()
             end
             previous = id

@@ -1,0 +1,125 @@
+<devicedata>
+  <name>HA Binary Sensor</name>
+  <version />
+  <manufacturer>SkiAlpine Labs</manufacturer>
+  <model>HA Binary Sensor</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <combo>true</combo>
+  <copyright>Copyright 2026 skialpine. Template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/24/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Other</category>
+  </composer_categories>
+  <conditionals>
+    <conditional>
+      <id>1000</id>
+      <name>IS_ACTIVE</name>
+      <type>SIMPLE</type>
+      <condition_statement>Signal is active</condition_statement>
+      <description>Signal is active</description>
+      <sort_order>0</sort_order>
+    </conditional>
+    <conditional>
+      <id>1001</id>
+      <name>IS_INACTIVE</name>
+      <type>SIMPLE</type>
+      <condition_statement>Signal is inactive</condition_statement>
+      <description>Signal is inactive</description>
+      <sort_order>1</sort_order>
+    </conditional>
+    <conditional>
+      <id>1002</id>
+      <name>IS_AVAILABLE</name>
+      <type>SIMPLE</type>
+      <condition_statement>Sensor is available</condition_statement>
+      <description>Sensor is available</description>
+      <sort_order>2</sort_order>
+    </conditional>
+  </conditionals>
+  <events>
+    <event>
+      <id>1000</id>
+      <name>Signal became active</name>
+      <description>When NAME reports an active signal</description>
+    </event>
+    <event>
+      <id>1001</id>
+      <name>Signal became inactive</name>
+      <description>When NAME reports an inactive signal</description>
+    </event>
+    <event>
+      <id>1002</id>
+      <name>Device became unavailable</name>
+      <description>When NAME stops reporting its current state</description>
+    </event>
+  </events>
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <!-- #embed ../../src/ha/endpoint-properties.xml -->
+      <property>
+        <name>Entity ID</name>
+        <type>STRING</type>
+        <readonly>false</readonly>
+        <default />
+        <attributes>1</attributes>
+      </property>
+      <property>
+        <name>State</name>
+        <type>STRING</type>
+        <default>Unavailable</default>
+        <readonly>true</readonly>
+      </property>
+    </properties>
+    <tabs>
+      <tab name="Device Setup" file="html/index.html" />
+    </tabs>
+    <commands />
+    <actions>
+      <!-- #embed ../../src/ha/endpoint-actions.xml -->
+    </actions>
+  </config>
+  <capabilities />
+  <proxy name="HA Binary Sensor">other</proxy>
+  <connections>
+    <connection>
+      <id>999</id>
+      <facing>1</facing>
+      <connectionname>Device Link</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class>
+          <classname>HA_DEVICE</classname>
+          <autobind>True</autobind>
+        </class>
+        <class>
+          <classname>SKIALPINE_HA_SUITE_V1</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>1</id>
+      <facing>1</facing>
+      <connectionname>Contact Sensor</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>CONTACT_SENSOR</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

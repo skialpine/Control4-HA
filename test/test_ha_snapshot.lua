@@ -43,8 +43,8 @@ do
   )
   T.eq(
     "TLS verification and explicit trust",
-    { request.options.ssl_verify_host, request.options.ssl_verify_peer, request.options.ssl_cacerts },
-    { true, true, { "/etc/ha-lab-ca.pem" } }
+    { request.options.ssl_verify_host, request.options.ssl_verify_peer, request.options.ssl_cabundle },
+    { true, true, "/etc/ha-lab-ca.pem" }
   )
   answer('{"entity_id":"light.lab","state":"off","attributes":{"optional":null,"modes":[],"metadata":{}}}')
   T.eq("null preserved", result.state.attributes.optional, codec.null)

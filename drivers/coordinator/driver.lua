@@ -502,6 +502,9 @@ function OnDriverLateInit()
     local reportedOnline = false
     connection.onState = function(state, detail)
       local status = connectionStatus[state] or detail
+      if state == "retrying" then
+        status = "Reconnecting to Home Assistant. " .. detail:gsub("^HA ", "Home Assistant ")
+      end
       if legacySettings() then
         if status:find("Check HA URL.", 1, true) then
           status =
@@ -541,9 +544,16 @@ function OnDriverLateInit()
         end
       end
     end
-    hub.commissioning = Commissioning.new(hub.catalog, function(device, query)
-      return hub.transfer:start(device, query)
-    end, hub.installation)
+    hub.commissioning = Commissioning.new(
+      hub.catalog,
+      function(device, query)
+        return hub.transfer:start(device, query)
+      end,
+      hub.installation,
+      function(family)
+        return hub:catalogFor(family)
+      end
+    )
     hub:announce()
     apply()
     startReleaseCheck()

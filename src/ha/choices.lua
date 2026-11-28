@@ -3,6 +3,7 @@
 local codec = require("ha.codec")
 local contract = require("ha.contract")
 local lightCapabilities = require("ha.light-capabilities")
+local families = require("ha.endpoint-families")
 local deferred = require("deferred")
 require("lib.utils")
 local M = {}
@@ -14,6 +15,9 @@ M.setupTypes = {
   { id = "light", name = "Lights" },
   { id = "switch", name = "Switches" },
 }
+for _, family in ipairs(families.order) do
+  M.setupTypes[#M.setupTypes + 1] = { id = family, name = families[family].name }
+end
 
 -- A binary light can use either driver. Its Home Assistant domain decides
 -- where it appears in Quick Setup; eligibility decides which driver can run it.
@@ -161,7 +165,7 @@ function M.apply(rows, entries, native)
       eligible = (
         projected
         or enabled(entry)
-        or (native and entry == codec.null and contract.loadDomain(item.entity_id))
+        or (native and entry == codec.null and contract.endpointDomain(item.entity_id))
       )
         and item.c4_exported ~= true
         and item.device_disabled ~= true
@@ -201,9 +205,17 @@ function M.apply(rows, entries, native)
     -- Metadata is projected to explicit family eligibility, not whole-device
     -- equality. A dimmer does not appear as a normal Switch choice.
     if eligible then
-      item.families[#item.families + 1] = "light"
-      if not dims then
-        item.families[#item.families + 1] = "switch"
+      if families.domains[item.domain] then
+        for _, family in ipairs(families.order) do
+          if families.eligible(family, item.domain, item.attributes) then
+            item.families[#item.families + 1] = family
+          end
+        end
+      else
+        item.families[#item.families + 1] = "light"
+        if not dims then
+          item.families[#item.families + 1] = "switch"
+        end
       end
     end
     result[#result + 1] = item

@@ -3,6 +3,8 @@ local updater = require("lib.github-updater")
 local codec = require("ha.codec")
 local inventory = require("ha.installed-suite")
 local ids = require("ha.identities")
+local families = require("ha.endpoint-families")
+require("lib.utils")
 
 local Installer = {}
 Installer.__index = Installer
@@ -10,12 +12,17 @@ local JOURNAL = "ha-suite-update.json"
 local TIMER = "HA.SuiteUpdate"
 local ROOT, STAGING = "C4Z_ROOT", "SANDBOX"
 local COORDINATOR = ids.packages.coordinator.file
-local ORDER = { ids.packages.light.file, ids.packages.switch.file, COORDINATOR }
+local ORDER = { ids.packages.light.file, ids.packages.switch.file }
 local labels = {
   [ids.packages.light.file] = "Light",
   [ids.packages.switch.file] = "Switch",
   [COORDINATOR] = "Connection",
 }
+for _, family in ipairs(families.order) do
+  local package = families[family]
+  ORDER[#ORDER + 1], labels[package.file] = package.file, package.name
+end
+ORDER[#ORDER + 1] = COORDINATOR
 local MAX_BYTES = 4 * 1024 * 1024
 
 local function digest(bytes)
@@ -204,8 +211,8 @@ function Installer:prepare(result)
   return updater:writeArchive(STAGING, JOURNAL, codec.encode(job))
 end
 
--- After a restart, observe the saved operation. Only an explicitly enabled
--- check may resume writes. The other packages are always handled before self.
+-- After restart the Coordinator observes the saved operation. A manual check
+-- can resume writes. The other packages are always handled before self.
 function Installer:runPending(mayWrite, onDone)
   if self.run or not Installer.isOwner() then
     return false
@@ -314,7 +321,7 @@ function Installer:runPending(mayWrite, onDone)
     SetTimer(TIMER, 20000, function()
       finish("attention")
     end)
-    local reload, cancel = updater:reloadArchive(name, name == COORDINATOR)
+    local reload, cancel = ReloadDriverArchive(name, name == COORDINATOR)
     run.cancelReload = cancel
     reload:next(function()
       if self.run == run and name ~= COORDINATOR then

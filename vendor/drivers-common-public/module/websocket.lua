@@ -31,8 +31,12 @@
 --      drain frames coalesced with that response so HA authentication can begin.
 --  12. Close survives failed sends, timer cancellation and allocation. Retire
 --      connected state and remove only registry/callbacks still owned by self.
+--  13. Pong() echoes the ping's payload, as RFC 6455 5.5.3 requires, and goes through
+--      Send() for a random mask. Upstream sent an empty pong with a zero mask; a
+--      Samsung TV (8002 remote channel) pings with a 1-byte payload and closes the
+--      connection about 20 s later when the pong does not match.
 --
--- test/test_websocket.lua covers 1 to 5, and each place v15 stops a timer.
+-- test/test_websocket.lua covers 1 to 5 and 11 to 13, and each place v15 stops a timer.
 
 COMMON_WEBSOCKET_VER = 15
 
@@ -565,7 +569,7 @@ function WebSocket:parseWSPacket()
       if DEBUG_WEBSOCKET then
         print("RX PING")
       end
-      self:Pong()
+      self:Pong(thisFragment)
     elseif opcode == 0x0A then -- pong control frame
       if DEBUG_WEBSOCKET then
         print("RX PONG")
@@ -670,14 +674,13 @@ function WebSocket:Ping()
   end
 end
 
-function WebSocket:Pong()
-  if self.connected then
-    local pkt = string.char(0x8A, 0x80, 0x00, 0x00, 0x00, 0x00)
-    if DEBUG_WEBSOCKET then
-      print("TX PONG")
-    end
-    self:sendToNetwork(pkt)
+--- Answer a ping. The pong carries the ping's payload back (RFC 6455 5.5.3).
+--- @param payload? string The ping's application data (at most 125 bytes).
+function WebSocket:Pong(payload)
+  if DEBUG_WEBSOCKET then
+    print("TX PONG")
   end
+  self:Send(string.sub(payload or "", 1, 125), 0x8A)
 end
 
 function WebSocket:ConnectionChanged(strStatus)

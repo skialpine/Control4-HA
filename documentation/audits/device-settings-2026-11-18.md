@@ -81,7 +81,7 @@ label was shortened after it did not fit the narrow pane. The manifest
 comparison against six source packages is complementary evidence. It cannot
 establish editing, hardware response or preservation of saved programming.
 
-### CORE 1 observations
+### Controller observations
 
 Director confirmed revision 2026111808 on the existing Coordinator, Light
 and suite Switch. The original Switch remained at revision 106. None of the

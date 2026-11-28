@@ -389,7 +389,7 @@ do
     codec.object({}),
     codec.null,
     codec.array({ "light.lab", "light.lab" }),
-    codec.array({ "sensor.private" }),
+    codec.array({ "camera.private" }),
     codec.array({ "light.lab?token=secret" }),
   }) do
     local bad = wire(good)

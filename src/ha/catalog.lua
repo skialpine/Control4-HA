@@ -5,6 +5,7 @@ local deferred = require("deferred")
 local contract = require("ha.contract")
 local Choices = require("ha.choices")
 local NativeCatalog = require("ha.native-catalog")
+local families = require("ha.endpoint-families")
 local operations = require("ha.operations")
 local metrics = require("ha.performance").shared
 require("lib.utils")
@@ -45,11 +46,15 @@ local function revisionRow(item, encoded)
   return codec.encode(stable)
 end
 
-function Catalog.new(request, native, decorate, supplement)
-  return setmetatable(
-    { request = request, native = native, decorate = decorate, supplement = supplement, generation = 0 },
-    Catalog
-  )
+function Catalog.new(request, native, decorate, supplement, family)
+  return setmetatable({
+    request = request,
+    native = native,
+    decorate = decorate,
+    supplement = supplement,
+    family = family,
+    generation = 0,
+  }, Catalog)
 end
 function Catalog:invalidate(kind)
   metrics:finish(self.timing, "retired")
@@ -183,6 +188,9 @@ function Catalog:refresh(force)
         return
       end
       local indices = { all = {}, light = {}, switch = {}, quick_lighting = {}, quick_light = {}, quick_switch = {} }
+      for _, family in ipairs(families.order) do
+        indices[family], indices["quick_" .. family] = {}, {}
+      end
       table.sort(values, function(a, b)
         return a.entity_id < b.entity_id
       end)
@@ -196,7 +204,8 @@ function Catalog:refresh(force)
           fail("invalid_endpoint_metadata")
           return
         end
-        revisionRows[index] = revisionRow(item, encoded)
+        local registry = self.family and Choices.standaloneRegistry(item)
+        revisionRows[index] = revisionRow(item, encoded) .. (registry and "|" .. registry or "")
         for _, family in ipairs(item.families) do
           indices[family][#indices[family] + 1] = index
         end
@@ -227,14 +236,14 @@ function Catalog:refresh(force)
           local preferred = Choices.suggestedFamily(item)
           if preferred == "light" or preferred == "switch" then
             indices.quick_lighting[#indices.quick_lighting + 1] = index
-            local category = indices["quick_" .. preferred]
-            category[#category + 1] = index
           end
+          local category = indices["quick_" .. preferred]
+          category[#category + 1] = index
         end
       end
       -- The companion's transfer revision includes load availability. Keep it
       -- for coherent paging, and hash the local draft from structural data.
-      local prefix = source .. ":" .. tostring(eligibilityVersion or 0)
+      local prefix = (self.family or "") .. ":" .. source .. ":" .. tostring(eligibilityVersion or 0)
       local fingerprint = C4:Hash("SHA256", prefix .. "[" .. table.concat(revisionRows, ",") .. "]")
       if not self.snapshot or self.snapshot.revision ~= fingerprint then
         self.snapshot = {
@@ -449,7 +458,11 @@ function Catalog:refresh(force)
       end
     end)
   end
-  page(1)
+  if self.family then
+    native()
+  else
+    page(1)
+  end
   return pending
 end
 function Catalog:hasVerifiedSnapshot(expectedRevision)

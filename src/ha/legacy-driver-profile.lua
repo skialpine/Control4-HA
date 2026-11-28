@@ -59,7 +59,10 @@ function M.gateway(source)
   if not profile then
     return
   end
-  local id, input = source.id, profile.input
+  return M.gatewayAt(source.id, profile.input)
+end
+
+function M.gatewayAt(id, input)
   local rows = GetDeviceBindings(id, nil, false, nil, "HOMEASSISTANT_DEVICES")
   local row = type(rows) == "table" and rows[input]
   if not row or tonumber(row.deviceid) ~= id then

@@ -179,7 +179,7 @@
     {
       "id": "finitelabs/template",
       "repository": "https://github.com/finitelabs/control4-driver-template",
-      "revision": "1041c5fe4fd0329fd5363a5da65e9e710362baa4",
+      "revision": "bd2169071d75401c434c5e478dc1a30bc862d8ea",
       "credit": "Finite Labs / Derek Miller and template contributors",
       "terms": "AGPL-3.0",
       "permission": "established",
@@ -197,8 +197,8 @@
         {
           "path": ".copier-answers.yml",
           "source_path": "template/{{ _copier_conf.answers_file }}.jinja",
-          "sha256": "4808c5871e35d0f67eb046f192e07f7e903e8af3993fd214c7579d76a0583cb4",
-          "changes": "Copier 9.19.1 render at v0.9.117 using the suite answers"
+          "sha256": "53449e7c7d5b9a9b16ba4fe5e4c19c93567c94d91b680fdfd00240f423d25d02",
+          "changes": "Copier 9.19.1 render at v0.9.119 with the Coordinator carrying the suite driver folders"
         },
         {
           "path": "LICENSE",
@@ -215,8 +215,8 @@
         {
           "path": "CONTRIBUTING.md",
           "source_path": "template/CONTRIBUTING.md.jinja",
-          "sha256": "08c36463035021defb6f92d424262d4547e325fc77f71d0b9dcc6af8e204dbe2",
-          "changes": "Copier-rendered configuration, suite release guidance, mandatory example-driver update process and Node setup UI tests"
+          "sha256": "0f28247ae3bcf4cb7783057fac956755868c6a50ef6f3486209b24295b93a977",
+          "changes": "Copier-rendered configuration, suite release guidance, mandatory example-driver update process, Node setup tests and confirmed-only companion installation"
         },
         {
           "path": "CHANGELOG.md",
@@ -227,20 +227,20 @@
         {
           "path": ".gitignore",
           "source_path": "template/.gitignore",
-          "sha256": "8afe5696fd9f8abd43098b9a19728b25331a7ade8c8d96297f7dc2044e73af09",
-          "changes": "Keep local caches, household lab evidence and logs outside publication while preserving CI fixtures and synthetic benchmark adapters."
+          "sha256": "6bf168c35b0dd3d975b72f73ca66415e8d742fde8382b4e7aad64ba429a641e6",
+          "changes": "Keep local caches, household lab evidence and logs outside publication while preserving CI fixtures and synthetic benchmark, scope, reset and scale verification tools."
         },
         {
           "path": "Makefile",
           "source_path": "template/Makefile.jinja",
-          "sha256": "6a620b0ad85a89516fac4b93700f0f991fd1ad6a77168b8cba9428431e2589ae",
-          "changes": "Use the project release revision for version stamping and verification"
+          "sha256": "a134646e522f20b1b9b3660c9594241ac4baed0ce4e2abf76bdeb173a382c835",
+          "changes": "Use the project release revision and read carried archive names from each driver.c4zproj"
         },
         {
           "path": "tools/package.py",
           "source_path": "template/tools/package.py",
-          "sha256": "b2b1d018afdf03650b1938d71db3a32ce3bceecad763ebb82c071bc2226e1257",
-          "changes": "Validate stamped versions and delegate tag-version to the project release helper"
+          "sha256": "7ed55541babc19fd1430a1c65921cb8e5e2bf315c22c923b57a6cb6943be1150",
+          "changes": "Validate stamped versions, delegate tag-version and resolve the published archive name from its driver.c4zproj"
         },
         {
           "path": "tools/light-caps.lua",
@@ -257,8 +257,8 @@
         {
           "path": "tools/test_package.py",
           "source_path": "template/tools/test_package.py",
-          "sha256": "575106fb748b7404878b0c70f6c768909a162118af21a45e4e0fea53221f5adc",
-          "changes": "Test the template tag-version entry point against the shared release validator"
+          "sha256": "390ba951f5e854d3cc835721f9e01b864f81e0892aac3c6cf6383954a53b2b72",
+          "changes": "Verify the shared release version entry point and archive names distinct from their source folder"
         },
         {
           "path": "tools/test_support_code.py",
@@ -413,7 +413,7 @@
         {
           "path": "test/test_github_updater_alias.lua",
           "source_path": "template/test/test_github_updater_alias.lua",
-          "sha256": "d5d48ccf9a3079f6ea4e3e9ca0abc56d4d639c8e32af7d739c5a8dc768930927",
+          "sha256": "3c7bec2097195229a1985932348547edc7a89f61e0c6396f2d9f52dae5226abb",
           "changes": "Unmodified copy"
         },
         {
@@ -479,7 +479,7 @@
         {
           "path": "test/c4_shim.lua",
           "source_path": "template/test/c4_shim.lua",
-          "sha256": "f5c075644dd1b730594ea684f231892ad6733b084df37646a56876c2d4b47eac",
+          "sha256": "0a95427d6bea040eaafb0ea366cad59c0e3520844e8bd0686e7ae2ae14f7b0f8",
           "changes": "Unmodified copy"
         },
         {
@@ -539,7 +539,7 @@
         {
           "path": "test/test_companions.lua",
           "source_path": "template/test/test_companions.lua",
-          "sha256": "4f5b599562c2daed987f90ae3b193645bdec323557771bcc340751e2f09e2ed7",
+          "sha256": "fd757d5b6ac5706dc048766ee6274565dc9099c7976dd7b20abfe56b9e871efa",
           "changes": "Unmodified copy"
         },
         {
@@ -617,8 +617,8 @@
         {
           "path": "test/test_websocket.lua",
           "source_path": "template/test/test_websocket.lua",
-          "sha256": "538896483351e2ec5e255b4afc5af068a25f6558efbe5f4e5ea1fb4e1ea67c9b",
-          "changes": "Add upgrade/coalesced-first-frame, redirect and missing-header regressions; existing framing and lifecycle assertions unchanged. Lifecycle qualification: contain failed close sends/cancellation/timer allocation, retire connected state, and guard registry/callback cleanup against obsolete socket owners; add fault-injection coverage."
+          "sha256": "920efbb05ceddcd06b130c1e97ab78660e71deb35bd91093b6a544b34c540f0f",
+          "changes": "Keep HA upgrade, coalesced-frame and socket retirement coverage with upstream pong payload regression"
         },
         {
           "path": "test/test_persist_reload.lua",
@@ -707,8 +707,8 @@
         {
           "path": "src/lib/github-updater.lua",
           "source_path": "template/src/lib/github-updater.lua",
-          "sha256": "0e17d6c1639349c59140a86a597f12b21fd7e9e2db83e03c23e0f79d4aa3db2a",
-          "changes": "Preserve newer installed versions. Expose bounded release listing, the archive writer and Director reload for verified suite batches. Reject unsuccessful Director replies."
+          "sha256": "b6f56354f7b7edf2b4ed775d24a2af496e22183a6104b5f03ff58ef827bc8822",
+          "changes": "Preserve newer installed versions, bounded release listing and verified archive IO with shared template installation"
         },
         {
           "path": "src/lib/drivercentral.lua",
@@ -767,8 +767,8 @@
         {
           "path": "src/lib/utils.lua",
           "source_path": "template/src/lib/utils.lua",
-          "sha256": "787ef593e7e957e7338cb81f7e9df54af0ed48964f8e56a62da2b43b869780ba",
-          "changes": "Unmodified copy"
+          "sha256": "2c716c3f2850ac79c2f0beb967a89daa78dcf92730d005683e51480fd367bd13",
+          "changes": "Check store access before writing, skip unpacked version lookup for missing files, and share acknowledged and cancellable Director reload with the suite updater"
         },
         {
           "path": "src/lib/support-code.lua",
@@ -779,8 +779,8 @@
         {
           "path": "src/lib/companions.lua",
           "source_path": "template/src/lib/companions.lua",
-          "sha256": "cb6401c990707c81df6def90425761fd37e0a6ee5714cb08080b97af6fafbb28",
-          "changes": "Add opt-in exact selected-device add and bind helpers for a shared provider binding. Reuse existing room placement, Navigator refresh and Director add spacing. Return late add receipts without binding or changing visibility. Existing one-per-binding setup retains its behavior."
+          "sha256": "cb34b1d91f450b4c099120e75ace149ad858ff92a9d8724714b400618cca55e3",
+          "changes": "Add exact selected-device add and bind helpers for a shared provider. Preserve late receipts, room placement and Navigator refresh. Retain upstream automatic install for the generic setup path"
         },
         {
           "path": "src/lib/logging.lua",
@@ -1241,7 +1241,7 @@
     {
       "id": "vendor/control4",
       "repository": "https://github.com/finitelabs/control4-driver-template",
-      "revision": "5efdae849b32d8739d23e4750c0b6e4d60f754c9",
+      "revision": "bd2169071d75401c434c5e478dc1a30bc862d8ea",
       "credit": "Snap One, LLC / Control4",
       "terms": "Retain Snap One copyright and the original terms; the project maintainer confirmed authorization for these copies in the public suite.",
       "permission": "established",
@@ -1253,8 +1253,8 @@
         {
           "path": "vendor/drivers-common-public/module/websocket.lua",
           "source_path": "template/vendor/drivers-common-public/module/websocket.lua",
-          "sha256": "192f9c5cd0532a04bed6ef2b80267118b5fcd2e7ef0b07c839181e0619693ef6",
-          "changes": "Narrow HA transport qualification correction: require HTTP 101 and valid upgrade headers; tolerate missing headers; drain first frames buffered with the upgrade; retain template transport and lifecycle. Lifecycle qualification: contain failed close sends/cancellation/timer allocation, retire connected state, and guard registry/callback cleanup against obsolete socket owners; add fault-injection coverage."
+          "sha256": "ca7ade265ea235b179194ee0892a7fba497b54244a8d50310b5cbf587a3a5a25",
+          "changes": "Retain HA upgrade validation, coalesced frames and lifecycle guards alongside the v0.9.119 pong payload fix."
         },
         {
           "path": "vendor/drivers-common-public/global/url.lua",

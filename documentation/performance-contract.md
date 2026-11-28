@@ -29,7 +29,7 @@ With ten samples per direction, the reported p95 is the largest observed sample
 in that direction. The comparison covers the family drivers sharing one
 Coordinator build. It includes the shim's process and network boundaries.
 
-The installed 2026111921 suite was timed separately on the CORE 1 lab
+The installed 2026111921 suite was timed separately on the the controller lab
 controller. Native Light V2 Toggle reached the independent HA WebSocket state
 push in a median 79 ms from Off and 75 ms from On. The corresponding p95 samples
 were 84 and 86 ms. Native Switch Navigator Select took 35 ms from Off and 34 ms
@@ -38,7 +38,7 @@ direction with Log Mode and Latency Diagnostics off and Log Level at Info. These
 times start at the proxy command request and end at confirmed software feedback
 from the simulated Home Assistant device.
 
-## CORE 1 toggle timing by phase
+## Controller toggle timing by phase
 
 To locate the delay in the native Light Toggle and Switch Select paths, a second
 run on 2026111921 observed the Home Assistant service event and state push for
@@ -81,13 +81,13 @@ represents the slowest sample at this sample count. The separate profiled runs
 used Info and Log Mode Off. The median Light handler time moved from 40 to 37 ms
 over 44 samples per revision. Its binding validation median moved from 13 to 11
 ms over 176 samples per revision. The Switch request and binding medians stayed
-at 5 and 2 ms. CORE 1 verified the upgrade across the suite and preserved
+at 5 and 2 ms. The controller verified the upgrade across the suite and preserved
 selections, bindings and programming. Both simulated loads and the diagnostics
 settings returned to their initial values.
 
 ### Revision 2026111923 feedback recovery
 
-The native CORE 1 toggle test used the same simulated dimmer and relay, with Log
+The native toggle test used the same simulated dimmer and relay, with Log
 Mode and Latency Diagnostics off. The workstation monotonic clock ran from the
 native proxy request to the independent Home Assistant state push. Each
 direction had ten samples.
@@ -176,7 +176,7 @@ the same level after release and held it on a later read.
 
 ## Revision 2026112101 native reconnect
 
-On the clean CORE 1 project, each of three runs disconnected the Coordinator,
+On the clean project, each of three runs disconnected the Coordinator,
 confirmed all three drivers went offline, and issued the native Connect action.
 The Director client timestamped the acknowledgment and the first connected
 property readback per driver with its monotonic clock. Driver logging and
@@ -227,7 +227,7 @@ separate measurements.
 
 ## Legacy Light and Switch migration
 
-Revision 2026112301 recorded opt-in Coordinator spans on CORE 1 with
+Revision 2026112301 recorded opt-in Coordinator spans on the controller with
 `C4:GetTickCount`, Log Mode Off and Log Level Info. The collector retained up to
 64 samples per operation and excluded no clock samples. One migration batch
 first staged two replacements and stopped on their dependencies. Both
@@ -474,7 +474,7 @@ read before it is sent. Retired work is recorded as such. These spans cover
 background snapshots for confirmed subscriptions. Explicit one-shot reads and
 Home Assistant service commands keep their existing dispatch paths.
 
-On a CORE 1 lab controller running 2026112416, the first reconnect after install
+On a Control4 controller lab controller running 2026112416, the first reconnect after install
 and a later explicit reconnect each yielded four successful snapshots with
 `C4:GetTickCount`. Both runs used Latency Diagnostics. The table gives median
 and p95 in milliseconds. With four samples, p95 is the observed maximum.
@@ -491,7 +491,7 @@ and p95 in milliseconds. With four samples, p95 is the observed maximum.
 These runs verify that each phase reports a native sample. Compare longer runs
 under the same logging setting when evaluating performance differences.
 
-#### CORE 1 snapshot burst
+#### Controller snapshot burst
 
 Revision 2026112418 was tested through the private buddy driver. Each run sent
 38 read-only requests for the same synthetic state through the production
@@ -528,7 +528,7 @@ checkout, place it in `src/ha/snapshot-benchmark-lab.lua` and append
 Coordinator's entry point. Install that lab variant only in the dedicated test
 project. The normal suite build omits the runner.
 
-#### CORE 1 switch commands with delayed replies
+#### Controller switch commands with delayed replies
 
 The relay fixture sent real Home Assistant state reports. A lab-only Coordinator
 adapter delayed the first service reply by 2,500 ms. If a second request reached
@@ -539,7 +539,7 @@ state, while the On service reply was still outstanding.
 One run per revision used `C4:GetTickCount`, Latency Diagnostics On, Log Mode
 Off and Log Level Info. Times are milliseconds.
 
-| CORE 1 revision       | On service outcome / time | Off queue wait | Off service outcome / time |
+| the controller revision       | On service outcome / time | Off queue wait | Off service outcome / time |
 | --------------------- | ------------------------- | -------------: | -------------------------- |
 | 2026112419, baseline  | Rejected / 705            |              0 | Accepted / 33              |
 | 2026112420, sequenced | Accepted / 2526           |           1828 | Accepted / 25              |
@@ -568,12 +568,12 @@ affects only the dedicated simulated switch.
 
 | Operation                                        | Required boundaries                                                                                                                 | Current qualification / remaining gate                                                                                                                          |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Binary Light/Switch On, Off, Toggle              | Request dispatch → HA result, separately → matching confirmed state; app/proxy processing separately                                | Packaged control and native CORE 1 Toggle sampled with simulated loads. Navigator and wall switch checks are grouped in OpenSpec.                               |
+| Binary Light/Switch On, Off, Toggle              | Request dispatch → HA result, separately → matching confirmed state; app/proxy processing separately                                | Packaged control and native Toggle sampled with simulated loads. Navigator and wall switch checks are grouped in OpenSpec.                               |
 | Dimmer level while off/on                        | Request → result and exact brightness feedback; native slider/report cost separately                                                | Packaged adapter level changes timed against simulated HA dimmers. Physical dimmer timing remains open.                                                         |
 | RGB/xy/CCT and transitions                       | Conversion/validation, service result, confirmed color/temperature/level; requested transition duration distinguished from overhead | Packaged adapters timed against HA Demo color modes and simulated transition feedback. Physical transitions remain open.                                        |
 | Hold, ramp, release/stop                         | Input → first command, cadence/jitter, release → last future command; canceled/overridden outcome                                   | Template engine correctness proven; timing in actual adapter pending tasks 5.3–5.4                                                                              |
-| Presets, scenes and groups                       | Native dispatch/program execution, target feedback; simultaneous group/scene work and forced synchronization                        | Packaged preset, scene and group dispatch timed. CORE 1 verified saved scenes and group membership with simulated targets. Repeated native timing remains open. |
-| Connected-C4 On/level and paddle target          | Logical On/explicit level dispatch → target call/feedback; synchronous callback work separated                                      | CORE 1 verified On presets with an ordinary target and a Light Group. Repeated native timing remains open.                                                      |
+| Presets, scenes and groups                       | Native dispatch/program execution, target feedback; simultaneous group/scene work and forced synchronization                        | Packaged preset, scene and group dispatch timed. The controller verified saved scenes and group membership with simulated targets. Repeated native timing remains open. |
+| Connected-C4 On/level and paddle target          | Logical On/explicit level dispatch → target call/feedback; synchronous callback work separated                                      | the controller verified On presets with an ordinary target and a Light Group. Repeated native timing remains open.                                                      |
 | Single/multi-press, hold/release, extra buttons  | Decode, validation/programming, property/LED, forwarding and publication phases; HA-clock version-2 acknowledgment separately       | Existing companion protocol reused; new receiver wiring pending task 6.3                                                                                        |
 | LED color/brightness/behavior                    | Validation/dispatch → result and actual indicator feedback, while preserving behavior                                               | Pending task 6.4; include restricted palette and unavailable/rejected controls                                                                                  |
 | Cold picker, warm reopen, revision check, paging | User request → usable options; companion request, scoped metadata, projection and page costs separately                             | Runtime catalog spans wired; repeated UI wall-clock evidence required with task 4.3                                                                             |
@@ -663,7 +663,7 @@ rows, the synthetic response itself crossed the separate 1 MiB HTTP cap. These
 counts depend on metadata size. A companion connection still runs the native
 supplement during a forced refresh in the current Coordinator.
 
-For context, a separate, previously captured CORE 1 sample on revision
+For context, a separate, previously captured the controller sample on revision
 2026112420 reported 20 binding validations at 2 / 3 ms p50 / p95 with logging
 Off at Info and the controller tick clock. That run covered normal switch
 traffic. The larger-project results still need native scale qualification.
@@ -707,11 +707,11 @@ The initial test and rollback archives omitted the lab Coordinator's
 archive-relative CA file. The Coordinator entered reconnect retry after each
 reload. The lab HA and its TLS proxy accepted authenticated WebSocket
 connections with the lab CA. Adding the public CA to the private test archive
-restored the Core1 connection with the same saved endpoint and credentials.
+restored the the controller connection with the same saved endpoint and credentials.
 Check for the trust resource in each lab test and rollback archive before
 reloading the driver.
 
-On Core1, the same Coordinator ran ten forced catalog refreshes against each
+On the controller, the same Coordinator ran ten forced catalog refreshes against each
 companion version over the verified TLS lab connection. The larger fixture added
 1,000 synthetic lights and switches to the lab's 17 eligible entities. Timings
 use `C4:GetTickCount`, Latency Diagnostics On and Log Mode Off at Info. Each row
@@ -750,7 +750,7 @@ finish the scene. The bench uses a local service stub. Native scene routing,
 connected target confirmation, HA acceptance and physical response require
 separate measurement.
 
-On a lab CORE 1, Light revision 2026111804 returned its full set of 32 native
+On a lab the controller, Light revision 2026111804 returned its full set of 32 native
 driver properties on ten consecutive GET_PROPERTIES_SYNC requests. Elapsed time
 measured with the client’s Python monotonic clock was 51.83 ms minimum, 53.74 ms
 median, and 61.50 ms nearest-rank p95 and maximum. The driver used Info, logging

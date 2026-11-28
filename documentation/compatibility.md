@@ -1,11 +1,11 @@
 # Platform and identity contract
 
-The selected template is v0.9.117 at the full revision in
+The selected template is v0.9.119 at the full revision in
 `provenance/template-lock.json`. Its example-driver baseline is Control4 OS
 3.3.0. The suite checks the package's `minimum_os_version` using the template's
 `CheckMinimumVersion` before starting control. A rejected platform gets an
 explicit required/current OS message. LuaJIT, DriverWorks callbacks, persisted
-values, `light_v2` and `uibutton` are required. Director checks on CORE 1 used
+values, `light_v2` and `uibutton` are required. Director checks on the controller used
 Control4 OS 3.4.3. The [first-demo record](first-demo-packages.md) distinguishes
 completed Director checks from remaining Composer, Navigator and physical
 observations. A separate Director rehearsal also verified the manufacturer label
@@ -27,7 +27,7 @@ side-by-side development archives used the Control4.HA prefix for Coordinator
 and Light. Existing side-by-side instances have their own identities. Quick
 Setup checks project devices before offering to add a Light.
 
-Use the Coordinator's migration wizard for an installed BP Switch. The CORE 1
+Use the Coordinator's migration wizard for an installed BP Switch. The the controller
 Replace Obsolete rehearsal kept the project name and device ID. Director created
 no Experience Button proxy. After restart the Coordinator and relay connections
 were gone and the replacement had no Home Assistant selection. The saved
@@ -115,7 +115,7 @@ member counts and differing field paths. The simulator exercises these messages
 from reopening a saved migration through **Test the new drivers** and checks
 that the scene checks leave private settings and names out of the trace.
 
-In a native rehearsal on revision 2026112301, migration paused for an Advanced
+In a native rehearsal on a later build, migration paused for an Advanced
 Lighting scene and an incoming Switch action. The scene move preserved the saved
 level, rate and tracking. Composer saved the original Select action in its
 existing position on the staged Switch. The Coordinator accepted Select as
@@ -232,7 +232,7 @@ Control4 variable and sends its typed value to the selected light.
 
 ### Existing prototype direct loads
 
-Coordinator revision 2026111838 recognizes the pinned Prototype Light 1 and
+Coordinator build recognizes the pinned Prototype Light 1 and
 Switch 107 on their retained Device Links. A prototype request identifies its
 consumer and active entities. For a direct load, the Coordinator verifies that
 the single requested entity is the bound driver's saved selection. It retains

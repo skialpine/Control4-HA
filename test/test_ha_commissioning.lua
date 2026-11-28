@@ -63,15 +63,23 @@ local originalProvider = C4.GetBoundProviderDevice
 local originalBindings, originalAdd, originalBind = C4.GetBindingsByDevice, C4.AddDevice, C4.Bind
 local function consumerInput(id)
   local row = C4:GetDevices({ DeviceIds = tostring(id) })[id]
-  return row and row.driverFileName == lightFile and ids.lightCoordinatorBinding or ids.coordinatorBinding
+  local file = row and row.driverFileName
+  if file == lightFile or file == ids.packages.binary_sensor.file or file == ids.packages.sensor.file then
+    return ids.lightCoordinatorBinding
+  end
+  return ids.coordinatorBinding
 end
 function C4:GetDeviceData(id, tag)
   if legacy[id] then
     return legacy[id][tag]
   end
   local project = self:GetDevices({ DeviceIds = tostring(id) })[id]
-  if tag == "model" and project then
-    return model[project.driverFileName]
+  if project and model[project.driverFileName] then
+    if tag == "model" then
+      return model[project.driverFileName]
+    elseif tag == "version" then
+      return "2026112501"
+    end
   end
 end
 function C4:GetDeviceVariables(id)
@@ -140,6 +148,10 @@ local function start(existing, withoutLight)
   end
   setProjectDevices(devices, withoutLight)
   ShimSetDriverFiles({ lightFile, switchFile })
+  local store = ShimFiles("C4Z_ROOT")
+  store[lightFile], store[switchFile] = "Installed light archive", "Installed switch archive"
+  store[ids.packages.fan.file], store[ids.packages.garage.file] = nil, nil
+  ShimFiles("C4Z/c4z")[ids.packages.fan.file] = nil
   legacy, suiteVariableType = {}, "1"
   ShimSetUIRequest(function(id, command)
     local entity = legacy[id] and legacy[id].entity
@@ -1057,4 +1069,198 @@ local light = transferResult.items[2].device_id
 local binaryLoad = await(transfer:directLoad(light, "light", "switch.binary", "Binary load"))
 T.eq("the verified transfer can keep a switch entity in the Light family", selected[light], "switch.binary")
 T.falsy("the Light accepted the verified binary selection", binaryLoad.error)
+T.section("A mixed-family draft checks and uses each catalog independently")
+do
+  start()
+  local fanFile = ids.packages.fan.file
+  model[fanFile] = ids.packages.fan.model
+  local store = ShimFiles("C4Z_ROOT")
+  local carried = "Bundled fan archive"
+  ShimFiles("C4Z/c4z")[fanFile], ShimFiles("C4Z/c4z")[lightFile] = carried, "Bundled light archive"
+  local fanRevision = secondRevision
+  local scoped = {}
+  endpoint("fan.lab", "fan", "Lab Fan")
+  function scoped:refresh()
+    return deferred.new():resolve({ revision = fanRevision })
+  end
+  function scoped:choice(id, family)
+    return catalog:choice(id, family)
+  end
+  commissioning = Commissioning.new(catalog, configure, nil, function(family)
+    return family == "fan" and scoped or catalog
+  end)
+  local choices = request(A, { choice_id = "fan.lab", family = "fan", room_id = 11, name = "Lab Fan" })
+  choices.choices[2].revision = fanRevision
+  local mixed = assert(await(commissioning:preview(choices)).value)
+  T.eq("both families appear in a mixed preview", { mixed.items[1].family, mixed.items[2].family }, { "light", "fan" })
+  T.eq("preview does not install the missing package", store[fanFile], nil)
+  fanRevision = string.rep("c", 64)
+  T.eq(
+    "changed fan selection prevents all project writes",
+    await(commissioning:execute(mixed.id)).error,
+    "revision_changed"
+  )
+  T.eq("no driver added from the stale preview", addCount, 0)
+  T.eq("stale confirmation does not install the missing package", store[fanFile], nil)
+  choices.choices[2].revision = fanRevision
+  mixed = assert(await(commissioning:preview(choices)).value)
+  local executing = await(commissioning:execute(mixed.id))
+  T.eq("existing Light keeps its installed archive", store[lightFile], "Installed light archive")
+  T.eq("the next package is staged only when its row is reached", store[fanFile], nil)
+  ShimAnswerAdds()
+  clock.run(5000)
+  T.eq("the confirmed fan package is staged before Director answers", store[fanFile], carried)
+  ShimAnswerAdds()
+  clock.run(5000)
+  local outcome = assert(executing.value)
+  T.truthy("confirmed mixed preview creates the selected drivers", outcome.complete)
+  T.eq("fan was configured from the fan catalog", configuration[2].query.revision, fanRevision)
+  local fan = require("ha.commissioning-project").device(outcome.items[2].device_id)
+  T.eq(
+    "fan has the selected room, Coordinator and saved device",
+    { fan.room_id, fan.provider, fan.selected },
+    { 11, me, "fan.lab" }
+  )
+end
+
+T.section("A mixed project commissions and reopens every endpoint family")
+do
+  local commissioning = start(nil, true)
+  local families = require("ha.endpoint-families")
+  local project = require("ha.commissioning-project")
+  local carried = ShimFiles("C4Z/c4z")
+  local store = ShimFiles("C4Z_ROOT")
+  local choices = { A, B }
+  for index, family in ipairs(families.order) do
+    local package = ids.packages[family]
+    local choiceId = families[family].domain .. ".lab_" .. family
+    model[package.file] = package.model
+    carried[package.file] = "Bundled " .. family .. " archive"
+    endpoint(choiceId, family, "Lab " .. family)
+    rows[choiceId].domain = package.domain
+    if family == "garage" then
+      rows[choiceId].attributes.device_class = "garage"
+    end
+    choices[#choices + 1] = { choice_id = choiceId, family = family, room_id = 10 + index % 2 }
+  end
+  local plan = assert(await(commissioning:preview(request(unpack(choices)))).value)
+  T.eq("review lists every family without adding drivers", { #plan.items, addCount }, { #choices, 0 })
+  local run = await(commissioning:execute(plan.id))
+  for _ in ipairs(choices) do
+    ShimAnswerAdds()
+    clock.run(5000)
+  end
+  local result = assert(run.value)
+  T.truthy("mixed commissioning completes", result.complete)
+  for index, choice in ipairs(choices) do
+    local item = result.items[index]
+    local device = assert(project.device(item.device_id), choice.family .. ": " .. tostring(item.reason))
+    T.eq(choice.family .. " has the expected package, room, Coordinator and saved endpoint", {
+      device.file,
+      device.room_id,
+      device.provider,
+      device.selected,
+    }, { ids.packages[choice.family].file, choice.room_id, me, choice.choice_id })
+  end
+
+  local reopened = Commissioning.new(catalog, configure)
+  local repeatPlan = assert(await(reopened:preview(request(unpack(choices)))).value)
+  local repeatRun = assert(await(reopened:execute(repeatPlan.id)).value)
+  T.eq("reopening and confirming again preserves every driver and selection", {
+    repeatRun.complete,
+    addCount,
+    #configuration,
+  }, { true, #choices, #choices })
+  for _, family in ipairs(families.order) do
+    local file = ids.packages[family].file
+    carried[file], store[file] = nil, nil
+  end
+end
+
+T.section("An unreadable original cover can own either type of cover")
+do
+  local plan = { family = "garage", domain = "cover", name = "Test garage", room_id = 10, keys = {} }
+  local original = { id = 20, legacy = true, family = "blinds", review_only = true }
+  T.eq("an unreadable Blinds driver blocks a second owner of the same domain", {
+    require("ha.commissioning-project").decide(plan, { original }, nil, me),
+  }, { "review", 20, "legacy_blinds_unconfirmed" })
+  original.family = "fan"
+  T.eq("an unrelated unreadable family does not block the garage", {
+    require("ha.commissioning-project").decide(plan, { original }, nil, me),
+  }, { "add" })
+end
+
+T.section("A missing package can be imported without leaving an unresolved add")
+do
+  local commissioning = start()
+  local fanFile = ids.packages.fan.file
+  model[fanFile] = ids.packages.fan.model
+  endpoint("fan.lab", "fan", "Lab Fan")
+  local draft = request({ choice_id = "fan.lab", family = "fan", room_id = 11 })
+  local plan = assert(await(commissioning:preview(draft)).value)
+  local result = assert(await(commissioning:execute(plan.id)).value)
+  T.eq("missing bundled file reports the install step", result.items[1].reason, "driver_install_failed")
+  T.eq("Director receives no add after a missing archive", addCount, 0)
+  T.eq("no unresolved add receipt is written", persist:get("HA.Commissioning", nil, true), nil)
+
+  ShimFiles("C4Z/c4z")[fanFile] = "Bundled fan archive"
+  local write = C4.FileWrite
+  C4.FileWrite = function()
+    return -1
+  end
+  plan = assert(await(commissioning:preview(draft)).value)
+  result = assert(await(commissioning:execute(plan.id)).value)
+  C4.FileWrite = write
+  T.eq("failed archive write reports the same action", result.items[1].reason, "driver_install_failed")
+  T.eq("a failed archive write leaves no add or staged file", { addCount, ShimFiles("C4Z_ROOT")[fanFile] }, { 0 })
+
+  ShimFiles("C4Z_ROOT")[fanFile] = "Manually imported fan archive"
+  plan = assert(await(commissioning:preview(draft)).value)
+  local operation = await(commissioning:execute(plan.id))
+  ShimAnswerAdds()
+  clock.run(5000)
+  T.eq("retry configures the requested endpoint", selected[operation.value.items[1].device_id], "fan.lab")
+  T.eq("the manually imported archive is preserved", ShimFiles("C4Z_ROOT")[fanFile], "Manually imported fan archive")
+end
+
+T.section("Garage without a display proxy receives the requested name after AddDevice")
+do
+  start()
+  local garageFile = ids.packages.garage.file
+  local packageName = "Home Assistant Garage Door"
+  model[garageFile] = ids.packages.garage.model
+  ShimFiles("C4Z_ROOT")[garageFile] = "Existing garage archive"
+  endpoint("cover.lab_garage", "garage", "Lab Garage")
+  local read, add = C4.GetDeviceData, C4.AddDevice
+  function C4:GetDeviceData(id, key)
+    if key == "name" and read(self, id, "model") == model[garageFile] then
+      return packageName
+    end
+    return read(self, id, key)
+  end
+  function C4:AddDevice(file, room, _, answer)
+    return add(self, file, room, packageName, answer)
+  end
+  commissioning = Commissioning.new(catalog, configure)
+  local draft = request({ choice_id = "cover.lab_garage", family = "garage", room_id = 10, name = "Lab Garage" })
+  local plan = assert(await(commissioning:preview(draft)).value)
+  local running = await(commissioning:execute(plan.id))
+  ShimAnswerAdds()
+  clock.run(5000)
+  C4.GetDeviceData, C4.AddDevice = read, add
+  local outcome = assert(running.value)
+  T.truthy("the confirmed add completes despite Director choosing the default name", outcome.complete)
+  local device = require("ha.commissioning-project").device(outcome.items[1].device_id)
+  T.eq("the requested name, room and selected entity are saved", { device.name, device.room_id, device.selected }, {
+    "Lab Garage",
+    10,
+    "cover.lab_garage",
+  })
+  local repeated = assert(await(commissioning:preview(draft)).value)
+  T.eq("the saved Garage Door can be kept in a later preview", repeated.items[1].decision, "keep")
+  local kept = assert(await(commissioning:execute(repeated.id)).value)
+  T.eq("applying the later preview keeps the existing instance", kept.items[1].device_id, device.id)
+  T.eq("opening setup again never repeats the add", addCount, 1)
+end
+
 T.finish()

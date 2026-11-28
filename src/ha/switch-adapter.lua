@@ -4,6 +4,7 @@ require("drivers-common-public.global.timer")
 local ids = require("ha.identities")
 local contract = require("ha.contract")
 local loadCommand = require("ha.load-command")
+local endpointAdapter = require("ha.endpoint-adapter")
 local metrics = require("ha.performance").shared
 local values = require("lib.values")
 
@@ -175,8 +176,7 @@ function Adapter:start()
   end
   self.owned = {}
   local function install(handlers, key, fn)
-    handlers[key] = fn
-    self.owned[#self.owned + 1] = { handlers, key, fn }
+    endpointAdapter.installHandler(self, handlers, key, fn)
   end
   -- The template dispatcher normalizes spaces. Keep the compact names for saved scripts.
   for command, action in pairs({ Turn_On = "on", Turn_Off = "off", TurnOn = "on", TurnOff = "off", Toggle = "toggle" }) do
@@ -249,13 +249,7 @@ function Adapter:destroy()
   end
   self:unbind()
   self.destroyed = true
-  for _, owned in ipairs(self.owned or {}) do
-    local handlers, key, fn = unpack(owned)
-    if handlers[key] == fn then
-      handlers[key] = nil
-    end
-  end
-  self.owned = nil
+  endpointAdapter.removeHandlers(self)
 end
 
 function Adapter:message(kind, data)

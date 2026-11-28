@@ -52,7 +52,7 @@ local explanations = {
   unsupported_catalog_version = "Update the driver and HA Gesture Bridge to compatible versions, then reopen the list.",
   not_found = "HA Gesture Bridge could not find the device or its setup service. Check it in Home Assistant.",
   unavailable = "The new device is unavailable. Check it in Home Assistant, then try again.",
-  invalid_manual = "Enter a light, switch, or toggle helper ID, or choose a device by name.",
+  invalid_manual = "Enter a Home Assistant entity ID supported by this driver, or choose a device by name.",
   missing_load = "This device has no light or switch to control. Choose another device or check its settings in Home Assistant.",
   no_buttons = "This device has no buttons. Choose a device with buttons, or change Button behavior in Device Setup.",
   timeout = "Home Assistant took too long to respond. Check its connection and try again.",
@@ -69,6 +69,7 @@ function M.explain(kind)
 end
 
 local manualExplanations = {
+  unsupported_endpoint = "This device does not match the driver type. Enter a compatible Home Assistant entity ID to retry.",
   not_found = "Home Assistant could not find that entity. Enter the entity ID again to retry.",
   unavailable = "This entity is unavailable. Check it in Home Assistant, then enter the entity ID again.",
   timeout = "Home Assistant took too long to respond. Check its connection, then enter the entity ID again.",
@@ -111,7 +112,7 @@ function M.choices(page, includeFamilies, nativePicker)
     local description = choice
       and ({ remote = "Button device", dimmer = "Dimmable light", switch = "On and off" })[choice.kind]
     local entityIDs
-    if not includeFamilies and not nativePicker then
+    if not nativePicker then
       entityIDs = {}
       local seen = { [row.entity_id] = true }
       local function addId(id)

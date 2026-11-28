@@ -1,0 +1,11 @@
+    <connection>
+      <id>203</id>
+      <facing>6</facing>
+      <connectionname>Step-by-Step Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes><class><classname>BUTTON_LINK</classname></class></classes>
+    </connection>

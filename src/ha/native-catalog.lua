@@ -1,19 +1,17 @@
 -- Read the relevant ID list once, then project only the exact IDs in each page.
 -- Only validated HA entity IDs can enter a follow-up template literal.
 local codec = require("ha.codec")
+local contract = require("ha.contract")
+local families = require("ha.endpoint-families")
 -- Leave room for candidates needed to prove aliases, including exported loads.
 -- Catalog publication applies the separate 5,000 eligible-row limit.
 local M = { pageSize = 128, indexSize = 512, maxCandidates = 10000 }
 
-function M.entity(value)
-  return type(value) == "string"
-    and #value <= 255
-    and (
-        value:match("^light%.[a-z0-9_]+$")
-        or value:match("^switch%.[a-z0-9_]+$")
-        or value:match("^input_boolean%.[a-z0-9_]+$")
-      )
-      ~= nil
+function M.entity(value, family)
+  if family then
+    return contract.endpointDomain(value) == families[family].domain
+  end
+  return contract.loadDomain(value) ~= nil
 end
 
 local scope = [=[
@@ -25,6 +23,7 @@ local scope = [=[
 local projection = [=[
 {% set result = namespace(rows=[], size=0) %}
 {% set gestures = namespace(by_device={}) %}
+{% if not native_endpoint %}
 {% for event in states.event %}
 {% set entry = config_entry_id(event.entity_id) %}
 {% set source = event.attributes.get('bridge_source_device_id') %}
@@ -33,12 +32,15 @@ local projection = [=[
 {% set gestures.by_device = dict(gestures.by_device, **{source: gesture}) %}
 {% endif %}
 {% endfor %}
+{% endif %}
 {% for id in requested %}
 {% set item = states[id] %}
 {% if item is not none %}
 {% set modes = item.attributes.get('supported_color_modes', []) %}
 {% set attrs = {'supported_features': item.attributes.get('supported_features', 0)} %}
-{% if modes is iterable and modes is not string and modes is not mapping %}
+{% if native_endpoint %}
+{% set attrs = dict(attrs, device_class=item.attributes.get('device_class', '')) %}
+{% elif modes is iterable and modes is not string and modes is not mapping %}
 {% set attrs = dict(attrs, supported_color_modes=modes|list) %}
 {% endif %}
 {% set owner = config_entry_id(item.entity_id) %}
@@ -56,7 +58,7 @@ local projection = [=[
 {% set row = dict(entity_id=item.entity_id, domain=item.domain,
 name=item.attributes.get('friendly_name', item.entity_id), device_id=device,
 bridge_gesture_entity_id=gestures.by_device.get(device),
-available=item.state in ['on', 'off'],
+available=item.state not in ['unknown', 'unavailable'] if native_endpoint else item.state in ['on', 'off'],
 area_name=area_name(item.entity_id), attributes=attrs, c4_exported=policy.exported or false,
 device_disabled=device and device_attr(device, 'disabled_by') is not none or false,
 is_group=members is iterable and members is not string and members is not mapping and members|list|length > 0) %}
@@ -68,11 +70,31 @@ is_group=members is iterable and members is not string and members is not mappin
 {% endfor %}
 ]=]
 
-function M.template(ids, offset)
+function M.template(ids, offset, family)
+  local prefix = "{% set native_endpoint = false %}\n"
+  local indexScope = scope
+  if family then
+    assert(contract.endpointFamily(family))
+    local domain = families[family].domain
+    prefix = "{% set native_endpoint = true %}\n"
+    -- Default the absent attribute before looking at any other properties.
+    if domain == "cover" then
+      local operator = family == "garage" and "==" or "!="
+      indexScope = (
+        "{%% set result = namespace(ids=[]) %%}{%% for item in states.cover %%}"
+        .. "{%% if item.attributes.get('device_class', '') %s 'garage' %%}"
+        .. "{%% set result.ids = result.ids + [item.entity_id] %%}{%% endif %%}{%% endfor %%}"
+        .. "{%% set ids = result.ids | sort %%}\n"
+      ):format(operator)
+    else
+      indexScope = ("{%% set ids = states.%s | map(attribute='entity_id') | list | sort %%}\n"):format(domain)
+    end
+  end
   if not ids then
     offset = offset or 0
     assert(type(offset) == "number" and offset >= 0 and offset < M.maxCandidates and offset % M.indexSize == 0)
-    return scope
+    return prefix
+      .. indexScope
       .. ("{%% set window = ids[%d:%d] if ids|length <= %d else [] %%}\n"):format(
         offset,
         offset + M.indexSize,
@@ -84,9 +106,10 @@ function M.template(ids, offset)
   end
   assert(#ids <= M.pageSize)
   for _, id in ipairs(ids) do
-    assert(M.entity(id))
+    assert(M.entity(id, family))
   end
-  return "{% set requested = "
+  return prefix
+    .. "{% set requested = "
     .. codec.encode(codec.array(ids))
     .. " %}\n"
     .. projection

@@ -1,4 +1,4 @@
--- Installed only in the CORE 1 lab Coordinator. Faults apply to one simulated load.
+-- Installed only in the the controller lab Coordinator. Faults apply to one simulated load.
 local codec = require("ha.codec")
 local M = {}
 local FIXTURE = "switch.ha_lab_switch_paddle"

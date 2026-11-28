@@ -21,8 +21,13 @@ plans/
 !/lab/client.py
 !/lab/provision.py
 !/lab/install_companion.py
+!/lab/quick_setup_benchmark.lua
+!/lab/quick_setup_scale.py
 !/lab/snapshot_benchmark.lua
 !/lab/switch_overlap.lua
+!/lab/verify_demo_reset.py
+!/lab/verify_endpoint_scopes.py
 !/lab/seed/
 /lab/seed/*
 !/lab/seed/configuration.yaml
+!/lab/seed/demo-reset.yaml

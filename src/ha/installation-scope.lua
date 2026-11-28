@@ -54,7 +54,9 @@ function Scope:classify(devices, evidence)
   if evidence and evidence.origin then
     local addresses, relations = nil, {}
     for _, device in ipairs(devices) do
-      if profile.contains(device.file) and contract.integer(device.legacy_provider) then
+      if
+        (device.legacy_gateway_profile or profile.contains(device.file)) and contract.integer(device.legacy_provider)
+      then
         local gateway = device.legacy_provider
         if relations[gateway] == nil then
           addresses = addresses or profile.networkAddresses()
@@ -82,7 +84,9 @@ function Scope:prepare(devices, legacyGateway)
     gateways[legacyGateway] = true
   end
   for _, device in ipairs(devices) do
-    if profile.contains(device.file) and contract.integer(device.legacy_provider) then
+    if
+      (device.legacy_gateway_profile or profile.contains(device.file)) and contract.integer(device.legacy_provider)
+    then
       gateways[device.legacy_provider] = true
     end
   end

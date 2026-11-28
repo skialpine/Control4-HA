@@ -146,6 +146,12 @@ local function fixture(driverFamily, beforeInit)
   local body = xml:read("*a")
   xml:close()
   config = assert(body:match("<config>(.-)</config>"))
+  config = config:gsub("<!%-%- #embed %.%./%.%./src/ha/endpoint%-properties%.xml %-%->", function()
+    local properties = assert(io.open(root .. "src/ha/endpoint-properties.xml"))
+    local shared = properties:read("*a")
+    properties:close()
+    return shared
+  end)
   links, pushes, attribs, selected, icons, levels = {}, {}, {}, {}, {}, {}
   for connection in XMLgCapture(body, "connection") do
     local class = XMLCapture(connection, "classname")
@@ -921,6 +927,21 @@ do
   T.eq("checking a corrected ID clears the field error", view().rejected_manual, nil)
   T.eq("manual setup routes only the exact entered ID", selected[#selected][1], "light.manual")
   T.eq("manual setup is explicitly persisted", codec.decode(persist:get(saved, nil, true)).manual, true)
+end
+
+T.section("Manual cover selection keeps the verified device when the new class is wrong")
+for _, familyName in ipairs({ "garage", "blinds" }) do
+  local c = fixture(familyName)
+  local garage = familyName == "garage"
+  setProperty("Manual entity ID", "cover.original")
+  c:completeRead("cover.original", "closed", { device_class = garage and "garage" or "shade" })
+  local savedSelection = persist:get(saved, nil, true)
+  T.truthy("a compatible cover is saved", savedSelection)
+  setProperty("Manual entity ID", "cover.wrong_class")
+  c:completeRead("cover.wrong_class", "open", { device_class = garage and "shade" or "garage" })
+  T.eq("incorrect cover class preserves the previous target", selected[#selected], { "cover.original" })
+  T.eq("the approved selection stays saved", persist:get(saved, nil, true), savedSelection)
+  T.truthy("the installer gets a compatible device recovery action", view().manual_status:find("driver type", 1, true))
 end
 
 T.section("Light and Switch operate a manually selected toggle helper without HA Gesture Bridge")
@@ -2613,5 +2634,203 @@ do
     T.eq("one read after explicit review", reads, 1)
     C4.GetDevices = oldRead
   end
+end
+
+T.section("New security and media drivers select, confirm feedback and keep the same route on reload")
+do
+  local endpoints = {
+    {
+      folder = "lock",
+      entity = "lock.fixture",
+      before = "unlocked",
+      after = "locked",
+      reported = "Locked",
+      binding = 5001,
+      command = "LOCK",
+      action = "lock",
+    },
+    {
+      folder = "alarm",
+      entity = "alarm_control_panel.fixture",
+      before = "disarmed",
+      after = "armed_home",
+      reported = "Armed home",
+      attributes = { supported_features = 1 },
+      binding = 5002,
+      command = "PARTITION_ARM",
+      params = { ArmType = "Home" },
+      action = "alarm_arm_home",
+    },
+    {
+      folder = "media-player",
+      entity = "media_player.fixture",
+      before = "paused",
+      after = "playing",
+      reported = "Playing",
+      attributes = { supported_features = 16384 },
+      binding = 5001,
+      command = "PLAY",
+      action = "media_play",
+    },
+  }
+  for _, endpoint in ipairs(endpoints) do
+    local c = fixture(endpoint.folder, function()
+      Properties["Manual entity ID"] = ""
+      Properties["Log Mode"] = "Off"
+    end)
+    local attrs = codec.object(endpoint.attributes or {})
+    local function command()
+      return ReceivedFromProxy(endpoint.binding, endpoint.command, endpoint.params)
+    end
+    T.eq(endpoint.folder .. " control waits for a configured device", command(), false)
+    setProperty("Manual entity ID", endpoint.entity)
+    c:completeRead(endpoint.entity, endpoint.before, attrs)
+    local subscription = c:snapshot(endpoint.entity, endpoint.before, attrs)
+    T.eq(
+      endpoint.folder .. " saved selection is the exact confirmed endpoint",
+      selected[#selected],
+      { endpoint.entity }
+    )
+    local previous = Variables.State
+    T.eq(endpoint.folder .. " native driver sends a command", command(), true)
+    T.eq(
+      endpoint.folder .. " Coordinator accepts the exact endpoint",
+      c:reply(endpoint.action).target.entity_id,
+      endpoint.entity
+    )
+    T.eq(endpoint.folder .. " waits for a report after service acceptance", Variables.State, previous)
+    at(coordinator, function()
+      c.onMessage(wire({
+        id = subscription,
+        type = "event",
+        event = {
+          variables = {
+            trigger = {
+              to_state = { entity_id = endpoint.entity, state = endpoint.after, attributes = attrs },
+            },
+          },
+        },
+      }))
+    end)
+    T.eq(endpoint.folder .. " publishes confirmed new state", Variables.State, endpoint.reported)
+    restart()
+    T.eq(endpoint.folder .. " reload keeps the same route", selected[#selected], { endpoint.entity })
+    T.eq(endpoint.folder .. " reload clears feedback until resync", Variables.State, "Unavailable")
+    T.eq(endpoint.folder .. " reload suppresses control without fresh feedback", command(), false)
+    for _, message in ipairs(c.sent) do
+      T.check(
+        endpoint.folder .. " reload leaves only subscription maintenance",
+        message.type == "subscribe_trigger" or message.type == "unsubscribe_events"
+      )
+    end
+    if c.sent[1] and c.sent[1].type == "unsubscribe_events" then
+      c:reply("unsubscribe_events")
+    end
+    c:snapshot(endpoint.entity, endpoint.after, attrs)
+    T.eq(endpoint.folder .. " reload resync restores confirmed feedback", Variables.State, endpoint.reported)
+    OnDriverDestroyed()
+  end
+end
+
+T.section("Security and media diagnostics omit private Home Assistant fields")
+do
+  local log = require("lib.logging")
+  local pin, signed = "67543108", "https://example.invalid/art?token=private-fixture"
+  local alarm, player = "alarm_control_panel.fixture", "media_player.fixture"
+  local function blankSelection()
+    Properties["Manual entity ID"] = ""
+    Properties["Log Mode"] = "Off"
+  end
+  local c = fixture("alarm", blankSelection)
+  setProperty("Manual entity ID", alarm)
+  local policy = { supported_features = 1, code_format = "number", code_arm_required = true, code = pin }
+  c:completeRead(alarm, "disarmed", policy)
+  c:snapshot(alarm, "disarmed", policy)
+  log:allowTraceAndUltra(true)
+  log:setLogMode("Print")
+  log:setLogLevel("5 - Trace")
+  metrics:reset()
+  metrics:setEnabled(true)
+  local ok, failure, output = T.capture(function()
+    T.truthy(
+      "the real driver sends a code entered on the native partition",
+      ReceivedFromProxy(5002, "PARTITION_ARM", {
+        ArmType = "Home",
+        UserCode = pin,
+      })
+    )
+    local message = assert(table.remove(c.sent, 1))
+    T.eq(
+      "the code is confined to the exact HA service request",
+      { message.target.entity_id, message.service_data.code },
+      {
+        alarm,
+        pin,
+      }
+    )
+    at(coordinator, function()
+      c.onMessage(wire({
+        id = message.id,
+        type = "result",
+        success = false,
+        error = { code = "not_allowed", message = "Rejected synthetic code " .. pin },
+      }))
+    end)
+    EC.PrintDiagnostics()
+    view("alarm-debug")
+    advanced()
+  end)
+  T.check("alarm diagnostic capture completed", ok, failure)
+  T.contains("Coordinator trace was active", output, "completed: rejected")
+  T.contains("the installer sees a permission error", Variables["Last Command Result"], "denied access")
+  T.excludes("controller logs and action diagnostics omit the code", output, pin)
+  T.excludes(
+    "alarm properties, variables, and Device Setup omit the code",
+    codec.encode({
+      Properties,
+      Variables,
+      pushes,
+    }),
+    pin
+  )
+  T.excludes("exported timing statistics omit the code", codec.encode(metrics:report()), pin)
+
+  c = fixture("media-player", blankSelection)
+  setProperty("Manual entity ID", player)
+  local attrs = {
+    supported_features = 16384,
+    media_title = "Fixture title",
+    media_artist = signed,
+    entity_picture = signed,
+    source_list = codec.array({ "Playlist", signed }),
+  }
+  log:setLogMode("Print")
+  log:setLogLevel("5 - Trace")
+  metrics:setEnabled(true)
+  ok, failure, output = T.capture(function()
+    c:completeRead(player, "paused", attrs)
+    c:snapshot(player, "paused", attrs)
+    view("player-debug")
+    advanced()
+    EC.PrintDiagnostics()
+  end)
+  T.check("media diagnostic capture completed", ok, failure)
+  T.eq("public track text remains visible", Variables.MEDIA_TITLE, "Fixture title")
+  T.excludes("media diagnostics omit private artwork URLs", output, "private-fixture")
+  T.excludes(
+    "media properties, variables, and Device Setup omit private URLs",
+    codec.encode({
+      Properties,
+      Variables,
+      pushes,
+    }),
+    "private-fixture"
+  )
+  T.excludes("exported timing statistics omit private URLs", codec.encode(metrics:report()), "private-fixture")
+  metrics:setEnabled(false)
+  metrics:reset()
+  log:setLogMode("Off")
+  log:setLogLevel("3 - Info")
+  OnDriverDestroyed()
 end
 T.finish()

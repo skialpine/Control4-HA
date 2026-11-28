@@ -4,6 +4,7 @@ local Metrics = {}
 Metrics.__index = Metrics
 local WINDOW = 64
 local OPERATIONS = {}
+local families = require("ha.endpoint-families")
 for _, name in ipairs({
   "transport.connect",
   "transport.port_probe",
@@ -41,6 +42,7 @@ for _, name in ipairs({
   "catalog.registry",
   "catalog.names_http",
   "catalog.native_projection",
+  "climate.config",
   "consumer.decode",
   "binding.validation",
   "binding.output_read",
@@ -52,6 +54,7 @@ for _, name in ipairs({
   "commissioning.catalog_matches",
   "commissioning.preview",
   "commissioning.execute",
+  "commissioning.package_install",
   "commissioning.add",
   "commissioning.bind",
   "migration.availability",
@@ -120,8 +123,21 @@ for _, name in ipairs({
 }) do
   OPERATIONS[name] = true
 end
-local OUTCOMES =
-  { ok = true, accepted = true, rejected = true, timeout = true, disconnected = true, retired = true, failed = true }
+for _, family in ipairs(families.order) do
+  OPERATIONS[family .. ".feedback"] = true
+  OPERATIONS[family .. ".dispatch"] = true
+end
+require("ha.endpoint-services").registerTimings(OPERATIONS)
+local OUTCOMES = {
+  ok = true,
+  accepted = true,
+  rejected = true,
+  timeout = true,
+  disconnected = true,
+  retired = true,
+  failed = true,
+  unavailable = true,
+}
 local LOG_MODES = { Off = true, Print = true, Log = true, ["Print and Log"] = true }
 local function context()
   local properties = Properties or {}

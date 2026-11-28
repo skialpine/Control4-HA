@@ -296,6 +296,27 @@ ships or uploads readable. Only `driver.lua` is encrypted, so any other file a
 driver loads from its `.c4z` stays readable. An `oss` build is encrypted only
 when it substitutes a build secret.
 
+### Embedded Drivers
+
+A driver update never adds a proxy item, whatever its `driver.xml` declares, so
+an installed driver can't gain one by updating. A host driver carries such an
+item as a small driver of its own instead. It puts that driver in the
+controller's driver store when it's missing, then adds it to the project and
+binds it.
+
+The `embedded_drivers` answer in `.copier-answers.yml` names each host and the
+drivers it carries, as `<host>:<driver>[,<driver>...]`. Those are source folder
+names. `make package` reads the published archive name from each companion's
+`driver.c4zproj` and builds the companions first. The Coordinator carries their
+`.c4z` files under `c4z/`. Each embedded driver also ships as its own `.c4z`, so
+`lib.driver-filenames` lists it and the OSS build's updater keeps an installed
+copy current.
+
+`InstallDrivers(packages)` in `lib.utils` installs downloaded or bundled
+drivers. The Coordinator calls it for missing driver files after the installer
+confirms a Quick Setup creation. The suite updater verifies installed driver
+versions and completes its saved update plan independently.
+
 ## Writing Tests
 
 A test is a plain Lua script in `test/`, named `test_*.lua`, run by `make test`

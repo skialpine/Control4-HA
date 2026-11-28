@@ -39,10 +39,16 @@ local AUTO, NATIVE, LOCAL, BUTTONS = "Automatic", "Home Assistant device", "Conn
 local LOAD_ONLY, LOAD_BUTTONS = "Control linked device only", "Control device and report presses"
 Setup.explain = setupPage.explain
 
+local function retainedEndpoint(family)
+  local package = ids.packages[family]
+  return package and package.retainsLegacyInput
+end
+
 local function clearSavedSelection(family)
   if
-    family == "light"
-    and ((Properties["Entity ID"] or "") ~= "" or type(PersistData) == "table" and PersistData.DeviceSelection ~= nil)
+    retainedEndpoint(family)
+    or family == "light"
+      and ((Properties["Entity ID"] or "") ~= "" or type(PersistData) == "table" and PersistData.DeviceSelection ~= nil)
   then
     -- An explicit clear must survive startup with the old field still present.
     persist:set(KEY, CLEARED, true)
@@ -323,6 +329,7 @@ end
 
 function Setup:activate()
   self.eventProof, self.eventLoad, self.eventCheck = nil, nil, nil
+  self.registryProof = nil
   local entities, config = codec.array({}), self.config
   local activeButtons = self:usesButtons()
   self.gestures:bind(activeButtons and config or nil)
@@ -336,7 +343,7 @@ function Setup:activate()
     end
   end
   values:update("Selected Endpoint", config and config.key or "", "STRING")
-  if self.family == "light" and Variables.ENTITY_ID ~= nil and config then
+  if (retainedEndpoint(self.family) or self.family == "light" and Variables.ENTITY_ID ~= nil) and config then
     local target = config.controlled_load
     local entity = target and self:mode() == NATIVE and target.entity_id or ""
     values:update("ENTITY_ID", entity, "STRING")
@@ -371,9 +378,11 @@ function Setup:start()
     local label = persist:get("HA.LightOperationMode")
     self.originalMode = Prototype.mode(label) and label or nil
   end
-  UpdateProperty("Last Gesture", "")
-  UpdateProperty("Gesture Count", "0")
-  UpdateProperty("Last Sequence", "0")
+  if not contract.endpointFamily(self.family) then
+    UpdateProperty("Last Gesture", "")
+    UpdateProperty("Gesture Count", "0")
+    UpdateProperty("Last Sequence", "0")
+  end
   local legacyManual = Properties["Manual entity ID"] or ""
   self.manual, self.override = "", Properties["Button behavior"] or AUTO
   self:readLinks()
@@ -388,7 +397,7 @@ function Setup:start()
     initialCoordinator.tryConnect(self.consumer.device)
     self.assigningCoordinator = nil
   end
-  if self.family == "light" and (raw == CLEARED or raw == false) then
+  if (self.family == "light" or retainedEndpoint(self.family)) and (raw == CLEARED or raw == false) then
     -- A retained field from the old driver cannot reverse an explicit clear.
     UpdateProperty("Manual entity ID", "")
     self:activate()
@@ -441,6 +450,18 @@ function Setup:start()
         return
       end
     end
+    if retainedEndpoint(self.family) then
+      local entity = self.originalEntity
+      local savedEntity = Variables.ENTITY_ID
+      if (entity or "") == "" then
+        entity = savedEntity
+      end
+      local config = Selection.directLoad(self.family, entity)
+      if config and (not savedEntity or savedEntity == "" or savedEntity == entity) then
+        self:commit(config, entity)
+        return
+      end
+    end
     local target = self:legacyDirect()
     if target then
       self:commit(Selection.directLoad(self.family, target), target)
@@ -468,6 +489,10 @@ function Setup:commit(config, manual)
   self.config, self.manual, self.pending, self.working, self.error = config, manual, nil, nil, nil
   self.manualStatus, self.manualFailed = nil, nil
   UpdateProperty("Manual entity ID", manual)
+  if retainedEndpoint(self.family) then
+    self.originalEntity = config.controlled_load.entity_id
+    UpdateProperty("Entity ID", self.originalEntity)
+  end
   self:activate()
 end
 
@@ -553,8 +578,12 @@ function Setup:propertyChanged(original)
       self.originalEntity = ""
       UpdateProperty("Entity ID", "")
     end
-    if self.family == "light" and Variables.ENTITY_ID ~= nil then
+    if (self.family == "light" or retainedEndpoint(self.family)) and Variables.ENTITY_ID ~= nil then
       values:update("ENTITY_ID", "", "STRING")
+    end
+    if retainedEndpoint(self.family) then
+      self.originalEntity = ""
+      UpdateProperty("Entity ID", "")
     end
     UpdateProperty("Manual entity ID", "")
     self:activate()
@@ -572,7 +601,8 @@ function Setup:propertyChanged(original)
   end
   self.working, self.manualStatus = "manual", "Checking the entity ID in Home Assistant…"
   self:render()
-  self.consumer:request("verify_target", manual, codec.object({})):next(function()
+  local verify = codec.object({ family = contract.endpointFamily(self.family) and self.family or nil })
+  self.consumer:request("verify_target", manual, verify):next(function()
     if self:currentEdit(generation) then
       if original then
         self.originalEntity = manual
@@ -613,18 +643,20 @@ end
 -- records. Reuse that result until selection/transport/target evidence is lost.
 function Setup:allowRestoredLoad(kind, data)
   local config = self.config
+  local target = config.controlled_load
+  local pin = contract.endpointFamily(self.family) and target and target.registry_id
   if
     config.manual_event
-    or (not config.prototype_picker and config.prototype_mode ~= "bridge")
-    or not config.controlled_load
-    or data.entity_id ~= config.controlled_load.entity_id
+    or (not pin and not config.prototype_picker and config.prototype_mode ~= "bridge")
+    or not target
+    or data.entity_id ~= target.entity_id
     or self:mode() ~= NATIVE
     or (kind ~= "snapshot" and kind ~= "state")
-    or (data.state ~= "on" and data.state ~= "off")
+    or (not pin and data.state ~= "on" and data.state ~= "off")
   then
     return true
   end
-  if not config.prototype_picker and not self.registryProof then
+  if not pin and not config.prototype_picker and not self.registryProof then
     -- A modern selection is already resolved by the current Coordinator.
     -- Bridge mode still needs matching live button and linked-load metadata.
     self.registryProof = { verified = true }
@@ -640,7 +672,7 @@ function Setup:allowRestoredLoad(kind, data)
   end
   local proof = { latest = data }
   self.registryProof = proof
-  local arguments = Prototype.proof(config)
+  local arguments = pin and codec.object({ registry_id = pin }) or Prototype.proof(config)
   if not arguments then
     proof.failed = true
     self:render()
@@ -795,7 +827,11 @@ end
 
 function Setup:deviceView()
   local config = self.config
-  local state = { can_browse = self.consumer.provider ~= nil, helper = self.helper }
+  local state = {
+    can_browse = self.consumer.provider ~= nil,
+    helper = self.helper,
+    native_endpoint = contract.endpointFamily(self.family) or nil,
+  }
   local mode = self:mode()
   if not config then
     if mode == LOCAL then
@@ -869,7 +905,9 @@ function Setup:deviceView()
       or state.title
     if not load or not contract.entity(load.entity_id) then
       state.status, state.detail =
-        "Check the linked device", "Select a light or switch as the controlled device in Home Assistant."
+        "Check the linked device",
+        contract.endpointFamily(self.family) and "Choose a device of this type in Home Assistant."
+          or "Select a light or switch as the controlled device in Home Assistant."
     elseif not state.can_browse then
       state.status, state.detail = "Coordinator connection needed", Setup.explain("unbound")
     else
@@ -877,7 +915,7 @@ function Setup:deviceView()
       if self.registryProof and self.registryProof.failed then
         state.status, state.detail = "Check the saved device", Setup.explain("saved_device_unverified")
       elseif
-        config.prototype_picker
+        (config.prototype_picker or load.registry_id and contract.endpointFamily(self.family))
         and facts.evidence_ready
         and not (self.registryProof and self.registryProof.verified)
       then
@@ -986,7 +1024,7 @@ function Setup:refreshFeedback(done)
     if
       self.adapter.feedbackUnavailable
       and contract.state(data, entity)
-      and (data.state == "on" or data.state == "off")
+      and (contract.endpointFamily(self.family) or data.state == "on" or data.state == "off")
     then
       self:message("snapshot", data)
     end

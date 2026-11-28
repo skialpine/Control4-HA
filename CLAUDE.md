@@ -1,9 +1,7 @@
-# Driver issue reports
+# Project instructions
 
-When the user points out a driver issue, ask whether they want it fixed before
-changing code, configuration, or deployed drivers. An explicit request to fix
-the issue already gives that approval.
+The canonical project agent instructions for this repository live in
+[`AGENTS.md`](AGENTS.md), so they apply to every agent (Claude and Codex).
 
-Once approved, find the cause, implement a fix, and add a unit test that
-reproduces the issue. Check related drivers and shared code for the same
-failure, and report the scope of the fix and the tests that passed.
+Read `AGENTS.md` and follow it. Make any change to these project instructions in
+`AGENTS.md`, not here; keep this file as a pointer only.

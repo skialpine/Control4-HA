@@ -2,6 +2,7 @@
 local Setup = require("ha.setup")
 local foundation = require("ha.foundation")
 local codec = require("ha.codec")
+local contract = require("ha.contract")
 local ids = require("ha.identities")
 local events = require("lib.events")
 local page = require("lib.ui.page")
@@ -22,16 +23,25 @@ local indicatorBehaviorLabels = {
 
 function M.install(family, makeAdapter)
   local adapter = makeAdapter and makeAdapter()
-  local connectionName = family == "light" and "Home Assistant Connection" or "HA Suite Coordinator"
+  local endpoint = contract.endpointFamily(family)
+  local retainedInput = family == "light" or (endpoint and ids.packages[family].retainsLegacyInput)
+  local connectionName = family == "light" and "Home Assistant Connection"
+    or retainedInput and "Device Link"
+    or "HA Suite Coordinator"
   local setup, visible, previous, previousCapabilities
   local picker = family == "light" and require("ha.native-picker").install(function()
     return setup
   end)
   local programs = require("ha.indicator-programs")
-  programs.install(family, function()
-    return setup
-  end)
+  if not endpoint then
+    programs.install(family, function()
+      return setup
+    end)
+  end
   local function applicableChoices(name)
+    if endpoint then
+      return nil
+    end
     if family == "switch" and name == "Button behavior" then
       return setup and setup:switchModes() or {}
     end
@@ -43,6 +53,9 @@ function M.install(family, makeAdapter)
     end
   end
   local function offered(name)
+    if endpoint and adapter.definition.offersProperty and adapter.definition.offersProperty(adapter, name) then
+      return true
+    end
     local options = applicableChoices(name)
     if options then
       return #options > 1 or (#options > 0 and Properties[name] ~= options[1])
@@ -214,7 +227,9 @@ function M.install(family, makeAdapter)
       UpdateProperty("Selected Capabilities", capabilities ~= "" and capabilities or "Waiting for device information")
       UpdateProperty("Button Capabilities", setup.gestures.capabilitySummary or "No button presses available")
     end
-    UpdateProperty("LED Status", programs.summary(setup))
+    if not endpoint then
+      UpdateProperty("LED Status", programs.summary(setup))
+    end
     if family == "switch" then
       SetPropertyVisible("LED Status", state.indicator_lease ~= nil)
     end
@@ -228,8 +243,12 @@ function M.install(family, makeAdapter)
       "Gesture Count",
       "Last Sequence",
       "Button behavior",
+      "Position control",
+      "Control method",
     }) do
-      SetPropertyVisible(name, (name ~= "Button behavior" or not legacyButtonMode) and offered(name) or false)
+      if Properties[name] ~= nil then
+        SetPropertyVisible(name, (name ~= "Button behavior" or not legacyButtonMode) and offered(name) or false)
+      end
     end
     if family == "light" then
       SetPropertyVisible("App Control Link", offered("App Control Link") or false)
@@ -386,7 +405,7 @@ function M.install(family, makeAdapter)
   -- wire. Ignore both BP payloads before the general handler can debug-log
   -- their parameters. The capability reply lets the Coordinator verify this
   -- behavior even on a fresh, unconfigured driver.
-  local coordinatorInput = family == "light" and ids.lightCoordinatorBinding or ids.coordinatorBinding
+  local coordinatorInput = retainedInput and ids.lightCoordinatorBinding or ids.coordinatorBinding
   RFP.suppressDebug[coordinatorInput] = RFP.suppressDebug[coordinatorInput] or {}
   for _, command in ipairs({ "RECEIEVE_STATE", "RECEIEVE_EVENT" }) do
     RFP.suppressDebug[coordinatorInput][command] = true
@@ -414,6 +433,16 @@ function M.install(family, makeAdapter)
     end
   end
   OBC[ids.coordinatorBinding] = bindingChanged
+  if retainedInput then
+    OBC[ids.lightCoordinatorBinding] = bindingChanged
+  end
+  if endpoint and retainedInput then
+    OPC.Entity_ID = function()
+      if setup then
+        setup:propertyChanged(true)
+      end
+    end
+  end
   if family == "light" then
     OPC.Operation_Mode = function(label)
       if setup then
@@ -425,7 +454,6 @@ function M.install(family, makeAdapter)
         setup:propertyChanged(true)
       end
     end
-    OBC[ids.lightCoordinatorBinding] = bindingChanged
     OPC.App_Control_Link = function()
       bindingChanged(ids.targetLinks.app)
     end
@@ -456,7 +484,7 @@ function M.install(family, makeAdapter)
     if not adapter and makeAdapter then
       adapter = makeAdapter()
     end
-    foundation.init(family)
+    foundation.init(family, nil, endpoint and adapter.definition.restoreVariables or nil)
   end
   function OnDriverLateInit()
     retireOwner()

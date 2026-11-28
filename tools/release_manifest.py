@@ -8,7 +8,7 @@ import re
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_STORED, ZipFile
 
-from check_packages import PACKAGE_MODELS
+from check_packages import ENDPOINT_PROXIES, PACKAGE_MODELS
 from release_version import validate
 
 NAME = "ha-suite-release.json"
@@ -18,13 +18,22 @@ PROXIES = {
     "HA.Light.c4z": {"5001": "light_v2"},
     "Control4.HA.Switch.c4z": {"5001": "uibutton"},
 }
+PROXIES.update(
+    {
+        f"Control4.HA.{name}.c4z": proxies
+        for name, proxies in ENDPOINT_PROXIES.items()
+        if name not in {"BinarySensor", "Sensor"}
+    }
+)
+PROXIES["HA.Binary.Sensor.c4z"] = ENDPOINT_PROXIES["BinarySensor"]
+PROXIES["HA.Generic.Sensor.c4z"] = ENDPOINT_PROXIES["Sensor"]
 
 
 def manifest(directory, revision):
     revision = validate(revision)
     packages = directory / "c4z"
     if {path.name for path in packages.glob("*.c4z")} != set(PACKAGE_MODELS):
-        raise ValueError("Expected exactly the Coordinator, Light and Switch packages")
+        raise ValueError("The packages do not match the suite inventory")
     assets = {}
     for name, model in sorted(PACKAGE_MODELS.items()):
         path = packages / name

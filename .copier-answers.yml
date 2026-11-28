@@ -1,9 +1,9 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
-_commit: v0.9.117
+_commit: v0.9.119
 _src_path: https://github.com/finitelabs/control4-driver-template.git
 cloud_diagnostics: false
 dc_pid: 0
-embedded_drivers: ''
+embedded_drivers: coordinator:alarm,binary-sensor,blinds,climate,fan,garage,light,lock,media-player,sensor,switch
 extra_build_secrets: ''
 extra_required_checks: ''
 github_org: skialpine

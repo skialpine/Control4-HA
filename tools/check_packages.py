@@ -1,4 +1,4 @@
-"""Inspect the three built free suite packages; no controller access required."""
+"""Inspect the built free suite packages without accessing a controller."""
 
 from pathlib import Path
 import hashlib
@@ -20,6 +20,25 @@ PACKAGE_MODELS = {
     "HA.Light.c4z": "HA Light",
     "Control4.HA.Switch.c4z": "Control4.HA.Switch",
 }
+ENDPOINT_PROXIES = {
+    "BinarySensor": {},
+    "Sensor": {},
+    "Fan": {"5001": "fan"},
+    "Blinds": {"5001": "blind"},
+    "GarageDoor": {"5001": "blind"},
+    "Thermostat": {"5001": "thermostatV2"},
+    "Lock": {"5001": "lock"},
+    "AlarmPanel": {"5001": "securitypanel", "5002": "security"},
+    "MediaPlayer": {"5001": "media_service"},
+}
+ENDPOINT_MODELS = {
+    f"Control4.HA.{name}.c4z": f"Control4.HA.{name}"
+    for name in ENDPOINT_PROXIES
+    if name not in {"BinarySensor", "Sensor"}
+}
+ENDPOINT_MODELS["HA.Binary.Sensor.c4z"] = "HA Binary Sensor"
+ENDPOINT_MODELS["HA.Generic.Sensor.c4z"] = "HA Generic Sensor"
+PACKAGE_MODELS.update(ENDPOINT_MODELS)
 FORBIDDEN_MODULES = (
     "lib.drivercentral",
     "cloud-client-byte",
@@ -77,7 +96,12 @@ function C4:SendToProxy(binding, command, params, kind)
     and command == 'ONLINE_CHANGED' and kind == 'NOTIFY' and (params.STATE == false or params.STATE == '0')
   local offlineSwitch = config.model == 'Control4.HA.Switch' and tonumber(binding) == 5001
     and command == 'ICON_CHANGED' and params.icon == 'unavailable'
-  if not offlineLight and not offlineSwitch then table.insert(forbidden, tostring(command)) end
+  local newEndpoint = {json.dumps(config["model"] in ENDPOINT_MODELS.values())}
+  local offlineMedia = config.model == 'Control4.HA.MediaPlayer' and tonumber(binding) == 5001
+    and kind == 'COMMAND' and (command == 'UPDATE_MEDIA_INFO' or command == 'SEND_EVENT')
+  if (not newEndpoint or kind ~= 'NOTIFY') and not offlineLight and not offlineSwitch and not offlineMedia then
+    table.insert(forbidden, tostring(command))
+  end
 end
 assert(loadfile(arg[1]))()
 OnDriverInit()
@@ -156,6 +180,22 @@ def check(directory=ROOT / "dist/oss/c4z"):
     for name in sorted(expected):
         with zipfile.ZipFile(directory / name) as package:
             names = package.namelist()
+            carried = {
+                member
+                for member in names
+                if member.startswith("c4z/") and not member.endswith("/")
+            }
+            if name == "HA.Coordinator.c4z":
+                standalone = expected - {name}
+                if carried != {f"c4z/{child}" for child in standalone} or any(
+                    package.read(f"c4z/{child}") != (directory / child).read_bytes()
+                    for child in standalone
+                ):
+                    raise ValueError(
+                        f"{name}: bundled drivers must match the standalone packages"
+                    )
+            elif carried:
+                raise ValueError(f"{name}: only the Coordinator carries drivers")
             if any(
                 n.startswith(("lab/", "test/", "vendor/", ".env", ".git"))
                 for n in names
@@ -183,8 +223,63 @@ def check(directory=ROOT / "dist/oss/c4z"):
                 raise ValueError(
                     f"{name}: driver update controls belong only to the Coordinator"
                 )
-            if len(xml.findall("capabilities")) != 1:
+            if (
+                len(xml.findall("capabilities")) > 1
+                or name not in ENDPOINT_MODELS
+                and xml.find("capabilities") is None
+            ):
                 raise ValueError(f"{name}: expected exactly one capabilities section")
+            if name == "Control4.HA.GarageDoor.c4z":
+                proxy = xml.find("proxies/proxy")
+                for tag, size in (("small", 16), ("large", 32)):
+                    icon = xml.find(tag)
+                    if (
+                        icon is None
+                        or icon.get("image_source") != "c4z"
+                        or proxy is None
+                        or proxy.get("image_source") != "c4z"
+                        or proxy.get(f"{tag}_image") != icon.text
+                    ):
+                        raise ValueError(
+                            f"{name}: missing {tag} Composer icon declaration"
+                        )
+                    data = package.read(f"www/{icon.text}")
+                    dimensions = size.to_bytes(2, "little") * 2
+                    if (
+                        data[:6] not in (b"GIF87a", b"GIF89a")
+                        or data[6:10] != dimensions
+                    ):
+                        raise ValueError(
+                            f"{name}: wrong format or size for {tag} Composer icon"
+                        )
+                outputs = {
+                    node.findtext("id"): node.findtext("classes/class/classname")
+                    for node in xml.findall("connections/connection")
+                    if (node.findtext("consumer") or "").lower() == "false"
+                }
+                expected_outputs = {
+                    "2": "CONTACT_SENSOR",
+                    "3": "CONTACT_SENSOR",
+                    "4": "RELAY",
+                    "5": "RELAY",
+                    "6": "RELAY",
+                    "7": "RELAY",
+                    "203": "BUTTON_LINK",
+                    "5001": "BLIND",
+                }
+                if any(
+                    outputs.get(binding) != cls
+                    for binding, cls in expected_outputs.items()
+                ):
+                    raise ValueError(
+                        f"{name}: expected the door relay and limit outputs"
+                    )
+                if {
+                    binding for binding, cls in outputs.items() if cls == "BUTTON_LINK"
+                } != {"203"}:
+                    raise ValueError(
+                        f"{name}: only Step-by-Step should be declared alongside native keypad links"
+                    )
             tabs = xml.findall("config/tabs/tab")
             title = "Quick Setup" if name == "HA.Coordinator.c4z" else "Device Setup"
             if not any(
@@ -246,9 +341,9 @@ def check(directory=ROOT / "dist/oss/c4z"):
                 if member not in names or package.read(member) != source.read_bytes():
                     raise ValueError(f"{name}: missing or changed notice {member}")
             for version in ("3.2.4", "3.3.0"):
-                boot(lua, xml, version)
+                boot(lua, xml, version, exercise_controls=name not in ENDPOINT_MODELS)
     print(
-        "Three free suite packages inspected: no Base or commercial runtime dependency."
+        f"{len(expected)} free suite packages inspected: no Base or commercial runtime dependency."
     )
     print(
         "Built-package startup: rejects OS 3.2.4; accepts baseline OS 3.3.0 without control traffic."

@@ -1,0 +1,183 @@
+<devicedata>
+  <name>Home Assistant Media Player</name>
+  <version />
+  <manufacturer>SkiAlpine Labs</manufacturer>
+  <model>Control4.HA.MediaPlayer</model>
+  <creator>skialpine</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 skialpine. Template components copyright Finite Labs and their respective authors.</copyright>
+  <created>11/24/2026 12:00:00 PM</created>
+  <modified />
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories><category>Other</category></composer_categories>
+  <conditionals />
+  <events />
+  <config>
+    <script file="driver.lua" jit="1" />
+    <documentation file="www/documentation/index.html" />
+    <properties>
+      <!-- #embed ../../src/ha/endpoint-properties.xml -->
+    </properties>
+    <tabs><tab name="Device Setup" file="html/index.html" /></tabs>
+    <commands>
+      <command>
+        <name>Select Source</name>
+        <description>Switch NAME to source PARAM1</description>
+        <params><param><name>Source</name><type>STRING</type></param></params>
+      </command>
+    </commands>
+    <actions>
+      <!-- #embed ../../src/ha/endpoint-actions.xml -->
+    </actions>
+  </config>
+  <capabilities>
+    <audio_consumer_count>0</audio_consumer_count>
+    <audio_provider_count>3</audio_provider_count>
+    <has_discrete_volume_control>False</has_discrete_volume_control>
+    <has_up_down_volume_control>False</has_up_down_volume_control>
+    <has_discrete_mute_control>False</has_discrete_mute_control>
+    <has_toggle_mute_control>False</has_toggle_mute_control>
+    <allow_as_path_source>True</allow_as_path_source>
+    <can_scan_media>False</can_scan_media>
+    <list_nowplaying_non_c4>True</list_nowplaying_non_c4>
+    <ui_selects_device>True</ui_selects_device>
+    <UI proxybindingid="5001">
+      <DeviceIcon>device</DeviceIcon>
+      <NowPlaying><ActionIds>Shuffle Repeat RepeatOne</ActionIds></NowPlaying>
+      <Actions>
+        <Action>
+          <Id>Shuffle</Id>
+          <Name>Turn shuffle on</Name>
+          <Command><Name>ToggleShuffle</Name><Type>PROTOCOL</Type></Command>
+          <Filters>
+            <Filter><Type>Disable</Type><Property>can_shuffle</Property><ValidValues><Value>false</Value></ValidValues></Filter>
+            <Filter><Type>Change</Type><Property>shufflemode</Property><Name>Turn shuffle off</Name><ValidValues><Value>true</Value></ValidValues></Filter>
+          </Filters>
+        </Action>
+        <Action>
+          <Id>Repeat</Id>
+          <Name>Turn repeat all on</Name>
+          <Command><Name>ToggleRepeat</Name><Type>PROTOCOL</Type></Command>
+          <Filters>
+            <Filter><Type>Disable</Type><Property>can_repeat</Property><ValidValues><Value>false</Value></ValidValues></Filter>
+            <Filter><Type>Change</Type><Property>repeatmode</Property><Name>Turn repeat all off</Name><ValidValues><Value>true</Value></ValidValues></Filter>
+          </Filters>
+        </Action>
+        <Action>
+          <Id>RepeatOne</Id>
+          <Name>Turn repeat one on</Name>
+          <Command><Name>ToggleRepeatOne</Name><Type>PROTOCOL</Type></Command>
+          <Filters>
+            <Filter><Type>Disable</Type><Property>can_repeat_one</Property><ValidValues><Value>false</Value></ValidValues></Filter>
+            <Filter><Type>Change</Type><Property>repeatonemode</Property><Name>Turn repeat one off</Name><ValidValues><Value>true</Value></ValidValues></Filter>
+          </Filters>
+        </Action>
+      </Actions>
+      <Dashboard>
+        <Transport>
+          <Id>Play</Id>
+          <ButtonType>PLAY</ButtonType>
+          <ReleaseCommand><Name>PLAY</Name><Type>PROTOCOL</Type></ReleaseCommand>
+        </Transport>
+        <Transport>
+          <Id>Pause</Id>
+          <ButtonType>PAUSE</ButtonType>
+          <ReleaseCommand><Name>PAUSE</Name><Type>PROTOCOL</Type></ReleaseCommand>
+        </Transport>
+        <Transport>
+          <Id>Stop</Id>
+          <ButtonType>STOP</ButtonType>
+          <ReleaseCommand><Name>STOP</Name><Type>PROTOCOL</Type></ReleaseCommand>
+        </Transport>
+        <Transport>
+          <Id>SkipRev</Id>
+          <ButtonType>SKIP_REV</ButtonType>
+          <ReleaseCommand><Name>SKIP_REV</Name><Type>PROTOCOL</Type></ReleaseCommand>
+        </Transport>
+        <Transport>
+          <Id>SkipFwd</Id>
+          <ButtonType>SKIP_FWD</ButtonType>
+          <ReleaseCommand><Name>SKIP_FWD</Name><Type>PROTOCOL</Type></ReleaseCommand>
+        </Transport>
+      </Dashboard>
+    </UI>
+  </capabilities>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" primary="True" name="Home Assistant Media Player">media_service</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>1</id>
+      <facing>5</facing>
+      <connectionname>HA Suite Coordinator</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>SKIALPINE_HA_SUITE_V1</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection proxybindingid="5001">
+      <id>2001</id>
+      <facing>6</facing>
+      <connectionname>HDMI output</connectionname>
+      <type>5</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>HDMI</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection proxybindingid="5001">
+      <id>4001</id>
+      <facing>6</facing>
+      <connectionname>Audio output</connectionname>
+      <type>6</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>STEREO</classname></class>
+        <class><classname>DIGITAL_COAX</classname></class>
+        <class><classname>DIGITAL_OPTICAL</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Media</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class><classname>MediaService</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection proxybindingid="5001">
+      <id>7000</id>
+      <facing>6</facing>
+      <connectionname>Room Audio</connectionname>
+      <type>7</type>
+      <consumer>False</consumer>
+      <audiosource>True</audiosource>
+      <videosource>False</videosource>
+      <linelevel>True</linelevel>
+      <classes>
+        <class><classname>AUDIO_SELECTION</classname></class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+  </connections>
+</devicedata>

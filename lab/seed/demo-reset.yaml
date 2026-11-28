@@ -1,0 +1,48 @@
+# Appended only in the disposable Demo reset rehearsal.
+input_boolean:
+  lab_reset_contact:
+    initial: false
+  lab_reset_hold:
+    initial: true
+
+input_select:
+  lab_reset_mode:
+    options:
+      - Home
+      - Away
+      - Sleep
+    initial: Home
+
+input_number:
+  lab_reset_temperature:
+    min: 0
+    max: 50
+    step: 1
+    initial: 12
+
+template:
+  - binary_sensor:
+      - name: "Lab Reset Contact"
+        device_class: door
+        state: "{{ is_state('input_boolean.lab_reset_contact', 'on') }}"
+    sensor:
+      - name: "Lab Reset Temperature"
+        device_class: temperature
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.lab_reset_temperature') }}"
+    select:
+      - name: "Lab Reset Comfort Mode"
+        state: "{{ states('input_select.lab_reset_mode') }}"
+        options: "{{ state_attr('input_select.lab_reset_mode', 'options') }}"
+        select_option:
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.lab_reset_mode
+            data:
+              option: "{{ option }}"
+    button:
+      - name: "Lab Reset Clear Hold"
+        press:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.lab_reset_hold

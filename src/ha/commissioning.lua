@@ -13,9 +13,9 @@ local Commissioning = {}
 Commissioning.__index = Commissioning
 local KEY, MAX_BATCH, MAX_RECORDS = "HA.Commissioning", 16, 1000
 
-local function failure(kind)
+local function failure(kind, family)
   local work = deferred.new()
-  work:reject({ kind = kind })
+  work:reject({ kind = kind, family = family })
   return work
 end
 
@@ -64,6 +64,7 @@ local function requested(input)
       or #choice.choice_id > 255
       or choice.choice_id:find("%c")
       or not project.file(choice.family)
+      or (choice.revision ~= nil and not contract.catalogQuery(codec.object({ revision = choice.revision })))
       or not contract.integer(choice.room_id)
       or (choice.name ~= nil and not validName(choice.name))
     then
@@ -72,6 +73,7 @@ local function requested(input)
     result.choices[#result.choices + 1] = {
       choice_id = choice.choice_id,
       family = choice.family,
+      revision = choice.revision or input.revision,
       room_id = choice.room_id,
       name = choice.name,
     }
@@ -104,12 +106,34 @@ local function save(saved)
   persist:flush(KEY)
 end
 
-function Commissioning.new(catalog, configure, installation)
+function Commissioning.new(catalog, configure, installation, scopedCatalog)
   assert(type(configure) == "function", "A commissioning configuration adapter is required")
   return setmetatable(
-    { catalog = catalog, configure = configure, installation = installation, serial = 0 },
+    { catalog = catalog, configure = configure, installation = installation, scopedCatalog = scopedCatalog, serial = 0 },
     Commissioning
   )
+end
+
+function Commissioning:_catalog(family)
+  return self.scopedCatalog and self.scopedCatalog(family) or self.catalog
+end
+
+function Commissioning:_refreshChoices(input)
+  local catalogs, revisions = {}, {}
+  for _, choice in ipairs(input.choices) do
+    local catalog = self:_catalog(choice.family)
+    if not revisions[catalog] then
+      catalogs[#catalogs + 1] = { catalog = catalog, family = choice.family }
+      revisions[catalog] = choice.revision
+    elseif revisions[catalog] ~= choice.revision then
+      return deferred.new():resolve({ choice.family })
+    end
+  end
+  return deferred.map(catalogs, function(entry)
+    return entry.catalog:refresh(true):next(function(metadata)
+      return metadata.revision == revisions[entry.catalog] or entry.family
+    end)
+  end)
 end
 
 function Commissioning:rooms()
@@ -232,7 +256,8 @@ function Commissioning:browseChoices(page)
 end
 
 function Commissioning:_item(choice, rooms, devices, saved)
-  local row = self.catalog:choice(choice.choice_id, choice.family)
+  local catalog = self:_catalog(choice.family)
+  local row = catalog:choice(choice.choice_id, choice.family)
   if not row then
     return nil, "unsupported_endpoint"
   end
@@ -247,7 +272,7 @@ function Commissioning:_item(choice, rooms, devices, saved)
   end
   local canonical, keys = endpointKeys(row)
   local gesture = choices.gestureEntity(row)
-  local gestureMatch = gesture and self.catalog:gestureChoice(gesture, row) == row.entity_id and gesture or nil
+  local gestureMatch = gesture and catalog:gestureChoice(gesture, row) == row.entity_id and gesture or nil
   local item = {
     choice = choice,
     domain = row.domain,
@@ -276,8 +301,13 @@ function Commissioning:_item(choice, rooms, devices, saved)
   item.receipt_key = item.receipt_key or canonical
   item.decision, item.device_id, item.reason =
     project.decide(item, devices, saved[item.receipt_key], tonumber(C4:GetDeviceID()))
-  if item.decision == "add" and choice.family == "light" and not project.lightPackageReady(devices) then
-    item.decision, item.reason = "review", "light_package_required"
+  if
+    item.decision == "add"
+    and project.requiresPackageCheck(choice.family)
+    and not project.retainedPackageReady(choice.family, devices)
+  then
+    item.decision, item.reason =
+      "review", choice.family == "light" and "light_package_required" or "retained_package_required"
   end
   item.display_name, item.display_family = name, choice.family
   item.display_room_id, item.display_room_name = choice.room_id, roomName
@@ -357,12 +387,14 @@ function Commissioning:preview(input)
   self.serial = self.serial + 1
   local sequence = self.serial
   local span = metrics:start("commissioning.preview")
-  local pending = self.catalog:refresh(true):next(function(metadata)
+  local pending = self:_refreshChoices(safe):next(function(verified)
     if self.destroyed or self.serial ~= sequence then
       return failure("retired")
     end
-    if metadata.revision ~= safe.revision then
-      return failure("revision_changed")
+    for _, current in ipairs(verified) do
+      if current ~= true then
+        return failure("revision_changed", current)
+      end
     end
     return self:_inventory():next(function(devices)
       if self.destroyed or self.serial ~= sequence then
@@ -386,7 +418,7 @@ function Commissioning:preview(input)
     return result
   end, function(err)
     metrics:finish(span, "failed")
-    return failure(failureKind(err))
+    return failure(failureKind(err), type(err) == "table" and err.family or nil)
   end)
 end
 
@@ -527,13 +559,14 @@ function Commissioning:_deploy(item, operation)
     if self.destroyed then
       return attention("retired")
     end
-    return self.catalog
+    return self
+      :_catalog(item.family)
       :refresh(true)
       :next(function(metadata)
-        if item.decision == "add" and item.family == "light" then
+        if item.decision == "add" and project.requiresPackageCheck(item.family) then
           local added = project.device(deviceId)
           if not added or added.file ~= need.file then
-            return attention("light_add_unverified")
+            return attention(item.family == "light" and "light_add_unverified" or "retained_add_unverified")
           end
         end
         return self:_inventory():next(function(devices)
@@ -569,6 +602,22 @@ function Commissioning:_deploy(item, operation)
     end
     if self.destroyed then
       return attention("retired")
+    end
+    -- A relay/contact-only Garage Door can keep its package name after AddDevice.
+    if item.family == "garage" then
+      local device = project.device(added.id)
+      if
+        device
+        and device.file == need.file
+        and device.room_id == need.room
+        and device.selected == ""
+        and (device.provider == 0 or device.provider == tonumber(C4:GetDeviceID()))
+        and type(device.name) == "string"
+        and device.name ~= need.name
+        and device.name == C4:GetDeviceData(added.id, "name")
+      then
+        RenameDevice(added.id, need.name)
+      end
     end
     return bind(added.id):next(function(result)
       if result.reason then
@@ -622,7 +671,8 @@ function Commissioning:execute(id)
           verified = deferred.new()
           verified:resolve(actual[1])
         else
-          verified = self.catalog
+          verified = self
+            :_catalog(approved.family)
             :refresh(true)
             :next(function()
               return self:_inventory()
@@ -639,6 +689,22 @@ function Commissioning:execute(id)
             if not same(approved, item) then
               return attention("preview_changed")
             end
+            if item.decision == "add" then
+              local install = metrics:start("commissioning.package_install")
+              return project.stageMissingPackage(item.family):next(function(ready)
+                metrics:finish(install, ready and "ok" or "failed")
+                if self.destroyed then
+                  return attention("retired")
+                end
+                if not ready then
+                  return attention("driver_install_failed")
+                end
+                return self:_deploy(item, id)
+              end, function()
+                metrics:finish(install, "failed")
+                return attention("driver_install_failed")
+              end)
+            end
             return self:_deploy(item, id)
           end)
           :next(function(result)
@@ -654,12 +720,14 @@ function Commissioning:execute(id)
         return { items = result, complete = not stopped }
       end)
   end
-  local pending = self.catalog:refresh(true):next(function(metadata)
+  local pending = self:_refreshChoices(plan.input):next(function(verified)
     if self.destroyed then
       return failure("retired")
     end
-    if metadata.revision ~= plan.input.revision then
-      return failure("revision_changed")
+    for _, current in ipairs(verified) do
+      if current ~= true then
+        return failure("revision_changed", current)
+      end
     end
     return self:_inventory():next(deployVerified)
   end)
@@ -670,7 +738,7 @@ function Commissioning:execute(id)
   end, function(err)
     self.running = false
     metrics:finish(span, "failed")
-    return failure(failureKind(err))
+    return failure(failureKind(err), type(err) == "table" and err.family or nil)
   end)
 end
 

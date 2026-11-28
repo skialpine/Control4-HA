@@ -152,12 +152,12 @@
         <type>LIST</type>
         <default>Off</default>
         <items><item>Off</item><item>On</item></items>
-        <tooltip>Automatically install releases for the Home Assistant drivers in this project.</tooltip>
+        <tooltip>Check for and install driver updates on a schedule. To update once, use Check for driver updates in Actions.</tooltip>
       </property>
       <property>
         <name>Driver update status</name>
         <type>STRING</type>
-        <default>Use Actions → Check for driver updates.</default>
+        <default>Use Actions → Check for driver updates to install available updates.</default>
         <readonly>true</readonly>
       </property>
       <property>

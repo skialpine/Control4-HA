@@ -318,9 +318,9 @@ installed[names[1]] = { [1] = 2026111813 }
 function C4:GetDeviceID()
   return 1
 end
-local old = check.check
+local old = check.prepare
 local pending, calls = deferred.new(), 0
-check.check = function(channel)
+check.prepare = function(channel)
   T.eq("default channel", channel, "Production")
   calls = calls + 1
   return pending
@@ -328,7 +328,7 @@ end
 local resetAction = check.installActions(function()
   return true
 end)
-Properties["Update channel"] = "Production"
+Properties["Update channel"], Properties["Automatic Updates"] = "Production", "Off"
 Properties["Driver update status"] = ""
 EC.CheckDriverUpdates()
 EC.CheckDriverUpdates()
@@ -346,10 +346,10 @@ pending:resolve({ kind = "available", installed = "Coordinator 2026111813", revi
 T.eq(
   "old channel cannot overwrite the new status",
   Properties["Driver update status"],
-  "Use Actions → Check for driver updates."
+  "Use Actions → Check for driver updates to install available updates."
 )
 resetAction()
-check.check = old
+check.prepare = old
 
 if arg[1] then
   T.section("Production promotion qualifies the actual built packages")
@@ -394,6 +394,24 @@ if arg[1] then
       result.assets[index].body == payloads[ASSET_ROOT .. tag .. "/" .. name]
     )
   end
+  T.section("A mixed project qualifies the additional archive declarations")
+  local endpointFamilies = require("ha.endpoint-families")
+  for _, family in ipairs(endpointFamilies.order) do
+    local package = endpointFamilies[family]
+    local index = #names + 1
+    names[index], models[index] = package.file, package.model
+    installed[package.file] = { [index] = target - 1 }
+    add(package.file, read("c4z/" .. package.file))
+  end
+  result = outcome("Production", { release }, check.prepare)
+  T.eq(
+    "every installed family qualifies, including the alarm's two proxies",
+    { result.kind, #(result.assets or {}) },
+    { "available", 3 + #endpointFamilies.order }
+  )
+  for index = #names, 4, -1 do
+    installed[names[index]], names[index], models[index] = nil, nil, nil
+  end
   result = outcome("Pre-release", { previous, release, preview })
   T.eq(
     "the promoted revision is also the latest for Pre-release",
@@ -401,7 +419,7 @@ if arg[1] then
     { "available", target }
   )
 
-  T.section("the Coordinator applies the exact qualified archives only after opt-in")
+  T.section("manual and scheduled checks use the same verified suite installer")
   local root = ShimFiles("C4Z_ROOT")
   for _, name in ipairs(names) do
     root[name] = "existing " .. name
@@ -414,8 +432,13 @@ if arg[1] then
     return stagedMigration
   end)
   local tcp = F.captureTcpClient({ holdReplies = true })
+  startActions()
+  local requestCount = #requested
+  ShimFireTimers()
+  T.eq("Off schedules no check or reload", { #requested, #tcp.writes }, { requestCount, 0 })
   EC.CheckDriverUpdates()
-  T.eq("Off performs no write or reload", { root[names[2]], #tcp.writes }, { "existing " .. names[2], 0 })
+  T.contains("manual updates respect saved migrations", Properties["Driver update status"], "Quick Setup")
+  T.eq("the migration leaves the original archive in place", root[names[2]], "existing " .. names[2])
   Properties["Automatic Updates"] = "On"
   startActions()
   ShimFireTimers()
@@ -430,8 +453,15 @@ if arg[1] then
   check.prepare = function()
     return inFlight
   end
+  Properties["Automatic Updates"] = "Off"
+  OPC.Automatic_Updates()
   stagedMigration = false
   EC.CheckDriverUpdates()
+  T.contains(
+    "the manual action starts a fresh check with automatic updates off",
+    Properties["Driver update status"],
+    "Checking GitHub"
+  )
   stagedMigration = true
   inFlight:resolve(downloaded)
   T.eq("a migration staged during download prevents file writes", #tcp.writes, 0)
@@ -443,7 +473,7 @@ if arg[1] then
   )
   check.prepare = realPrepare
   stagedMigration = false
-  Properties["Update channel"] = "Pre-release"
+  Properties["Automatic Updates"], Properties["Update channel"] = "On", "Pre-release"
   downloaded.prerelease = true
   check.prepare = function()
     return require("deferred").new():resolve(downloaded)
@@ -464,8 +494,7 @@ if arg[1] then
   ShimFireTimers()
   T.eq("turning updates Off blocks the next reload", #tcp.writes, 1)
   T.eq("turning updates Off leaves the next archive in place", root[names[3]], "existing " .. names[3])
-  Properties["Automatic Updates"], Properties["Update channel"] = "On", "Production"
-  OPC.Automatic_Updates()
+  Properties["Update channel"] = "Production"
   OPC.Update_channel()
   EC.CheckDriverUpdates()
   T.eq("Production cannot resume a prerelease journal", #tcp.writes, 1)
@@ -477,7 +506,8 @@ if arg[1] then
   Properties["Update channel"] = "Pre-release"
   OPC.Update_channel()
   EC.CheckDriverUpdates()
-  T.eq("the matching channel can resume the pending package", #tcp.writes, 2)
+  T.eq("a manual check resumes the pending package with automatic updates off", #tcp.writes, 2)
+  T.eq("the manual check leaves Automatic Updates off", Properties["Automatic Updates"], "Off")
   tcp.reply('<c4soap name="UpdateProjectC4i" result="0"/>\0')
   T.eq(
     "a rejected package names remaining and completed updates",
@@ -485,7 +515,87 @@ if arg[1] then
     "Switch, Connection pending. Check for driver updates. Updated Light."
   )
   endActions()
+  local staged = ShimFiles("SANDBOX")
+  for name in pairs(staged) do
+    staged[name] = nil
+  end
+  for _, name in ipairs(names) do
+    root[name] = "existing " .. name
+  end
+  installed[names[2]][2] = target - 1
+  EC.CheckDriverUpdates()
+  T.eq(
+    "a fresh manual check installs the qualified Light with automatic updates off",
+    { #tcp.writes, root[names[2]], Properties["Automatic Updates"] },
+    { 3, read("c4z/" .. names[2]), "Off" }
+  )
+  T.contains(
+    "a manual installation reports its progress",
+    Properties["Driver update status"],
+    "Installing suite version"
+  )
+  endActions()
   check.prepare = realPrepare
+  tcp.restore()
+  ShimSetUIRequest(nil)
+
+  T.section("A Coordinator and Fan update can resume before the Coordinator reload")
+  local Installer = require("ha.release-install")
+  local fan = endpointFamilies.fan
+  names[4], models[4] = fan.file, fan.model
+  installed[names[1]][1] = target - 1
+  installed[names[2]], installed[names[3]], installed[fan.file] = nil, nil, { [4] = target - 1 }
+  for name in pairs(staged) do
+    staged[name] = nil
+  end
+  root[fan.file], root[names[1]], root[names[2]] = "previous Fan", "previous Coordinator", "separately imported Light"
+  requested = {}
+  result = outcome("Production", { release }, check.prepare)
+  T.eq("only the two installed packages enter the plan", { result.kind, #result.assets }, { "available", 2 })
+  T.eq("no unused child archive is downloaded", #requested, 4)
+  local installer = Installer.new()
+  T.truthy("the exact mixed subset is saved as a durable plan", installer:prepare(result))
+  tcp = F.captureTcpClient({ holdReplies = true })
+  local function mayWrite()
+    return true
+  end
+  local final
+  local function complete(status)
+    final = status
+  end
+  installer:runPending(mayWrite, complete)
+  T.contains("Director receives the Fan reload first", tcp.writes[1], fan.file)
+  T.eq("the Fan file is verified before any Coordinator write", { #tcp.writes, root[names[1]] }, {
+    1,
+    "previous Coordinator",
+  })
+  tcp.reply()
+  installed[fan.file][4] = target
+  installer:stop()
+
+  ShimSetUIRequest(function(device, command)
+    T.eq("resuming checks the running Fan instance", { device, command }, { 4, "HA_SUITE_RUNNING_VERSION" })
+    return "<version>" .. target .. "</version>"
+  end)
+  installer = Installer.new()
+  installer:runPending(mayWrite, complete)
+  T.eq("the app resumes with one remaining reload", #tcp.writes, 2)
+  T.contains("the remaining reload is the Coordinator", tcp.writes[2], names[1])
+  T.eq("the separately imported Light file is preserved", root[names[2]], "separately imported Light")
+  installer:stop()
+  installed[names[1]][1] = target
+  local previousConfig = C4.GetDriverConfigInfo
+  function C4:GetDriverConfigInfo(key)
+    return key == "version" and tostring(target) or previousConfig(self, key)
+  end
+  installer = Installer.new()
+  installer:runPending(nil, complete)
+  T.eq("startup confirms the running update and clears the plan", { final, installer:pending(), #tcp.writes }, {
+    "updated",
+    false,
+    2,
+  })
+  C4.GetDriverConfigInfo = previousConfig
   tcp.restore()
   ShimSetUIRequest(nil)
 end

@@ -13,7 +13,6 @@
   var draft = [];
   var selectedOnly = false;
   var showExisting = false;
-  var draftRevision;
   var catalog;
   var browseRequest;
   var pending;
@@ -22,20 +21,23 @@
   var decisions = { add: "Create in Control4", resume: "Finish setup", keep: "Keep existing Control4 device", review: "Needs attention" };
   var outcomes = { added: "Added to Control4", resumed: "Setup finished", kept: "Already set up", not_started: "Still to add", needs_attention: "Needs attention" };
   var reasons = {
-    multiple_matches: "More than one project device matches.",
+    multiple_matches: "More than one project device matches. In Composer, check which driver should control this Home Assistant device, then review again.",
     unresolved_add: "An earlier attempt could not confirm this addition. Check the project and review again.",
     different_device_or_coordinator: "This device matches another setup in the project. Check its existing setup.",
     button_device_match: "The listed Control4 driver already uses this device’s buttons. Check its setup before adding another driver.",
-    legacy_switch_match: "An older switch driver already controls this device. Check Migrate switch drivers in Quick Setup.",
-    legacy_switch_unconfirmed: "Check the existing switch’s Home Assistant device before adding another control.",
-    legacy_light_match: "Check this Light’s Properties. If it already controls the Home Assistant device you selected, go back and uncheck that device.",
-    legacy_light_unconfirmed: "Check which Home Assistant device this Light controls in Properties. To continue adding other devices, go back and uncheck this device.",
+    legacy_switch_match: "A legacy switch driver already controls this device. Open Migrate drivers in Quick Setup to review its replacement.",
+    legacy_switch_unconfirmed: "Check the legacy switch driver’s Home Assistant device in Properties before adding another control.",
+    legacy_light_match: "A legacy light driver already controls this device. Open Migrate drivers in Quick Setup to review its settings, scenes and linked controls.",
+    legacy_light_unconfirmed: "Check which Home Assistant device the legacy light driver controls in Properties. Choose Back to edit, then uncheck this device to continue with the others.",
     name_in_use: "The room already has a device with this name. Choose a different name.",
     project_identity_unreadable: "Check the existing devices in the Control4 project before adding another.",
     light_package_required: "In Composer, update an existing Home Assistant Light to the current driver, then review again.",
     light_add_unverified: "Check the Light added in Composer and update it to the current driver, then review again.",
+    retained_package_required: "Update the existing instance in Composer before adding another device of this type.",
+    retained_add_unverified: "Check the driver added in Composer and update it to the current version, then review again.",
     add_unconfirmed: "Check the project before trying again. The device may have been added.",
-    add_rejected: "The controller declined to add this driver.",
+    driver_install_failed: "Couldn’t install this driver. In Composer, choose Driver → Add or Update Driver or Agent and import the matching driver from the same suite release. Then review again.",
+    add_rejected: "The controller declined to add this driver. Check that the matching driver package is installed in Composer, then review again.",
     bind_unconfirmed: "The device was added. Check its Coordinator connection before finishing setup.",
     configuration_unconfirmed: "The device was added. Review its setup before trying again.",
     project_changed: "The project changed during setup. Review the devices again.",
@@ -60,7 +62,44 @@
   }
 
   function familyName(family) {
-    return family === "switch" ? "Switch" : "Light";
+    var labels = {
+      light: "Light", switch: "Switch", binary_sensor: "Binary sensor", sensor: "Sensor", fan: "Fan",
+      blinds: "Blinds", garage: "Garage door", climate: "Thermostat", lock: "Lock",
+      alarm_control_panel: "Alarm panel", media_player: "Media player",
+    };
+    return Object.prototype.hasOwnProperty.call(labels, family) ? labels[family] : "";
+  }
+
+  function reasonText(reason) {
+    if (reasons[reason]) return reasons[reason];
+    var legacy = typeof reason === "string" && /^legacy_(.+)_(match|unconfirmed)$/.exec(reason);
+    if (legacy) {
+      var features = {
+        binary_sensor: "contact connections and Programming",
+        sensor: "units, temperature or humidity connections, and Programming",
+        fan: "speed settings, keypad connections and Programming",
+        blinds: "position mode, keypad connections and Programming",
+        garage: "door relays, limit contacts, keypad connections and Programming",
+        climate: "setpoints, mode and hold settings, and Programming",
+        lock: "lock settings, connections and Programming",
+        alarm_control_panel: "room, partition, zone and arming settings",
+        media_player: "room routing, sources and remote controls",
+      };
+      var family = familyName(legacy[1]);
+      if (!family) return "";
+      if (legacy[2] === "unconfirmed") {
+        return "In Composer, check which Home Assistant device the legacy " + family.toLowerCase()
+          + " driver uses in Properties. Choose Back to edit, then uncheck this device to continue with the others.";
+      }
+      return "This Home Assistant device already has a legacy " + family.toLowerCase()
+        + " driver. Keep it connected while you review its " + features[legacy[1]]
+        + " in Composer. Choose Back to edit, then uncheck this device to continue with the others.";
+    }
+    return "";
+  }
+
+  function scope(type) {
+    return ["lighting", "light", "switch"].includes(type) ? "lighting" : type;
   }
 
   function run(command, args, answer, timeout) {
@@ -139,7 +178,7 @@
               !Array.isArray(item.families) ||
               !item.families.length || !item.families.includes(item.family) ||
               item.families.some(function (family, index) {
-                return (family !== "light" && family !== "switch") || item.families.indexOf(family) !== index;
+                return !familyName(family) || item.families.indexOf(family) !== index;
               }) || (item.resume !== undefined && (!item.resume || item.existing ||
                 typeof item.resume.name !== "string" || nameError(item.resume.name) ||
                 !Number.isInteger(item.resume.room_id) || item.resume.room_id <= 0 ||
@@ -168,9 +207,11 @@
 
   function findDevices(useCurrentRevision, refresh) {
     if (!canBrowse || pending) return;
-    var revision = useCurrentRevision === true && catalog && catalog.ready ? catalog.revision : null;
+    var revision = useCurrentRevision === true && catalog && catalog.ready && catalog.scope === scope(setup)
+      ? catalog.revision : null;
     cancelBrowse();
-    catalog = { choices: [], seen: Object.create(null), cursor: 1, loading: true, revision: revision, refresh: refresh };
+    catalog = { choices: [], seen: Object.create(null), cursor: 1, loading: true, revision: revision,
+      refresh: refresh, scope: scope(setup) };
     renderPicker();
     requestPage(undefined, !!revision);
   }
@@ -180,7 +221,21 @@
   }
 
   function staleDraft() {
-    return draftRevision && catalog && catalog.revision && catalog.revision !== draftRevision;
+    return !!(catalog && catalog.revision && draft.some(function (item) {
+      return item.scope === catalog.scope && item.revision !== catalog.revision;
+    }));
+  }
+
+  function clearChangedType() {
+    draft = draft.filter(function (item) {
+      return item.scope !== catalog.scope || item.revision === catalog.revision;
+    });
+    if (!draft.length && selectedOnly) {
+      showAll();
+      return;
+    }
+    renderPicker();
+    focusReview();
   }
 
   function nameKey(value) {
@@ -253,7 +308,8 @@
     var visible = showExisting ? data.choices : data.choices.filter(function (item) { return !item.existing; });
     var matching = selectedOnly ? draft.map(function (item) { return item.source; }) : visible.filter(function (item) {
       var savedRoom = item.resume && roomIndex[item.resume.room_id];
-      return [item.name, item.area, item.description, item.resume && item.resume.name, savedRoom && savedRoom.name]
+      return item.id === search || (Array.isArray(item.entity_ids) && item.entity_ids.includes(search))
+        || [item.name, item.area, item.description, item.resume && item.resume.name, savedRoom && savedRoom.name]
         .join(" ").toLowerCase().includes(search);
     });
     rows.innerHTML = matching.map(function (item) {
@@ -303,10 +359,10 @@
     text("review-hint", showExisting ? "Showing all supported Home Assistant devices." : "Showing devices to add or finish setting up.");
     el("selected-view").hidden = !selectedOnly;
     el("choices").hidden = !matching.length;
-    el("helper").hidden = selectedOnly || data.helper !== false;
+    el("helper").hidden = selectedOnly || scope(setup) !== "lighting" || data.helper !== false;
     el("browse").setAttribute("aria-disabled", String(data.loading === true || !!pending));
     text("catalog-status", data.error ||
-      (stale ? "The device list changed. Clear your selection and choose devices again." :
+      (stale ? "This device list changed. Clear changed devices to choose from the current list." :
         data.loading ? "Loading devices…" :
           data.ready && !selectedOnly && !matching.length ? (search ? (showExisting ? "No matching devices." : "No matching devices to add.") :
             data.choices.length ? "All devices in this category already have a Control4 driver." : "No compatible devices found.") :
@@ -319,7 +375,11 @@
   }
 
   function reviewIssue() {
-    if (staleDraft()) return { message: "The device list changed. Clear your selection." };
+    if (staleDraft()) return {
+      message: "The list for this device type changed. Review its devices again.",
+      label: "Clear changed devices",
+      action: clearChangedType,
+    };
     if (!rooms.length) return { message: "Add a room to the Control4 project.",
       label: "Check for rooms", action: readState };
     if (!draft.length) return null;
@@ -374,14 +434,13 @@
       var row = catalog.seen[id];
       if (!row) return;
       var resume = row.resume || { family: row.family, room_id: matchingRoom(row.area), name: defaultName(row.name) };
-      draftRevision = catalog.revision;
       draft.push({
         choice_id: id, source: row, family: resume.family, room_id: resume.room_id, name: resume.name,
+        revision: catalog.revision, scope: catalog.scope,
       });
     } else if (!selected) {
       draft = draft.filter(function (item) { return item.choice_id !== id; });
       if (!draft.length) {
-        draftRevision = null;
         if (selectedOnly) {
           showAll();
           return;
@@ -420,7 +479,8 @@
     text("review-detail", summary.join(" "));
     text("apply-status", pending ? "Applying your confirmed changes…" : "");
     el("preview-rows").innerHTML = plan.items.map(function (item) {
-      var reason = reasons[item.reason] || (item.decision === "review" ? "Check this device in the project before continuing." : "");
+      var reason = reasonText(item.reason) || (item.decision === "review"
+        ? "In Composer, check this device’s selection and connections. Choose Back to edit, then uncheck this device to continue with the others." : "");
       return "<li><strong>" + Kit.esc(item.name) + "</strong>" +
         (item.source_name && item.source_name !== item.name ? '<p class="setup-detail">Home Assistant device: ' +
           Kit.esc(item.source_name) + "</p>" : "") +
@@ -496,19 +556,37 @@
     if (!canBrowse && (!pending || pending.command === "HA_ADD_GET")) readState();
   }
 
+  function showChangedType(data) {
+    var label = familyName(data.changed_family);
+    if (!data.error || !label) return false;
+    plan = null;
+    selectedOnly = false;
+    setup = scope(data.changed_family);
+    el("setup-kind").value = setup;
+    findDevices(false, true);
+    text("addition-status", "The " + label.toLowerCase() + " list changed. Review that device type again.");
+    render();
+    focusReview();
+    return true;
+  }
+
   function requestPreview() {
     if (pending || el("review").disabled) return;
+    var commonRevision = draft[0].revision;
     var choices = draft.map(function (item) {
-      return { choice_id: item.choice_id, family: item.family, name: item.name.trim(), room_id: item.room_id };
+      var choice = { choice_id: item.choice_id, family: item.family, name: item.name.trim(), room_id: item.room_id };
+      if (item.revision !== commonRevision) choice.revision = item.revision;
+      return choice;
     });
     el("review").focus();
     text("addition-status", "Checking devices against the project…");
-    run("HA_ADD_PREVIEW", { revision: draftRevision, choices: choices }, function (data) {
+    run("HA_ADD_PREVIEW", { revision: commonRevision, choices: choices }, function (data) {
       if (data.error || !data.id || !Array.isArray(data.items) || data.items.length !== choices.length ||
           choices.some(function (choice, index) {
             var item = data.items[index];
             return !item || item.choice_id !== choice.choice_id || !Object.prototype.hasOwnProperty.call(decisions, item.decision);
           })) {
+        if (showChangedType(data)) return;
         text("addition-status", data.error || "The review could not be loaded. Review the devices again.");
       } else {
         plan = data;
@@ -524,19 +602,19 @@
     if (!plan || pending || el("apply").disabled) return;
     el("apply").focus();
     run("HA_ADD_APPLY", { id: plan.id }, function (data) {
+      if (showChangedType(data)) return;
       var names = Object.create(null);
       plan.items.forEach(function (item) { names[item.choice_id] = item.name; });
       plan = null;
       finished = true;
       if (data.complete) {
         draft = [];
-        draftRevision = null;
         selectedOnly = false;
       }
       text("result-detail", data.error || (data.complete ? "The selected devices are set up in Control4." :
         "Check the items below. Review the devices again to finish setting them up."));
       el("result-rows").innerHTML = (Array.isArray(data.items) ? data.items : []).map(function (item) {
-        var reason = reasons[item.reason] || "";
+        var reason = reasonText(item.reason);
         return "<li><strong>" + Kit.esc(names[item.choice_id] || "Device") + "</strong><p>" +
           Kit.esc(outcomes[item.status] || "Check setup") + "</p>" + (reason ? "<p>" + Kit.esc(reason) + "</p>" : "") + "</li>";
       }).join("");
@@ -605,7 +683,6 @@
   });
   el("clear").addEventListener("click", function () {
     draft = [];
-    draftRevision = null;
     text("addition-status", "");
     showAll();
   });

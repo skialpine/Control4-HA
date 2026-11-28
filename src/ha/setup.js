@@ -57,7 +57,8 @@
     }
     el("indicator-title").textContent = state.title ? "Indicator lights on " + state.title : "Indicator lights";
     message("indicator-hint", state.indicator_hint);
-    el("indicator-help").hidden = !state.selected_id || !!state.indicator_hint || !!state.indicator_lease;
+    el("indicator-help").hidden = !!state.native_endpoint || !state.selected_id ||
+      !!state.indicator_hint || !!state.indicator_lease;
     var unavailable = el("indicators").hidden && (settings.hidden || settings.parentElement.hidden) &&
       (source.hidden || source.parentElement.hidden) && !state.indicator_hint;
     if (unavailable && wrapper.contains(document.activeElement)) focusRecovery();
@@ -306,7 +307,7 @@
     el("previous").hidden = browse.offset === 0;
     el("more").hidden = matches.length <= browse.offset + visible.length;
     message("picker-names", browse.namesWarning ? "Custom names and rooms are unavailable. Showing names from Home Assistant." : "");
-    el("picker-helper").hidden = browse.helper !== false || !!browse.error || exactID;
+    el("picker-helper").hidden = !!state.native_endpoint || browse.helper !== false || !!browse.error || exactID;
     el("reload").disabled = browse.loading;
     el("apply").hidden = !visible.length || !!browse.error;
     el("apply").disabled = !browse.picked || !visible.some(function (choice) { return choice.id === browse.picked; }) ||

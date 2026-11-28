@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 import hashlib
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -26,19 +27,21 @@ def run(*args):
     subprocess.run(args, cwd=ROOT, check=True)
 
 
-def canonicalize(path):
-    """Keep packager payloads, fixing only ZIP metadata and member ordering."""
-    with zipfile.ZipFile(path) as package:
+def write_canonical_archive(source, destination):
+    """Normalize ZIP metadata and ordering, including carried packages."""
+    with zipfile.ZipFile(source) as package:
         names = package.namelist()
         if len(names) != len(set(names)):
-            raise ValueError(f"{path.name} contains duplicate archive entries")
-        files = {name: package.read(name) for name in names}
-    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
-        output = Path(directory) / path.name
+            raise ValueError("Archive contains duplicate entries")
         with zipfile.ZipFile(
-            output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
-        ) as package:
-            for name in sorted(files, key=lambda name: (name != "driver.xml", name)):
+            destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+        ) as output:
+            for name in sorted(names, key=lambda name: (name != "driver.xml", name)):
+                content = package.read(name)
+                if name.startswith("c4z/") and name.endswith(".c4z"):
+                    carried = BytesIO()
+                    write_canonical_archive(BytesIO(content), carried)
+                    content = carried.getvalue()
                 entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
                 entry.create_system = 3
                 entry.external_attr = 0o100644 << 16
@@ -46,7 +49,13 @@ def canonicalize(path):
                 entry.compress_type = (
                     zipfile.ZIP_STORED if name == "driver.xml" else zipfile.ZIP_DEFLATED
                 )
-                package.writestr(entry, files[name], compresslevel=9)
+                output.writestr(entry, content, compresslevel=9)
+
+
+def canonicalize(path):
+    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+        output = Path(directory) / path.name
+        write_canonical_archive(path, output)
         output.replace(path)
 
 

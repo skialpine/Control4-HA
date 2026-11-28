@@ -209,8 +209,12 @@ devices[22].version = "106"
 devices[22].entity = ""
 legacy:service(1, lightPacket("light.second"))
 T.eq("stale, unrelated, malformed and unqualified calls never send", #connection.sent, 2)
-T.section("known suite Light and Switch ignore the shared wire after capability verification")
-for _, suite in ipairs({ { "HA Light", "HA.Light.c4z", 999 }, { "Control4.HA.Switch", "Control4.HA.Switch.c4z", 1 } }) do
+T.section("known suite endpoints ignore the shared wire after capability verification")
+for _, suite in ipairs({
+  { "HA Light", "HA.Light.c4z", 999 },
+  { "Control4.HA.Switch", "Control4.HA.Switch.c4z", 1 },
+  { "Control4.HA.Fan", "Control4.HA.Fan.c4z", 1 },
+}) do
   fixture("HA Light", "light.first")
   devices[23] = child(suite[1], "", "SKIALPINE_HA_SUITE_V1")
   devices[23].file, devices[23].binding, devices[23].version = suite[2], suite[3], "20261117"
@@ -232,6 +236,26 @@ for _, suite in ipairs({ { "HA Light", "HA.Light.c4z", 999 }, { "Control4.HA.Swi
   legacy:service(1, lightPacket("light.first"))
   T.eq("an older handler without a positive capability cannot authorize a legacy write", #connection.sent, before)
 end
+T.section("released predecessor variants do not block other legacy state or control")
+fixture("HA Light", "light.first")
+devices[23] = child("HA Fan", "fan.first")
+devices[23].file, devices[23].version = "HA.Fan.3-speed.c4z", 103
+devices[24] = child("HA Alarm Panel", "alarm_control_panel.first")
+devices[24].version = 101
+request("light.first")
+T.eq("a published Fan variant and Alarm Panel keep all three state paths open", connection.reads, 3)
+connection.pending:resolve(state("light.first"))
+legacy:service(1, lightPacket("light.first"))
+T.eq(
+  "the Light keeps control on its exact selected target",
+  connection.sent[#connection.sent].target.entity_id,
+  "light.first"
+)
+devices[23].version = 102
+local beforeVariant = #connection.sent
+legacy:service(1, lightPacket("light.first"))
+T.eq("a version from another Fan package does not establish share safety", #connection.sent, beforeVariant)
+
 T.section("media projection excludes signed credentials and unrelated attributes")
 local projection = require("ha.legacy-state")
 local media = state("media_player.example")

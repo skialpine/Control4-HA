@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from package import (  # noqa: E402
+    c4z_filename,
     check_encrypted,
     check_pdfs,
     check_sort_order,
@@ -123,6 +124,14 @@ class CheckEncryptedTest(InTempDir):
         code, _, err = self._run(check_encrypted, "drivercentral", "release")
         self.assertEqual(code, 1)
         self.assertIn("release has no package to check", err)
+
+
+class C4zFilenameTest(InTempDir):
+    def test_archive_name_can_differ_from_source_folder(self):
+        project = Path("example_companion/driver.c4zproj")
+        project.parent.mkdir()
+        project.write_text('<Driver type="c4z" name="Example.Companion"/>')
+        self.assertEqual(c4z_filename(project), "Example.Companion.c4z")
 
 
 class TagVersionTest(InTempDir):

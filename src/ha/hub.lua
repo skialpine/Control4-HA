@@ -14,6 +14,7 @@ local Selection = require("ha.selection")
 local Transfer = require("ha.commission-transfer")
 local Installation = require("ha.installation-scope")
 local SnapshotQueue = require("ha.snapshot-queue")
+local endpointState = require("ha.endpoint-state")
 require("lib.utils")
 local programmedService = require("ha.programmed-service")
 local Hub = {}
@@ -33,6 +34,7 @@ function Hub.new(connection, emit)
     entities = {},
     pending = {},
     snapshotQueue = SnapshotQueue.new(),
+    scopedCatalogs = {},
     switchServices = {},
     serial = 0,
     epoch = 0,
@@ -67,13 +69,43 @@ function Hub.new(connection, emit)
   return self
 end
 
+function Hub:catalogFor(family)
+  if not contract.endpointFamily(family) then
+    return self.catalog
+  end
+  if not self.scopedCatalogs[family] then
+    local function request(message, callback)
+      return self:_request(message, callback)
+    end
+    self.scopedCatalogs[family] = Catalog.new(request, function()
+      return self.connection:readCatalog(family)
+    end, function(rows, active, native)
+      return Choices.enrich(rows, request, active, native)
+    end, false, family)
+  end
+  return self.scopedCatalogs[family]
+end
+
 function Hub:_owns(device, outputs)
   local ok, provider = pcall(contract.provider, device, outputs)
   return ok and provider == C4:GetDeviceID()
 end
 
+function Hub:_consumerState(state)
+  local domain = contract.endpointDomain(state.entity_id)
+  if domain == "climate" then
+    return self.connection:addClimateScale(state)
+  end
+  return endpointState.project(state, domain)
+end
+
 function Hub:_emit(consumer, kind, data)
   if not self.destroyed and self.consumers[consumer.device] == consumer and self:_owns(consumer.device) then
+    if kind == "snapshot" or kind == "state" then
+      data = self:_consumerState(data)
+    elseif kind == "result" and data.load_state then
+      data.load_state = self:_consumerState(data.load_state)
+    end
     local span = metrics:start("consumer.dispatch")
     local sent = pcall(self.emit, consumer.device, {
       version = ids.api,
@@ -320,6 +352,18 @@ function Hub:_start(entry)
     return
   end
   local epoch = self.epoch
+  if contract.endpointDomain(entry.entity) == "climate" and entry.climateEpoch ~= epoch then
+    if entry.climatePending ~= epoch then
+      entry.climatePending = epoch
+      self.connection:climateScale():next(function()
+        if self.epoch == epoch and self.entities[entry.entity] == entry then
+          entry.climateEpoch = epoch
+          self:_start(entry)
+        end
+      end)
+    end
+    return
+  end
   self:_request({
     type = "subscribe_trigger",
     trigger = { platform = "state", entity_id = entry.entity },
@@ -666,7 +710,7 @@ function Hub:_operation(consumer, message)
       finish("timeout")
     end)
     if resolving then
-      Selection.resolve(self.catalog, function(...)
+      Selection.resolve(self:catalogFor(message.arguments.family), function(...)
         return self:_request(...)
       end, message.arguments, active):next(function(resolved)
         finish("resolved", resolved)
@@ -674,7 +718,15 @@ function Hub:_operation(consumer, message)
         finish(failure.kind)
       end)
     elseif reading then
-      self:_readLoad(message.entity_id, active, finish)
+      if contract.endpointDomain(message.entity_id) == "climate" then
+        self.connection:climateScale():next(function()
+          if active() then
+            self:_readLoad(message.entity_id, active, finish)
+          end
+        end)
+      else
+        self:_readLoad(message.entity_id, active, finish)
+      end
     elseif message.arguments.registry_id or message.arguments.event_control then
       local args, entity = message.arguments, message.entity_id
       local entityIds = args.event_control and operations.eventRegistryTargets(entity, args)
@@ -692,9 +744,8 @@ function Hub:_operation(consumer, message)
     else
       self.connection:readState(message.entity_id):next(function(state)
         if active() then
-          finish(
-            operations.targetAvailable(message.entity_id, state, message.arguments) and "verified" or "unavailable"
-          )
+          local ready, reason = operations.targetAvailable(message.entity_id, state, message.arguments)
+          finish(ready and "verified" or reason or "unavailable")
         end
       end, function(failure)
         if active() then
@@ -706,13 +757,14 @@ function Hub:_operation(consumer, message)
   end
   if browsing then
     local key = "catalog." .. message.request_id
+    local catalog = self:catalogFor(message.arguments.family)
     consumer.requests[key] = true
     local function page(rev)
       if not consumer.requests[key] then
         return
       end
       local args = message.arguments
-      local values, failure = self.catalog:read(rev, args.cursor, args.family)
+      local values, failure = catalog:read(rev, args.cursor, args.family)
       if not values then
         consumer.requests[key] = nil
         reply(failure)
@@ -723,9 +775,7 @@ function Hub:_operation(consumer, message)
           return
         end
         consumer.requests[key] = nil
-        local verified = self.catalog.snapshot
-          and self.catalog.snapshot.revision == rev
-          and self.catalog.verified == self.catalog.generation
+        local verified = catalog:hasVerifiedSnapshot(rev)
         if not verified then
           reply("revision_changed")
           return
@@ -765,7 +815,7 @@ function Hub:_operation(consumer, message)
     if message.arguments.cursor then
       page(message.arguments.revision)
     else
-      self.catalog:refresh(message.arguments.refresh):next(function(metadata)
+      catalog:refresh(message.arguments.refresh):next(function(metadata)
         page(metadata.revision)
       end, function(failure)
         consumer.requests[key] = nil
@@ -1069,6 +1119,9 @@ function Hub:_transport(online)
     finishWaitingSwitches(lane, "disconnected")
   end
   self.catalog:invalidate()
+  for _, catalog in pairs(self.scopedCatalogs) do
+    catalog:invalidate()
+  end
   local pending = self.pending
   self.pending = {}
   for id, callback in pairs(pending) do

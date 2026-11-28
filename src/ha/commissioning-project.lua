@@ -1,27 +1,58 @@
 -- Fresh Control4 inventory and exact project matching for explicit deployment.
 local contract = require("ha.contract")
 local ids = require("ha.identities")
+local families = require("ha.endpoint-families")
 local assessment = require("ha.migration-assessment")
 local legacyProfile = require("ha.legacy-driver-profile")
+local legacyEndpoints = require("ha.legacy-endpoints")
 local selection = require("ha.migration-selection")
 local prototype = require("ha.prototype-selection")
+local deferred = require("deferred")
+require("lib.utils")
 local M = {}
 local light, interimLight, switch = ids.packages.light, ids.packages.interimLight, ids.packages.switch
-local packages = { [light.file] = light, [interimLight.file] = interimLight, [switch.file] = switch }
-local projectFiles = table.concat({ light.file, interimLight.file, switch.file, "HA.Switch.c4z" }, ",")
+local packages = { [light.file] = "light", [interimLight.file] = "interimLight", [switch.file] = "switch" }
+local files = { light.file, interimLight.file, switch.file, "HA.Switch.c4z" }
+for _, family in ipairs(families.order) do
+  local file = families[family].file
+  packages[file], files[#files + 1] = family, file
+end
+local projectFiles = table.concat(files, ",")
 
 function M.file(family)
-  local package = (family == "light" or family == "switch") and ids.packages[family]
+  local package = contract.family(family) and ids.packages[family]
   return package and package.file
 end
 
-function M.lightPackageReady(devices)
+function M.stageMissingPackage(family)
+  local file = M.file(family)
+  local inspected, exists = pcall(function()
+    UnlockC4ZRoot()
+    assert(C4:FileSetDir("C4Z_ROOT") ~= false)
+    return C4:FileExists(file)
+  end)
+  if not inspected or exists or next(C4:GetDevicesByC4iName(file) or {}) then
+    -- Director can still use its existing files when it denies driver-store
+    -- access. Keep established project drivers on the normal update path.
+    return deferred.new():resolve(true)
+  end
+  return InstallDrivers({ { name = file } }):next(function(installed)
+    return installed[1] == file
+  end)
+end
+
+function M.requiresPackageCheck(family)
+  local package = ids.packages[family]
+  return package and (family == "light" or package.retainsLegacyInput) or false
+end
+
+function M.retainedPackageReady(family, devices)
   -- AddDevice resolves by filename. Existing legacy/opaque rows under that
   -- name require an update unless a positively identified suite row exists.
   local found = false
   for _, device in ipairs(devices) do
-    if device.file == light.file then
-      if device.family == "light" and not device.legacy then
+    if device.file == M.file(family) then
+      if device.family == family and not device.legacy then
         return true
       end
       found = true
@@ -58,12 +89,14 @@ local function stringVariable(id, name)
 end
 
 local function identified(id, row, outputs)
-  local package = packages[row.driverFileName]
+  local family = packages[row.driverFileName]
+  local package = ids.packages[family]
   if not package or C4:GetDeviceData(id, "model") ~= package.model then
     return nil
   end
   local input, provider = contract.consumerBinding(id, outputs)
-  local expected = package == light and ids.lightCoordinatorBinding or ids.coordinatorBinding
+  local expected = (package == light or package.retainsLegacyInput) and ids.lightCoordinatorBinding
+    or ids.coordinatorBinding
   if input ~= expected then
     return nil
   end
@@ -71,7 +104,7 @@ local function identified(id, row, outputs)
     id = id,
     file = package.file,
     input = input,
-    family = package == switch and "switch" or "light",
+    family = family == "interimLight" and "light" or family,
     room_id = tonumber(row.roomId),
     room = row.roomName,
     name = row.deviceName,
@@ -142,13 +175,20 @@ end
 
 function M.inventory(includeAdditionalLegacy)
   local devices, outputs = {}, {}
-  local names = includeAdditionalLegacy and (projectFiles .. "," .. legacyProfile.files()) or projectFiles
+  local names = includeAdditionalLegacy
+      and (projectFiles .. "," .. legacyProfile.files() .. "," .. legacyEndpoints.files())
+    or projectFiles
   local found = C4:GetDevices({ C4iNames = names })
   assert(type(found) == "table")
   for raw, row in pairs(found) do
     local id = tonumber(raw)
     if contract.integer(id) and not (type(row.protocol) == "table" and next(row.protocol)) then
-      if packages[row.driverFileName] or row.driverFileName == "HA.Switch.c4z" then
+      local legacy = includeAdditionalLegacy and legacyEndpoints.inspect(id, row.driverFileName)
+      if legacy then
+        legacy.id, legacy.file, legacy.name = id, row.driverFileName, row.deviceName
+        legacy.room_id, legacy.room = tonumber(row.roomId), row.roomName
+        devices[#devices + 1] = legacy
+      elseif packages[row.driverFileName] or row.driverFileName == "HA.Switch.c4z" then
         local origin = assessment.source(id, row)
         local device = origin and legacyDevice(id, row, origin) or identified(id, row, outputs)
         devices[#devices + 1] = device
@@ -219,7 +259,10 @@ function M.decide(item, devices, receipt, coordinator)
   for _, device in ipairs(devices) do
     if not device.other_installation then
       if device.selected == nil then
-        unreadable[#unreadable + 1] = device
+        local family = families[device.family]
+        if not device.review_only or device.family == item.family or family and family.domain == item.domain then
+          unreadable[#unreadable + 1] = device
+        end
       elseif
         item.keys[device.selected]
         or (device.legacy and device.selected == item.legacy_gesture)

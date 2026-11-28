@@ -196,7 +196,7 @@ Use the corresponding BP `Control4-HA-*` repository and its released driver to i
 | Binary Sensor | Device-class bindings, native companions, breach/reset programming and optional notifications without startup replay |
 | Generic Sensor | Typed values/units, native sensor bindings, availability and thresholds without unknown-to-zero conversion |
 
-Chowmain's published [feature announcements](https://www.c4forums.com/forums/topic/44955-chowmain-home-assistant-driver/) inform feature selection, not source reuse or a claim of parity. Selective commissioning, configurable fans, sensor notifications, apps and alarm detail belong in the appropriate implementation/roadmap scope. Do not introduce all-family registry scans to make a future feature easier.
+Published feature announcements for legacy drivers inform feature selection. Selective commissioning, configurable fans, sensor notifications, apps and alarm detail belong in the appropriate implementation or roadmap scope. Use scoped registry reads for each supported feature.
 
 ## Risks / Trade-offs
 

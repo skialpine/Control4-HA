@@ -4,6 +4,8 @@ local contract = require("ha.contract")
 local gestureContract = require("ha.gesture-contract")
 local indicators = require("ha.indicators")
 local effects = require("ha.light-effects")
+local endpointServices = require("ha.endpoint-services")
+local families = require("ha.endpoint-families")
 local M = {}
 local function range(value, low, high)
   return type(value) == "number" and value >= low and value <= high
@@ -79,7 +81,7 @@ end
 -- The saved registry ID distinguishes a renamed/replaced entity from the
 -- original endpoint. The optional source must still belong to its saved device.
 function M.registryTargets(entity, args)
-  if not contract.loadDomain(entity) or not codec.isObject(args) or not identity(args.registry_id) then
+  if not contract.endpointDomain(entity) or not codec.isObject(args) or not identity(args.registry_id) then
     return nil
   end
   for name in pairs(args) do
@@ -219,7 +221,13 @@ function M.verifyTarget(entity, arguments)
     end
     return identity(arguments.device) and gestureContract.identity(arguments.control)
   end
-  return contract.loadDomain(entity) ~= nil and (next(arguments) == nil or M.registryTargets(entity, arguments) ~= nil)
+  if arguments.family ~= nil then
+    return contract.endpointFamily(arguments.family)
+      and families[arguments.family].domain == contract.endpointDomain(entity)
+      and GetTableSize(arguments) == 1
+  end
+  return contract.endpointDomain(entity) ~= nil
+    and (next(arguments) == nil or M.registryTargets(entity, arguments) ~= nil)
 end
 
 function M.targetAvailable(entity, state, arguments)
@@ -230,11 +238,17 @@ function M.targetAvailable(entity, state, arguments)
     return state.state ~= "unavailable"
       and gestureContract.sourceReady(state.attributes, arguments.device, arguments.control)
   end
-  return state.state == "on" or state.state == "off"
+  if contract.loadDomain(entity) then
+    return state.state == "on" or state.state == "off"
+  end
+  if arguments.family and not families.eligible(arguments.family, contract.endpointDomain(entity), state.attributes) then
+    return false, "unsupported_endpoint"
+  end
+  return state.state ~= "unavailable" and state.state ~= "unknown"
 end
 
 function M.readLoad(entity, arguments)
-  return contract.loadDomain(entity) ~= nil and codec.isObject(arguments) and next(arguments) == nil
+  return contract.endpointDomain(entity) ~= nil and codec.isObject(arguments) and next(arguments) == nil
 end
 
 function M.build(operation, entity, arguments)
@@ -255,7 +269,23 @@ function M.build(operation, entity, arguments)
       return nil
     end
   end
-  local domain, action, parameters = contract.loadDomain(entity), arguments.action, arguments.parameters
+  local domain, action, parameters = contract.endpointDomain(entity), arguments.action, arguments.parameters
+  if domain and not contract.loadDomain(entity) then
+    if
+      type(action) ~= "string"
+      or not codec.isObject(parameters)
+      or not endpointServices.allowed(domain, action, parameters)
+    then
+      return nil
+    end
+    return {
+      type = "call_service",
+      domain = domain,
+      service = action,
+      service_data = parameters,
+      target = { entity_id = entity },
+    }
+  end
   if
     not domain
     or not codec.isObject(parameters)
@@ -360,6 +390,9 @@ function M.timingName(rpc)
   if
     rpc.type ~= "call_service" or (rpc.domain ~= "light" and rpc.domain ~= "switch" and rpc.domain ~= "input_boolean")
   then
+    if rpc.type == "call_service" and rpc.target and contract.endpointDomain(rpc.target.entity_id) == rpc.domain then
+      return "request." .. rpc.domain .. "." .. rpc.service
+    end
     return nil
   end
   local action = rpc.service == "turn_on" and "on" or rpc.service == "turn_off" and "off" or "toggle"
